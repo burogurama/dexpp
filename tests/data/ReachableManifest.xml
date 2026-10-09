@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.dexpp.reach"
+    android:versionCode="1" android:versionName="1.0">
+    <uses-sdk android:minSdkVersion="21" android:targetSdkVersion="34"/>
+    <permission android:name="com.dexpp.reach.P_NORMAL" android:protectionLevel="normal"/>
+    <permission android:name="com.dexpp.reach.P_DANGEROUS" android:protectionLevel="dangerous"/>
+    <permission android:name="com.dexpp.reach.P_SIGNATURE" android:protectionLevel="signature"/>
+    <application android:label="Reach">
+        <activity android:name=".OpenActivity" android:exported="true"/>
+        <activity android:name=".NormalActivity" android:exported="true" android:permission="com.dexpp.reach.P_NORMAL"/>
+        <activity android:name=".DangerousActivity" android:exported="true" android:permission="com.dexpp.reach.P_DANGEROUS"/>
+        <activity android:name=".SigActivity" android:exported="true" android:permission="com.dexpp.reach.P_SIGNATURE"/>
+        <activity android:name=".HiddenActivity" android:exported="false"/>
+        <activity android:name=".PlatformPermActivity" android:exported="true" android:permission="android.permission.DUMP"/>
+        <service android:name=".SigService" android:exported="true" android:permission="com.dexpp.reach.P_SIGNATURE"/>
+        <receiver android:name=".OpenReceiver" android:exported="true"/>
+    </application>
+</manifest>

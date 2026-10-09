@@ -1,0 +1,33 @@
+[build-system]
+requires = ["scikit-build-core>=0.10"]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "dexpp"
+version = "0.1.0"
+description = "Fast static analysis of Android APK / DEX files (C++ core with Python bindings)"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [{ name = "dex++ authors" }]
+keywords = ["android", "dex", "apk", "static-analysis", "reverse-engineering"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Programming Language :: C++",
+    "Programming Language :: Python :: 3",
+    "Topic :: Security",
+    "Topic :: Software Development :: Disassemblers",
+]
+
+[tool.scikit-build]
+cmake.version = ">=3.18"
+wheel.expand-macos-universal-tags = true
+# The wheel contains exactly the extension module and its stub file,
+# installed at site-packages root (single-module layout), plus the license of
+# the bundled libdeflate in .dist-info.
+wheel.packages = []
+
+[tool.scikit-build.cmake.define]
+DEXPP_BUILD_PYTHON = "ON"
+DEXPP_BUILD_TESTS = "OFF"

@@ -1,0 +1,196 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Cancel superseded runs on the same ref.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-test:
+    name: build & test (${{ matrix.compiler }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Clang needs >= 19: earlier Clang reports __cpp_concepts=201907,
+          # which guards out libstdc++'s <expected>. Clang 19 bumped the macro,
+          # so both compilers build against libstdc++.
+          - compiler: gcc
+            cc: gcc-13
+            cxx: g++-13
+            clang_version: ""
+          - compiler: clang
+            cc: clang-19
+            cxx: clang++-19
+            clang_version: "19"
+    env:
+      CC: ${{ matrix.cc }}
+      CXX: ${{ matrix.cxx }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Clang
+        if: matrix.clang_version != ''
+        run: |
+          wget -qO llvm.sh https://apt.llvm.org/llvm.sh
+          chmod +x llvm.sh
+          sudo ./llvm.sh ${{ matrix.clang_version }}
+      - name: Install toolchain
+        run: sudo apt-get update && sudo apt-get install -y ${{ matrix.cxx }}
+      - name: Configure
+        run: cmake -S . -B build
+      - name: Build
+        run: cmake --build build -j
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
+  sanitizers:
+    name: ASan + UBSan
+    runs-on: ubuntu-24.04
+    env:
+      CC: gcc-13
+      CXX: g++-13
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install toolchain
+        run: sudo apt-get update && sudo apt-get install -y g++-13
+      - name: Configure
+        run: cmake -S . -B build -DDEXPP_SANITIZE=address,undefined
+      - name: Build
+        run: cmake --build build -j
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+        env:
+          ASAN_OPTIONS: detect_stack_use_after_return=1
+          UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+
+  format:
+    name: clang-format
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install clang-format
+        run: sudo apt-get update && sudo apt-get install -y clang-format-18
+      - name: Check formatting
+        # Pinned to clang-format-18 so the gate matches the version the tree
+        # was formatted with; a newer clang-format may reflow differently.
+        run: |
+          git ls-files '*.cc' '*.cpp' '*.hpp' '*.h' \
+            | xargs clang-format-18 --dry-run -Werror
+
+  thread-sanitizer:
+    name: TSan (threaded stress)
+    runs-on: ubuntu-24.04
+    env:
+      CC: gcc-13
+      CXX: g++-13
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install toolchain
+        run: sudo apt-get update && sudo apt-get install -y g++-13
+      # Newer kernels raise vm.mmap_rnd_bits to 32, which TSan cannot map its
+      # shadow memory around; lower ASLR entropy before building, since
+      # gtest_discover_tests runs the instrumented binary at build time.
+      - name: Lower ASLR entropy for TSan
+        run: sudo sysctl -w vm.mmap_rnd_bits=28
+      - name: Configure
+        run: cmake -S . -B build -DDEXPP_SANITIZE=thread
+      - name: Build
+        run: cmake --build build -j
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+        env:
+          TSAN_OPTIONS: halt_on_error=1:second_deadlock_stack=1
+
+  python:
+    name: python bindings + wheel
+    runs-on: ubuntu-24.04
+    env:
+      CC: gcc-13
+      CXX: g++-13
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install toolchain
+        run: sudo apt-get update && sudo apt-get install -y g++-13
+      - name: Build extension in place
+        run: cmake -S . -B build -DDEXPP_BUILD_PYTHON=ON && cmake --build build -j
+      - name: Run binding tests
+        run: PYTHONPATH=build python3 bindings/python/test_dexpp.py
+      - name: Wheel install smoke test
+        run: |
+          pip install .
+          python3 -c "import dexpp; print('import ok:', dexpp.__name__)"
+
+  go:
+    name: go bindings
+    runs-on: ubuntu-24.04
+    env:
+      CC: gcc-13
+      CXX: g++-13
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+      - name: Install toolchain
+        run: sudo apt-get update && sudo apt-get install -y g++-13
+      - name: Build C shim
+        run: cmake -S . -B build && cmake --build build --target dexpp_c -j
+      - name: Run Go tests
+        working-directory: bindings/go
+        run: go test ./...
+
+  fuzz-smoke:
+    name: fuzz smoke (60s each)
+    runs-on: ubuntu-24.04
+    env:
+      CC: clang-19
+      CXX: clang++-19
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Clang
+        run: |
+          wget -qO llvm.sh https://apt.llvm.org/llvm.sh
+          chmod +x llvm.sh
+          sudo ./llvm.sh 19
+      - name: Install toolchain
+        run: sudo apt-get update && sudo apt-get install -y clang-19 libclang-rt-19-dev
+      - name: Build fuzzers
+        run: |
+          cmake -S . -B build-fuzz -DDEXPP_BUILD_FUZZERS=ON -DDEXPP_BUILD_TESTS=OFF -DDEXPP_BUILD_C=OFF
+          cmake --build build-fuzz -j
+      - name: Prepare seed corpora
+        run: |
+          mkdir -p seeds/dex seeds/apk seeds/axml seeds/arsc
+          cp tests/data/*.dex seeds/dex/
+          cp tests/data/*.apk seeds/apk/
+          unzip -o tests/data/sample.apk AndroidManifest.xml -d seeds/axml/
+          unzip -o tests/data/sample.apk resources.arsc -d seeds/arsc/
+      - name: Run each harness for 60s
+        run: |
+          set -e
+          # -malloc_limit_mb catches a single oversized allocation (an
+          # amplification bug); -rss_limit_mb catches cumulative runaway.
+          run() { echo "== $1 =="; ./build-fuzz/$1 -max_total_time=60 -rss_limit_mb=4096 -malloc_limit_mb=2048 -error_exitcode=1 "$2"; }
+          run fuzz_parse_dex seeds/dex
+          run fuzz_apk       seeds/apk
+          run fuzz_axml      seeds/axml
+          run fuzz_arsc      seeds/arsc
+      - name: Upload crashes
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-crashes
+          path: |
+            crash-*
+            oom-*
+            timeout-*
+          if-no-files-found: ignore

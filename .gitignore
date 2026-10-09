@@ -1,0 +1,60 @@
+# IDE files
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# Build directories
+build/
+build-*/
+cmake-build-debug/
+cmake-build-release/
+
+# Compiled output
+*.o
+*.obj
+*.exe
+*.out
+*.app
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+compile_commands.json
+CTestTestfile.cmake
+_deps/
+
+# Local files
+.local/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Backup files
+*~
+*.bak
+*.swp
+*.swo
+
+# Generated benchmark APK (regenerate with bench/gen_bench_apk.sh)
+tests/data/bench.apk
+
+# Python packaging
+*.egg-info/
+dist/
+wheelhouse/
+__pycache__/
+
+# Stray build artifacts
+TestDex.class
+cmake_test_discovery_*.json
+
+# libFuzzer artifacts
+crash-*
+oom-*
+timeout-*
+leak-*
+slow-unit-*
