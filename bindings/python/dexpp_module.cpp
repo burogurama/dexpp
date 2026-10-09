@@ -249,6 +249,7 @@ py::object method_or_none(std::optional<Method> m)
 PYBIND11_MODULE(dexpp, m)
 {
     m.doc() = "Python bindings for dex++, a static-analysis library for Android DEX files";
+    m.attr("__version__") = DEXPP_VERSION;
 
     py::register_exception_translator([](std::exception_ptr p) {
         try {

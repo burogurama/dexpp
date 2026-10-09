@@ -1,0 +1,86 @@
+name: Release
+
+# A v* tag builds the wheels and the sdist and publishes them as a GitHub
+# release, with the matching CHANGELOG.md section as the notes.  Pull requests
+# that touch the packaging, and manual runs, build everything without
+# publishing.
+on:
+  push:
+    tags: ["v*"]
+  pull_request:
+    paths:
+      - .github/workflows/release.yml
+      - pyproject.toml
+      - CMakeLists.txt
+  workflow_dispatch:
+
+jobs:
+  wheels:
+    name: wheels
+    # Linux x86_64, manylinux and musllinux.  Which Python versions are built,
+    # and the test run on each wheel, are set in pyproject.toml under
+    # [tool.cibuildwheel].
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pypa/cibuildwheel@v4.2.1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheels
+          path: wheelhouse/*.whl
+
+  sdist:
+    name: sdist
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build sdist
+        run: pipx run build --sdist
+      # The sdist leaves tests/ out, so prove it still builds and imports.
+      - name: Install from sdist
+        run: |
+          pip install dist/*.tar.gz
+          cd /tmp && python -c "import dexpp; print('dexpp', dexpp.__version__)"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sdist
+          path: dist/*.tar.gz
+
+  release:
+    name: GitHub release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [wheels, sdist]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Check the tag matches the library version
+        run: |
+          version=$(sed -n 's/^#define DEXPP_VERSION "\(.*\)"$/\1/p' src/version.hpp)
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "tag $GITHUB_REF_NAME does not match src/version.hpp ($version)"
+            exit 1
+          fi
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+      - name: Extract release notes
+        run: |
+          # The CHANGELOG.md section for this version, without its heading.
+          awk -v v="$VERSION" '
+            /^## / { if (found) exit; if (index($0, "## " v " ") == 1 || $0 == "## " v) { found = 1; next } }
+            found { print }
+          ' CHANGELOG.md > notes.md
+          test -s notes.md
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/* \
+            --title "dex++ $VERSION" --notes-file notes.md

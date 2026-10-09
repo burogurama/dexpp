@@ -4,7 +4,8 @@
  *
  *  Include this single header to gain access to the entire dex namespace:
  *  AnalysisContext, Class, Method, Field, ClassRef, TypeDescriptor,
- *  AccessFlags, AnalysisError, Cfg, CallGraph, ClassHierarchy, and Xrefs. */
+ *  AccessFlags, AnalysisError, Cfg, CallGraph, ClassHierarchy, and Xrefs.
+ *  DEXPP_VERSION (from version.hpp) gives the library version. */
 
 #include "analysis/access_flags.hpp"
 #include "analysis/analysis_context.hpp"
@@ -26,3 +27,4 @@
 #include "apk/manifest.hpp"
 #include "apk/resources.hpp"
 #include "apk/signing.hpp"
+#include "version.hpp"

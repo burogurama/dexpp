@@ -3,7 +3,8 @@
 Fast static analysis of Android APK / DEX files — a C++23 core with Python
 bindings, built as a clean, typed replacement for androguard's analysis API.
 
-This project is in early development; the API may change.
+The current release is **0.1.0** (alpha): the API may still change between
+0.x releases. See [CHANGELOG.md](CHANGELOG.md).
 
 ## What it does
 
@@ -22,12 +23,31 @@ signatures.
 
 ## Install (Python)
 
+dexpp is not on PyPI. Prebuilt wheels are attached to each
+[GitHub release](https://github.com/burogurama/dexpp/releases), for CPython
+3.9 and newer on:
+
+- Linux x86_64 (glibc 2.28+ and musl)
+
+Install the wheel for your platform straight from the release page:
+
+```bash
+pip install dexpp --no-index \
+    --find-links https://github.com/burogurama/dexpp/releases/expanded_assets/v0.1.0
+```
+
+`--no-index` makes pip take dexpp only from the release page, never from
+PyPI. Do not drop it: someone else could publish an unrelated package named
+`dexpp` on PyPI.
+
+On other platforms, build from a checkout (needs a C++23 compiler — GCC ≥ 13 or
+Clang ≥ 19 — and CMake ≥ 3.18):
+
 ```bash
 pip install .
 ```
 
-This builds the native extension (needs a C++23 compiler and CMake ≥ 3.18) and
-ships type stubs, so editors and `mypy`/`pyright` get full
+The package ships type stubs, so editors and `mypy`/`pyright` get full
 completion.
 
 ```python
@@ -62,6 +82,18 @@ cmake --build build -j
 PYTHONPATH=build python3 bindings/python/test_dexpp.py
 ```
 
+## Using it from C++ or Go
+
+The C++ library and the C / Go bindings are source-only for now: there are no
+install rules or prebuilt binaries.
+
+- **C++**: add the checkout to your build with `add_subdirectory(dexpp)`, link
+  the `dexpp_core` target, and include `dex.hpp`. `DEXPP_VERSION` gives the
+  library version.
+- **Go**: see [bindings/go/README.md](bindings/go/README.md). The cgo package
+  links the C shim from this repository's `build/` directory, so it works from
+  a checkout, not through `go get`.
+
 ## Layout
 
 - `src/raw/` — `dex::raw`: stateless DEX format parser + a minimal ZIP reader.
@@ -69,5 +101,6 @@ PYTHONPATH=build python3 bindings/python/test_dexpp.py
 - `src/apk/` — `dex::apk`: package metadata (manifest, resources, signing).
 - `src/dex.hpp` — the single public umbrella header.
 - `bindings/python/` — the pybind11 module, stubs, and Python tests.
+- `bindings/c/`, `bindings/go/` — the C ABI shim and the Go package over it.
 
 See [CLAUDE.md](CLAUDE.md) for the architecture in depth.
