@@ -1,0 +1,80 @@
+name: Fuzz (nightly)
+
+on:
+  schedule:
+    - cron: "0 4 * * *" # 04:00 UTC daily
+  workflow_dispatch:
+    inputs:
+      minutes_per_harness:
+        description: Minutes to run each harness
+        default: "15"
+
+jobs:
+  fuzz:
+    name: fuzz ${{ matrix.harness }}
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - harness: fuzz_parse_dex
+            seed: dex
+          - harness: fuzz_apk
+            seed: apk
+          - harness: fuzz_axml
+            seed: axml
+          - harness: fuzz_arsc
+            seed: arsc
+    env:
+      CC: clang-19
+      CXX: clang++-19
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Clang
+        run: |
+          wget -qO llvm.sh https://apt.llvm.org/llvm.sh
+          chmod +x llvm.sh
+          sudo ./llvm.sh 19
+      - name: Install toolchain
+        run: sudo apt-get update && sudo apt-get install -y clang-19 libclang-rt-19-dev
+      - name: Build fuzzers
+        run: |
+          cmake -S . -B build-fuzz -DDEXPP_BUILD_FUZZERS=ON -DDEXPP_BUILD_TESTS=OFF -DDEXPP_BUILD_C=OFF
+          cmake --build build-fuzz -j
+      - name: Restore corpus
+        uses: actions/cache/restore@v4
+        with:
+          path: corpus/${{ matrix.harness }}
+          key: corpus-${{ matrix.harness }}-${{ github.run_id }}
+          restore-keys: corpus-${{ matrix.harness }}-
+      - name: Seed corpus
+        run: |
+          mkdir -p corpus/${{ matrix.harness }}
+          case "${{ matrix.seed }}" in
+            dex)  cp tests/data/*.dex corpus/${{ matrix.harness }}/ ;;
+            apk)  cp tests/data/*.apk corpus/${{ matrix.harness }}/ ;;
+            axml) unzip -o tests/data/sample.apk AndroidManifest.xml -d corpus/${{ matrix.harness }}/ ;;
+            arsc) unzip -o tests/data/sample.apk resources.arsc -d corpus/${{ matrix.harness }}/ ;;
+          esac
+      - name: Fuzz
+        run: |
+          MINUTES="${{ github.event.inputs.minutes_per_harness || '15' }}"
+          ./build-fuzz/${{ matrix.harness }} \
+            -max_total_time=$((MINUTES * 60)) -rss_limit_mb=4096 -malloc_limit_mb=2048 \
+            -error_exitcode=1 corpus/${{ matrix.harness }}
+      - name: Save corpus
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: corpus/${{ matrix.harness }}
+          key: corpus-${{ matrix.harness }}-${{ github.run_id }}
+      - name: Upload crashes
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: crashes-${{ matrix.harness }}
+          path: |
+            crash-*
+            oom-*
+            timeout-*
+          if-no-files-found: ignore
