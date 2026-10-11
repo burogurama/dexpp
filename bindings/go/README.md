@@ -6,7 +6,7 @@ Go bindings for the dexpp Android DEX/APK static-analysis library, via its C ABI
 ## Build
 
 The binding links the dexpp static libraries, so build them first (needs a
-C++23 compiler — gcc 13+ / clang 16+ — and CMake ≥ 3.18):
+C++23 compiler — gcc 13+ / clang 19+ — and CMake ≥ 3.18):
 
 ```bash
 # from the repo root

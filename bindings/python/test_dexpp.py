@@ -7,7 +7,16 @@ Run from the project root (fixtures are referenced relatively):
 Also runnable under pytest with the same PYTHONPATH.
 """
 
+import re
+
 import dexpp
+
+
+def test_version():
+    # src/version.hpp is the single source of truth for the version.
+    with open("src/version.hpp") as f:
+        expected = re.search(r'#define DEXPP_VERSION "([^"]+)"', f.read()).group(1)
+    assert dexpp.__version__ == expected
 
 
 def test_load_and_classes():

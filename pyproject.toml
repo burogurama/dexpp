@@ -1,24 +1,33 @@
 [build-system]
-requires = ["scikit-build-core>=0.10"]
+requires = ["scikit-build-core>=0.11"]
 build-backend = "scikit_build_core.build"
 
 [project]
 name = "dexpp"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Fast static analysis of Android APK / DEX files (C++ core with Python bindings)"
 readme = "README.md"
 requires-python = ">=3.9"
-license = { text = "MIT" }
-authors = [{ name = "dex++ authors" }]
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+authors = [{ name = "Mohamed Nasser" }]
 keywords = ["android", "dex", "apk", "static-analysis", "reverse-engineering"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
+    "Operating System :: POSIX :: Linux",
     "Programming Language :: C++",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
     "Topic :: Security",
     "Topic :: Software Development :: Disassemblers",
+    "Typing :: Typed",
 ]
+
+[project.urls]
+Homepage = "https://github.com/burogurama/dexpp"
+Issues = "https://github.com/burogurama/dexpp/issues"
+Changelog = "https://github.com/burogurama/dexpp/blob/main/CHANGELOG.md"
 
 [tool.scikit-build]
 cmake.version = ">=3.18"
@@ -27,7 +36,24 @@ wheel.expand-macos-universal-tags = true
 # installed at site-packages root (single-module layout), plus the license of
 # the bundled libdeflate in .dist-info.
 wheel.packages = []
+# The sdist carries only what the wheel build needs: the test fixtures (tens of
+# MB, some of them third-party APKs), fuzzers, benchmarks, and CI config stay
+# in the repository.
+sdist.exclude = ["tests/", "fuzz/", "bench/", ".github/"]
+
+[tool.scikit-build.metadata.version]
+provider = "scikit_build_core.metadata.regex"
+input = "src/version.hpp"
+regex = '#define DEXPP_VERSION "(?P<value>[^"]+)"'
 
 [tool.scikit-build.cmake.define]
 DEXPP_BUILD_PYTHON = "ON"
 DEXPP_BUILD_TESTS = "OFF"
+
+# Release wheels (built by .github/workflows/release.yml).  The free-threaded
+# builds are skipped: the bindings have not been audited for running without
+# the GIL.
+[tool.cibuildwheel]
+build = "cp3*"
+skip = "cp3*t-*"
+test-command = "cd {project} && python bindings/python/test_dexpp.py"

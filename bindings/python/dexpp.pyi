@@ -4,6 +4,8 @@ from collections.abc import Iterator, Sequence
 from enum import Enum
 from typing import Optional, Union, overload
 
+__version__: str
+
 # ===== free functions =====
 
 def opcode_name(opcode: int) -> str: ...

@@ -1,6 +1,9 @@
 cmake_minimum_required(VERSION 3.18)
 
-project(dex++)
+# The version lives in src/version.hpp (shared with the Python package metadata).
+file(STRINGS src/version.hpp DEXPP_VERSION_LINE REGEX "^#define DEXPP_VERSION \"")
+string(REGEX REPLACE "^#define DEXPP_VERSION \"([^\"]+)\".*" "\\1" DEXPP_VERSION "${DEXPP_VERSION_LINE}")
+project(dex++ VERSION ${DEXPP_VERSION})
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -13,10 +16,11 @@ set(DEXPP_SANITIZE "" CACHE STRING
     "Sanitizers to build everything with, e.g. 'address,undefined' (empty = off)")
 
 # SKBUILD is set by scikit-build-core during `pip install` / wheel builds:
-# build only the Python module there, no tests or demo CLI.
+# build only the Python module there, no tests, demo CLI, or C shim.
 if(SKBUILD)
     set(DEXPP_BUILD_PYTHON ON)
     set(DEXPP_BUILD_TESTS OFF)
+    set(DEXPP_BUILD_C OFF)
 endif()
 
 # Sanitizer / fuzzer instrumentation is applied directory-wide (before any
