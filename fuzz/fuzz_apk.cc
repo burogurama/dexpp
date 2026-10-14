@@ -34,7 +34,11 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
     }
 
     // Whole-program singletons: each walks every loaded method once.
-    sink += ctx->call_graph().nodes().size();
+    const auto &cg = ctx->call_graph();
+    for (uint32_t n = 0; n < cg.nodes().size(); ++n) {
+        sink += cg.dispatch_targets(n).size() + cg.dispatch_sources(n).size();
+        sink += cg.callees(n).size() + cg.callers(n).size();
+    }
     sink += ctx->class_hierarchy().empty() ? 0 : 1;
     sink += ctx->xrefs().referenced_strings().size();
     sink += ctx->strings().size();

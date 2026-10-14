@@ -1,5 +1,7 @@
 #include "instruction.hpp"
 
+#include "invoke_sites.hpp"
+
 #include <cassert>
 #include <cstdint>
 #include <format>
@@ -773,6 +775,30 @@ std::vector<Instruction> decode_instructions(std::span<const uint16_t> insns)
     }
 
     return result;
+}
+
+void detail::find_invokes(std::span<const uint16_t> insns, std::vector<InvokeSite> &out)
+{
+    // Same boundary walk as decode_instructions(): skip payloads, advance every
+    // other opcode by its format width.  The call graph's call sites must be
+    // exactly the invokes Method::instructions() reports.
+    uint32_t pos = 0;
+    while (pos < static_cast<uint32_t>(insns.size())) {
+        uint8_t op = static_cast<uint8_t>(insns[pos] & 0xff);
+        uint8_t hi = static_cast<uint8_t>(insns[pos] >> 8);
+        if (op == 0x00 && hi != 0) {
+            pos += payload_size(insns, pos);
+            continue;
+        }
+        if ((op >= 0x6e && op <= 0x72) || (op >= 0x74 && op <= 0x78) ||
+            (op >= 0xfa && op <= 0xfd)) {
+            // Every invoke format is wider than one unit, so the decoder reads
+            // the index from unit 1 whenever it exists.
+            uint16_t index = pos + 1 < insns.size() ? insns[pos + 1] : 0;
+            out.push_back(InvokeSite{pos, op, index});
+        }
+        pos += kWidth[op];
+    }
 }
 
 } // namespace dex

@@ -173,6 +173,8 @@ bool ClassHierarchy::is_interface(std::string_view descriptor) const
 
 ClassHierarchy build_class_hierarchy(const detail::AnalysisContextImpl &impl)
 {
+    // build_call_graph() reads the class_defs by these same rules into its own
+    // integer hierarchy; keep the two in sync.
     ClassHierarchy h;
 
     // Pass 1: register every loaded class with its direct supertypes; ensure

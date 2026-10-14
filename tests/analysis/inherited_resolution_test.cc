@@ -1,10 +1,11 @@
 // Upward resolution (EdgeOrigin::InheritedResolution) and the inherited-target
-// CHA fan-out, over tests/data/inherit.dex (source: Inherit.java alongside).
+// CHA dispatch, over tests/data/inherit.dex (source: Inherit.java alongside).
 
 #include <gtest/gtest.h>
 
 #include <map>
 #include <set>
+#include <string>
 #include <vector>
 
 #include "dex.hpp"
@@ -40,6 +41,15 @@ const CallEdge *edge_with_origin(const std::vector<const CallEdge *> &edges, Edg
         if (e->origin == origin)
             return e;
     return nullptr;
+}
+
+// Class descriptors of the site's dispatch targets.
+std::set<std::string> dispatch_classes(const CallGraph &g, const CallEdge &declared)
+{
+    std::set<std::string> out;
+    for (uint32_t t : g.dispatch_targets(declared))
+        out.insert(g.nodes()[t].id.class_descriptor);
+    return out;
 }
 
 } // namespace
@@ -83,8 +93,10 @@ TEST_F(InheritedResolutionTest, VirtualResolvesToNearestAncestorNotBeyond)
         EXPECT_NE(g.nodes()[e->callee_node].id.class_descriptor, "LBase;")
             << "Mid.m shadows Base.m — resolution must stop at the nearest definition";
         EXPECT_NE(g.nodes()[e->callee_node].id.class_descriptor, "LOther;")
-            << "sibling-branch override must not be fanned out from a Leaf receiver";
+            << "sibling-branch override must not be a target from a Leaf receiver";
     }
+    EXPECT_TRUE(g.dispatch_targets(*declared).empty())
+        << "Leaf has no subtypes; Base.m and the sibling Other.m must not be dispatch targets";
 }
 
 TEST_F(InheritedResolutionTest, InheritedEdgeAppearsInIncoming)
@@ -197,6 +209,10 @@ TEST_F(InheritedResolutionTest, DefaultPreferredOverAbstractDeclaration)
     for (const auto *e : edges)
         EXPECT_NE(g.nodes()[e->callee_node].id.class_descriptor, "LNamed;")
             << "abstract declaration must not receive an edge when a default exists";
+    const CallEdge *declared = edge_with_origin(edges, EdgeOrigin::Declared);
+    ASSERT_NE(declared, nullptr);
+    EXPECT_FALSE(dispatch_classes(g, *declared).contains("LNamed;"))
+        << "nor may it be a dispatch target";
 }
 
 TEST_F(InheritedResolutionTest, AbstractInterfaceDeclarationFallback)
@@ -223,11 +239,11 @@ TEST_F(InheritedResolutionTest, AbstractInterfaceDeclarationFallback)
     EXPECT_FALSE(m->has_code());
 }
 
-TEST_F(InheritedResolutionTest, ChaFansOutToInheritedImplementationSideways)
+TEST_F(InheritedResolutionTest, ChaDispatchesToInheritedImplementationSideways)
 {
     // UseE.callRun invokes run() through Runner.  FastRunner implements Runner
-    // but inherits run() from RunnerBase — outside Runner's subtree.  The CHA
-    // fan-out must surface RunnerBase.run as a dispatch target.
+    // but inherits run() from RunnerBase — outside Runner's subtree.  CHA must
+    // surface RunnerBase.run as a dispatch target.
     const auto &g = ctx->call_graph();
     const CallNode *caller = node_of(g, "LUseE;", "callRun");
     ASSERT_NE(caller, nullptr);
@@ -238,10 +254,8 @@ TEST_F(InheritedResolutionTest, ChaFansOutToInheritedImplementationSideways)
     EXPECT_EQ(g.nodes()[declared->callee_node].id.class_descriptor, "LRunner;");
     EXPECT_TRUE(g.nodes()[declared->callee_node].resolved) << "Runner declares run() abstract";
 
-    const CallEdge *cha = edge_with_origin(edges, EdgeOrigin::ChaOverride);
-    ASSERT_NE(cha, nullptr)
+    EXPECT_EQ(dispatch_classes(g, *declared), (std::set<std::string>{"LRunnerBase;"}))
         << "non-overriding implementer's inherited definition must be a CHA target";
-    EXPECT_EQ(g.nodes()[cha->callee_node].id.class_descriptor, "LRunnerBase;");
 
     EXPECT_EQ(edge_with_origin(edges, EdgeOrigin::InheritedResolution), nullptr)
         << "declared node is resolved — no upward resolution at this site";
@@ -264,8 +278,9 @@ TEST_F(InheritedResolutionTest, FrameworkBoundaryStaysUnresolved)
 TEST_F(InheritedResolutionTest, EdgeInvariantsSweep)
 {
     // Per call site (caller, code_offset): exactly one Declared edge, at most
-    // one InheritedResolution edge, pairwise-distinct callees, a single kind;
-    // non-Declared edges always target resolved nodes.
+    // one InheritedResolution edge, a single kind, and pairwise-distinct
+    // possible callees (edge callees plus dispatch targets); every possible
+    // callee but the Declared one is a resolved node.
     const auto &g = ctx->call_graph();
 
     struct Site
@@ -288,6 +303,11 @@ TEST_F(InheritedResolutionTest, EdgeInvariantsSweep)
                 << "non-declared edge to unresolved node " << e.callee_node;
         EXPECT_TRUE(s.callees.insert(e.callee_node).second)
             << "duplicate callee at caller " << e.caller_node << " offset " << e.code_offset;
+        for (uint32_t t : g.dispatch_targets(e)) {
+            EXPECT_TRUE(g.nodes()[t].resolved) << "dispatch target " << t << " unresolved";
+            EXPECT_TRUE(s.callees.insert(t).second)
+                << "duplicate callee at caller " << e.caller_node << " offset " << e.code_offset;
+        }
         s.kinds.insert(e.kind);
     }
     for (const auto &[key, s] : sites) {

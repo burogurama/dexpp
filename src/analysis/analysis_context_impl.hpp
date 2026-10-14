@@ -83,6 +83,11 @@ struct AnalysisContextImpl : public std::enable_shared_from_this<AnalysisContext
     std::vector<raw::DexFile> dex_files_vec;
     std::vector<std::unique_ptr<DexSlot>> slots;
 
+    /** Threads the whole-program builders (the call graph) may use: 0 =
+     *  automatic, 1 = the calling thread only.  Set from
+     *  ApkLoadOptions::threads by the APK loader. */
+    unsigned threads = 0;
+
     mutable std::once_flag class_index_flag;
     mutable std::unordered_map<std::string, std::pair<std::size_t, uint32_t>> class_index;
 
@@ -136,6 +141,11 @@ struct AnalysisContextImpl : public std::enable_shared_from_this<AnalysisContext
      *  proto_ids[proto_idx].  Cached; the reference stays valid for the impl's
      *  lifetime. */
     const std::string &proto_descriptor_of(std::size_t dex_idx, uint32_t proto_idx) const;
+
+    /** The same descriptor, built fresh and not cached: no lock is shared with
+     *  other DEX files, so threads working on different DEX files do not
+     *  contend.  Empty for an out-of-range proto_idx. */
+    std::string build_proto_descriptor(std::size_t dex_idx, uint32_t proto_idx) const;
 
     /** Canonical MethodId for method_ids[method_index]. */
     MethodId method_id_of(std::size_t dex_idx, uint32_t method_index) const;

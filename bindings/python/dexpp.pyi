@@ -24,7 +24,6 @@ class InvokeKind(Enum):
 
 class EdgeOrigin(Enum):
     DECLARED = ...
-    CHA_OVERRIDE = ...
     INHERITED_RESOLUTION = ...
 
 class EdgeKind(Enum):
@@ -500,7 +499,8 @@ class Class:
 # ===== call graph =====
 
 class CallEdge:
-    """Handle to one call-graph edge (one call site -> one possible target)."""
+    """Handle to one call-graph edge: a call site and its declared target, or
+    the target that target resolves to upward (INHERITED_RESOLUTION)."""
 
     @property
     def caller_node(self) -> int: ...
@@ -519,12 +519,10 @@ class CallEdge:
     @property
     def origin(self) -> EdgeOrigin: ...
     @property
-    def via_override(self) -> bool:
-        """Deprecated: use `origin`. True iff origin == EdgeOrigin.CHA_OVERRIDE.
-
-        Note `not via_override` no longer identifies declared edges — test
-        origin == EdgeOrigin.DECLARED instead.
-        """
+    def dispatch_targets(self) -> CallNodeView:
+        """Where this call site may also dispatch at runtime (class-hierarchy
+        analysis): callee.dispatch_targets for a DECLARED invoke-virtual /
+        invoke-interface edge, empty for every other edge."""
     def __eq__(self, other: object) -> bool: ...
     def __hash__(self) -> int: ...
 
@@ -548,13 +546,31 @@ class CallNode:
     @property
     def in_edges(self) -> CallEdgeView: ...
     @property
+    def dispatch_targets(self) -> CallNodeView:
+        """Methods a virtual / interface call declared against this one may
+        dispatch to at runtime, besides itself and its own upward resolution.
+        Shared by every such call site; resolved nodes, in index order."""
+    @property
+    def dispatch_sources(self) -> CallNodeView:
+        """The reverse of dispatch_targets: methods through which a virtual /
+        interface call can dispatch to this one."""
+    @property
+    def callees(self) -> CallNodeView:
+        """Every node this method's call sites may reach, dispatch targets
+        included; deduplicated, in index order."""
+    @property
+    def callers(self) -> CallNodeView:
+        """Every node with a call site that may reach this method, through
+        virtual dispatch included; deduplicated, in index order."""
+    @property
     def method(self) -> Optional[Method]:
         """The Method for a resolved node; None for external methods."""
     def __eq__(self, other: object) -> bool: ...
     def __hash__(self) -> int: ...
 
 class CallNodeView(Sequence[CallNode]):
-    """Read-only, zero-copy sequence of call-graph nodes."""
+    """Read-only, zero-copy sequence of call-graph nodes: the whole graph, or a
+    subset such as a node's dispatch targets or callers."""
 
     def __len__(self) -> int: ...
     @overload
@@ -577,9 +593,9 @@ class CallEdgeView(Sequence[CallEdge]):
     ) -> CallEdgeView:
         """The edges of this view matching every given filter, selected in C++.
 
-        Class-hierarchy fan-out can make a graph tens of millions of edges, so
-        filter here rather than in a Python loop, e.g.
-        graph.edges.where(origin=EdgeOrigin.DECLARED) for one edge per call site.
+        A large app has millions of call sites, so filter here rather than in a
+        Python loop, e.g. graph.edges.where(origin=EdgeOrigin.DECLARED) for one
+        edge per call site.
         """
 
 class CallGraph:
@@ -678,8 +694,9 @@ class AnalysisContext:
     def from_apk(path: str, threads: int = 0) -> AnalysisContext:
         """Load every classes*.dex of an APK, in multidex order.
 
-        threads: 0 = automatic, 1 = load on the calling thread only. Extra threads
-        are only used when at least 3 DEX entries are deflate-compressed.
+        threads: 0 = automatic, 1 = the calling thread only. Used to load (extra
+        threads only when at least 3 DEX entries are deflate-compressed) and
+        later to build the call graph (one thread per DEX file).
         """
     @property
     def classes(self) -> list[Class]: ...

@@ -98,9 +98,10 @@ struct MethodXref
  *  handle on demand.
  *
  *  Method references are literal: each invoke site is indexed under its
- *  *declared* target MethodId, with no class-hierarchy fan-out (use
- *  `AnalysisContext::call_graph()` for dispatch-aware edges).  invoke-custom
- *  call sites and const-method-handle/-type operands are not indexed.
+ *  *declared* target MethodId, with no class-hierarchy dispatch (use
+ *  `AnalysisContext::call_graph()` — `dispatch_targets()`, `callers()` — for
+ *  virtual dispatch).  invoke-custom call sites and const-method-handle/-type
+ *  operands are not indexed.
  *
  *  All spans and string_views returned by queries point into the index's own
  *  storage and stay valid for the lifetime of the AnalysisContext.

@@ -1,6 +1,9 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <functional>
+#include <set>
+#include <string>
 #include <unordered_map>
 
 #include "dex.hpp"
@@ -24,6 +27,17 @@ const CallNode *find_node_by_class_and_name(const CallGraph &g, std::string_view
 uint32_t node_index(const CallGraph &g, const CallNode *node)
 {
     return static_cast<uint32_t>(node - g.nodes().data());
+}
+
+// "Class.name" of every listed node, for order-independent comparisons.
+template <typename Nodes> std::set<std::string> names_of(const CallGraph &g, const Nodes &nodes)
+{
+    std::set<std::string> out;
+    for (uint32_t n : nodes) {
+        const MethodId &id = g.nodes()[n].id;
+        out.insert(id.class_descriptor + "." + id.name);
+    }
+    return out;
 }
 
 } // namespace
@@ -271,7 +285,7 @@ TEST(CallGraphTest, EdgeOutgoingMatchesIncoming)
 // Kennel.noise(Animal) invokes sound() through the interface;
 // Kennel.dogNoise(Dog) invokes it on the leaf class directly.
 
-TEST(ChaTest, InterfaceCallFansOutToOverrides)
+TEST(ChaTest, InterfaceCallDispatchesToOverrides)
 {
     auto ctx = AnalysisContext::from_dex("tests/data/polymorphic.dex");
     ASSERT_TRUE(ctx.has_value()) << ctx.error().message;
@@ -280,23 +294,15 @@ TEST(ChaTest, InterfaceCallFansOutToOverrides)
     const CallNode *noise = find_node_by_class_and_name(g, "LKennel;", "noise");
     ASSERT_NE(noise, nullptr);
 
-    const CallEdge *declared = nullptr;
-    const CallEdge *to_dog = nullptr;
-    const CallEdge *to_cat = nullptr;
+    std::vector<const CallEdge *> sound_edges;
     for (uint32_t e_idx : noise->outgoing) {
         const auto &e = g.edges()[e_idx];
-        const auto &callee = g.nodes()[e.callee_node];
-        if (callee.id.name != "sound")
-            continue;
-        if (callee.id.class_descriptor == "LAnimal;")
-            declared = &e;
-        else if (callee.id.class_descriptor == "LDog;")
-            to_dog = &e;
-        else if (callee.id.class_descriptor == "LCat;")
-            to_cat = &e;
+        if (g.nodes()[e.callee_node].id.name == "sound")
+            sound_edges.push_back(&e);
     }
-
-    ASSERT_NE(declared, nullptr) << "declared-target edge to Animal.sound must exist";
+    ASSERT_EQ(sound_edges.size(), 1u) << "dispatch targets are not stored as edges";
+    const CallEdge *declared = sound_edges[0];
+    EXPECT_EQ(g.nodes()[declared->callee_node].id.class_descriptor, "LAnimal;");
     EXPECT_EQ(declared->origin, EdgeOrigin::Declared);
     EXPECT_EQ(declared->kind, InvokeKind::Interface);
     // Animal is loaded, so its abstract sound() registers as a resolved node —
@@ -306,18 +312,17 @@ TEST(ChaTest, InterfaceCallFansOutToOverrides)
     ASSERT_TRUE(declared_method.has_value());
     EXPECT_FALSE(declared_method->has_code());
 
-    ASSERT_NE(to_dog, nullptr) << "CHA must add an edge to the Dog.sound override";
-    ASSERT_NE(to_cat, nullptr) << "CHA must add an edge to the Cat.sound override";
-    for (const CallEdge *e : {to_dog, to_cat}) {
-        EXPECT_EQ(e->origin, EdgeOrigin::ChaOverride);
-        EXPECT_EQ(e->kind, InvokeKind::Interface);
-        EXPECT_EQ(e->code_offset, declared->code_offset)
-            << "override edges share the declared edge's call site";
-        EXPECT_TRUE(g.nodes()[e->callee_node].resolved);
-    }
+    auto targets = g.dispatch_targets(*declared);
+    EXPECT_EQ(names_of(g, targets), (std::set<std::string>{"LCat;.sound", "LDog;.sound"}));
+    for (uint32_t t : targets)
+        EXPECT_TRUE(g.nodes()[t].resolved);
+    // The site's list is the declared node's own list, not a copy.
+    auto by_node = g.dispatch_targets(declared->callee_node);
+    EXPECT_EQ(targets.data(), by_node.data());
+    EXPECT_EQ(targets.size(), by_node.size());
 }
 
-TEST(ChaTest, VirtualCallThroughAbstractClassFansOut)
+TEST(ChaTest, VirtualCallThroughAbstractClassDispatches)
 {
     auto ctx = AnalysisContext::from_dex("tests/data/polymorphic.dex");
     ASSERT_TRUE(ctx.has_value());
@@ -328,30 +333,32 @@ TEST(ChaTest, VirtualCallThroughAbstractClassFansOut)
     const CallNode *describe = find_node_by_class_and_name(g, "LPet;", "describe");
     ASSERT_NE(describe, nullptr);
 
-    bool dog_override = false;
-    bool cat_override = false;
-    bool inherited_to_animal = false;
+    const CallEdge *declared = nullptr;
+    const CallEdge *inherited = nullptr;
     for (uint32_t e_idx : describe->outgoing) {
         const auto &e = g.edges()[e_idx];
-        const auto &callee = g.nodes()[e.callee_node];
-        if (callee.id.name != "sound")
+        if (g.nodes()[e.callee_node].id.name != "sound")
             continue;
-        if (e.origin == EdgeOrigin::ChaOverride && callee.id.class_descriptor == "LDog;")
-            dog_override = true;
-        if (e.origin == EdgeOrigin::ChaOverride && callee.id.class_descriptor == "LCat;")
-            cat_override = true;
-        // Pet defines no sound(); the declared method_id resolves upward to
-        // the abstract interface declaration Animal.sound.
-        if (e.origin == EdgeOrigin::InheritedResolution && callee.id.class_descriptor == "LAnimal;")
-            inherited_to_animal = true;
+        if (e.origin == EdgeOrigin::Declared)
+            declared = &e;
+        if (e.origin == EdgeOrigin::InheritedResolution)
+            inherited = &e;
     }
-    EXPECT_TRUE(dog_override);
-    EXPECT_TRUE(cat_override);
-    EXPECT_TRUE(inherited_to_animal)
-        << "Pet.sound must resolve upward to the Animal.sound declaration";
+    ASSERT_NE(declared, nullptr);
+    EXPECT_EQ(g.nodes()[declared->callee_node].id.class_descriptor, "LPet;");
+    EXPECT_FALSE(g.nodes()[declared->callee_node].resolved);
+    EXPECT_EQ(names_of(g, g.dispatch_targets(*declared)),
+              (std::set<std::string>{"LCat;.sound", "LDog;.sound"}));
+
+    // Pet defines no sound(); the declared method_id resolves upward to the
+    // abstract interface declaration Animal.sound.
+    ASSERT_NE(inherited, nullptr) << "Pet.sound must resolve upward to Animal.sound";
+    EXPECT_EQ(g.nodes()[inherited->callee_node].id.class_descriptor, "LAnimal;");
+    EXPECT_TRUE(g.dispatch_targets(*inherited).empty())
+        << "the site's dispatch targets hang off its Declared edge only";
 }
 
-TEST(ChaTest, LeafVirtualCallHasNoOverrideEdges)
+TEST(ChaTest, LeafVirtualCallHasNoDispatchTargets)
 {
     auto ctx = AnalysisContext::from_dex("tests/data/polymorphic.dex");
     ASSERT_TRUE(ctx.has_value());
@@ -368,21 +375,24 @@ TEST(ChaTest, LeafVirtualCallHasNoOverrideEdges)
             continue;
         ++sound_edges;
         EXPECT_EQ(callee.id.class_descriptor, "LDog;");
-        EXPECT_EQ(e.origin, EdgeOrigin::Declared) << "Dog has no subtypes — no fan-out expected";
-        EXPECT_TRUE(g.nodes()[e.callee_node].resolved);
+        EXPECT_EQ(e.origin, EdgeOrigin::Declared);
+        EXPECT_EQ(e.kind, InvokeKind::Virtual);
+        EXPECT_TRUE(callee.resolved);
+        EXPECT_TRUE(g.dispatch_targets(e).empty())
+            << "Dog has no subtypes — nothing to dispatch to";
     }
     EXPECT_EQ(sound_edges, 1);
 }
 
-TEST(ChaTest, SuperInvokeNotFannedOut)
+TEST(ChaTest, SuperInvokeDoesNotDispatch)
 {
     auto ctx = AnalysisContext::from_dex("tests/data/polymorphic.dex");
     ASSERT_TRUE(ctx.has_value());
     const auto &g = ctx->call_graph();
 
     // Dog.describe() calls super.describe().  Pet.describe is overridden by
-    // Dog.describe itself — fanning out a super invoke would add a bogus
-    // self-recursion edge.
+    // Dog.describe itself — dispatching a super invoke would add a bogus
+    // self-recursion target.
     const CallNode *dog_describe = find_node_by_class_and_name(g, "LDog;", "describe");
     ASSERT_NE(dog_describe, nullptr);
 
@@ -390,41 +400,181 @@ TEST(ChaTest, SuperInvokeNotFannedOut)
     for (uint32_t e_idx : dog_describe->outgoing) {
         const auto &e = g.edges()[e_idx];
         const auto &callee = g.nodes()[e.callee_node];
-        if (e.kind == InvokeKind::Super) {
-            ++super_edges;
-            EXPECT_EQ(callee.id.class_descriptor, "LPet;");
-            EXPECT_EQ(callee.id.name, "describe");
-            EXPECT_EQ(e.origin, EdgeOrigin::Declared);
-        }
-        EXPECT_FALSE(callee.id.class_descriptor == "LDog;" && callee.id.name == "describe")
-            << "super.describe() must not produce a self edge via CHA";
+        if (e.kind != InvokeKind::Super)
+            continue;
+        ++super_edges;
+        EXPECT_EQ(callee.id.class_descriptor, "LPet;");
+        EXPECT_EQ(callee.id.name, "describe");
+        EXPECT_EQ(e.origin, EdgeOrigin::Declared);
+        EXPECT_TRUE(g.dispatch_targets(e).empty());
+        EXPECT_TRUE(g.dispatch_targets(e.callee_node).empty())
+            << "no virtual site declares Pet.describe, so it has no dispatch targets";
     }
     EXPECT_EQ(super_edges, 1);
+
+    uint32_t self = node_index(g, dog_describe);
+    auto callees = g.callees(self);
+    EXPECT_EQ(std::find(callees.begin(), callees.end(), self), callees.end())
+        << "super.describe() must not make Dog.describe its own callee";
 }
 
-TEST(ChaTest, OverrideEdgesAppearInIncoming)
+TEST(ChaTest, DispatchSourcesAndCallers)
 {
     auto ctx = AnalysisContext::from_dex("tests/data/polymorphic.dex");
     ASSERT_TRUE(ctx.has_value());
     const auto &g = ctx->call_graph();
 
     const CallNode *dog_sound = find_node_by_class_and_name(g, "LDog;", "sound");
+    const CallNode *cat_sound = find_node_by_class_and_name(g, "LCat;", "sound");
     ASSERT_NE(dog_sound, nullptr);
+    ASSERT_NE(cat_sound, nullptr);
+    uint32_t dog = node_index(g, dog_sound);
+    uint32_t cat = node_index(g, cat_sound);
 
-    bool from_noise = false;
-    bool from_describe = false;
-    for (uint32_t e_idx : dog_sound->incoming) {
-        const auto &e = g.edges()[e_idx];
-        const auto &caller = g.nodes()[e.caller_node];
-        if (e.origin != EdgeOrigin::ChaOverride)
-            continue;
-        if (caller.id.class_descriptor == "LKennel;" && caller.id.name == "noise")
-            from_noise = true;
-        if (caller.id.class_descriptor == "LPet;" && caller.id.name == "describe")
-            from_describe = true;
+    // Calls declared against Animal.sound (Kennel.noise) and Pet.sound
+    // (Pet.describe) can both dispatch to the overrides.
+    EXPECT_EQ(names_of(g, g.dispatch_sources(dog)),
+              (std::set<std::string>{"LAnimal;.sound", "LPet;.sound"}));
+    EXPECT_EQ(names_of(g, g.dispatch_sources(cat)),
+              (std::set<std::string>{"LAnimal;.sound", "LPet;.sound"}));
+
+    // Only the direct call is an edge; dispatch adds no incoming edges.
+    ASSERT_EQ(dog_sound->incoming.size(), 1u);
+    EXPECT_EQ(g.nodes()[g.edges()[dog_sound->incoming[0]].caller_node].id.name, "dogNoise");
+    EXPECT_TRUE(cat_sound->incoming.empty());
+
+    EXPECT_EQ(names_of(g, g.callers(dog)),
+              (std::set<std::string>{"LKennel;.dogNoise", "LKennel;.noise", "LPet;.describe"}));
+    EXPECT_EQ(names_of(g, g.callers(cat)),
+              (std::set<std::string>{"LKennel;.noise", "LPet;.describe"}));
+}
+
+TEST(ChaTest, CalleesIncludeDispatchTargets)
+{
+    auto ctx = AnalysisContext::from_dex("tests/data/polymorphic.dex");
+    ASSERT_TRUE(ctx.has_value());
+    const auto &g = ctx->call_graph();
+
+    const CallNode *noise = find_node_by_class_and_name(g, "LKennel;", "noise");
+    ASSERT_NE(noise, nullptr);
+    auto callees = g.callees(node_index(g, noise));
+    EXPECT_TRUE(std::is_sorted(callees.begin(), callees.end()));
+    EXPECT_EQ(names_of(g, callees),
+              (std::set<std::string>{"LAnimal;.sound", "LCat;.sound", "LDog;.sound"}));
+}
+
+TEST(ChaTest, DispatchRowsAreSortedResolvedAndInverse)
+{
+    for (const char *path : {"tests/data/polymorphic.dex", "tests/data/inherit.dex",
+                             "tests/data/androguard/a2dp.Vol_137.apk"}) {
+        auto ctx = std::string_view(path).ends_with(".apk") ? AnalysisContext::from_apk(path)
+                                                            : AnalysisContext::from_dex(path);
+        ASSERT_TRUE(ctx.has_value()) << path;
+        const auto &g = ctx->call_graph();
+
+        std::size_t targets_total = 0;
+        std::size_t sources_total = 0;
+        for (uint32_t n = 0; n < g.nodes().size(); ++n) {
+            auto targets = g.dispatch_targets(n);
+            auto sources = g.dispatch_sources(n);
+            targets_total += targets.size();
+            sources_total += sources.size();
+            EXPECT_TRUE(std::adjacent_find(targets.begin(), targets.end(),
+                                           std::greater_equal<>()) == targets.end())
+                << path << ": targets of node " << n << " not strictly increasing";
+            EXPECT_TRUE(std::adjacent_find(sources.begin(), sources.end(),
+                                           std::greater_equal<>()) == sources.end())
+                << path << ": sources of node " << n << " not strictly increasing";
+            for (uint32_t t : targets) {
+                EXPECT_NE(t, n) << path << ": node " << n << " dispatches to itself";
+                EXPECT_TRUE(g.nodes()[t].resolved) << path;
+                auto back = g.dispatch_sources(t);
+                EXPECT_TRUE(std::binary_search(back.begin(), back.end(), n))
+                    << path << ": " << n << " -> " << t << " missing from dispatch_sources";
+            }
+        }
+        EXPECT_EQ(targets_total, sources_total) << path;
     }
-    EXPECT_TRUE(from_noise);
-    EXPECT_TRUE(from_describe);
+}
+
+TEST(ChaTest, OnlyDeclaredVirtualAndInterfaceEdgesDispatch)
+{
+    // In a2dp, some invoke-super sites and InheritedResolution edges point at
+    // a node that has dispatch targets (from a virtual call elsewhere); the
+    // edge form must not apply them there.
+    auto ctx = AnalysisContext::from_apk("tests/data/androguard/a2dp.Vol_137.apk");
+    ASSERT_TRUE(ctx.has_value()) << ctx.error().message;
+    const auto &g = ctx->call_graph();
+
+    std::size_t dispatching = 0;
+    std::size_t excluded_with_targets = 0;
+    for (const auto &e : g.edges()) {
+        bool applies = e.origin == EdgeOrigin::Declared &&
+                       (e.kind == InvokeKind::Virtual || e.kind == InvokeKind::Interface);
+        auto by_edge = g.dispatch_targets(e);
+        if (applies) {
+            auto by_node = g.dispatch_targets(e.callee_node);
+            EXPECT_EQ(by_edge.data(), by_node.data());
+            EXPECT_EQ(by_edge.size(), by_node.size());
+            dispatching += !by_edge.empty();
+        }
+        else {
+            EXPECT_TRUE(by_edge.empty());
+            excluded_with_targets += !g.dispatch_targets(e.callee_node).empty();
+        }
+    }
+    EXPECT_GT(dispatching, 0u);
+    EXPECT_GT(excluded_with_targets, 0u) << "fixture no longer exercises the edge rule";
+}
+
+TEST(ChaTest, OutOfRangeNodeIsEmpty)
+{
+    auto ctx = AnalysisContext::from_dex("tests/data/polymorphic.dex");
+    ASSERT_TRUE(ctx.has_value());
+    const auto &g = ctx->call_graph();
+    auto past_end = static_cast<uint32_t>(g.nodes().size());
+    EXPECT_TRUE(g.dispatch_targets(past_end).empty());
+    EXPECT_TRUE(g.dispatch_sources(past_end).empty());
+    EXPECT_TRUE(g.callees(past_end).empty());
+    EXPECT_TRUE(g.callers(past_end).empty());
+
+    CallGraph empty;
+    EXPECT_TRUE(empty.dispatch_targets(0).empty());
+    EXPECT_TRUE(empty.dispatch_sources(0).empty());
+    EXPECT_TRUE(empty.callees(0).empty());
+    EXPECT_TRUE(empty.callers(0).empty());
+}
+
+TEST(CallGraphTest, SameGraphWithAnyThreadCount)
+{
+    // Part of the build runs on one thread per DEX file; nothing about the
+    // result — node numbering, edge order, dispatch rows — may depend on it.
+    auto describe = [](const CallGraph &g) {
+        std::vector<std::string> out;
+        for (const auto &n : g.nodes())
+            out.push_back(n.id.class_descriptor + "->" + n.id.name + n.id.proto +
+                          (n.resolved ? "" : " (unresolved)"));
+        for (const auto &e : g.edges())
+            out.push_back(std::to_string(e.caller_node) + " " + std::to_string(e.callee_node) +
+                          " " + std::to_string(e.code_offset) + " " +
+                          std::to_string(static_cast<int>(e.kind)) + " " +
+                          std::to_string(static_cast<int>(e.origin)));
+        for (uint32_t n = 0; n < g.nodes().size(); ++n)
+            for (uint32_t t : g.dispatch_targets(n))
+                out.push_back("dispatch " + std::to_string(n) + " " + std::to_string(t));
+        return out;
+    };
+    for (const char *path :
+         {"tests/data/multidex.apk", "tests/data/app.apk", "tests/data/androguard/multidex.apk"}) {
+        auto one = AnalysisContext::from_apk(path, ApkLoadOptions{.threads = 1});
+        auto four = AnalysisContext::from_apk(path, ApkLoadOptions{.threads = 4});
+        auto automatic = AnalysisContext::from_apk(path);
+        ASSERT_TRUE(one.has_value() && four.has_value() && automatic.has_value()) << path;
+        auto expected = describe(one->call_graph());
+        EXPECT_FALSE(one->call_graph().edges().empty()) << path;
+        EXPECT_EQ(describe(four->call_graph()), expected) << path;
+        EXPECT_EQ(describe(automatic->call_graph()), expected) << path;
+    }
 }
 
 TEST(CallGraphTest, MultiDexBothLoaded)

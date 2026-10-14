@@ -514,12 +514,14 @@ std::expected<CodeItem, ParseError> parse_code_item(std::span<const std::uint8_t
         return std::unexpected(ParseError::truncated_file(
             offset + static_cast<uint32_t>(insns_bytes), static_cast<uint32_t>(buf.size())));
     }
-    item.insns.reserve(item.insns_size);
+    // The check above covers the whole array, so copy it in one pass instead of
+    // one bounds-checked read per code unit.
+    item.insns.resize(item.insns_size);
     for (uint32_t i = 0; i < item.insns_size; ++i) {
-        uint16_t instr{};
-        TRY_U16(instr);
-        item.insns.push_back(instr);
+        std::size_t at = static_cast<std::size_t>(offset) + 2 * static_cast<std::size_t>(i);
+        item.insns[i] = static_cast<uint16_t>(buf[at] | (buf[at + 1] << 8));
     }
+    offset += static_cast<uint32_t>(insns_bytes);
 
     if (item.tries_size > 0) {
         // tries must start on 4-byte boundary; insert padding if insns_size is odd

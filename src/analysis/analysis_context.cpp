@@ -362,6 +362,7 @@ AnalysisContext::from_apk_buffer(std::span<const uint8_t> apk_bytes, const std::
         ordered.push_back(entry);
 
     auto impl = std::make_shared<AnalysisContextImpl>();
+    impl->threads = options.threads;
     std::size_t threads = apk_load_threads(options.threads, ordered);
     if (threads == 1) {
         for (const auto *entry : ordered) {
@@ -626,12 +627,26 @@ const std::string &AnalysisContextImpl::proto_descriptor_of(std::size_t dex_idx,
             return it->second;
     }
 
-    const auto &proto = proto_ids[proto_idx];
+    std::string out = build_proto_descriptor(dex_idx, proto_idx);
+
+    // emplace is a no-op if another thread raced us to the same key; either
+    // way the returned reference is node-stable for the impl's lifetime.
+    std::lock_guard<std::mutex> lock(proto_cache_mutex);
+    return proto_descriptor_cache.emplace(key, std::move(out)).first->second;
+}
+
+std::string AnalysisContextImpl::build_proto_descriptor(std::size_t dex_idx,
+                                                        uint32_t proto_idx) const
+{
+    const auto *proto = proto_item(dex_idx, proto_idx);
+    if (!proto)
+        return {};
+
     std::string out;
     out.push_back('(');
 
-    if (proto.parameters_off != 0) {
-        auto type_list = raw::parser::parse_type_list(buffer_of(dex_idx), proto.parameters_off);
+    if (proto->parameters_off != 0) {
+        auto type_list = raw::parser::parse_type_list(buffer_of(dex_idx), proto->parameters_off);
         if (type_list.has_value()) {
             for (auto type_idx : type_list->type_ids)
                 out.append(type_descriptor_of(dex_idx, type_idx));
@@ -644,12 +659,8 @@ const std::string &AnalysisContextImpl::proto_descriptor_of(std::size_t dex_idx,
     }
 
     out.push_back(')');
-    out.append(type_descriptor_of(dex_idx, proto.return_type_idx));
-
-    // emplace is a no-op if another thread raced us to the same key; either
-    // way the returned reference is node-stable for the impl's lifetime.
-    std::lock_guard<std::mutex> lock(proto_cache_mutex);
-    return proto_descriptor_cache.emplace(key, std::move(out)).first->second;
+    out.append(type_descriptor_of(dex_idx, proto->return_type_idx));
+    return out;
 }
 
 MethodId AnalysisContextImpl::method_id_of(std::size_t dex_idx, uint32_t method_index) const

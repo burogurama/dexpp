@@ -123,12 +123,15 @@ def test_call_graph():
     assert node is not None and node.resolved
     assert g.find(dexpp.MethodId("LNo;", "where", "()V")) is None
 
-    # CHA: interface call site fans out to overrides in Dog and Cat.
-    override_targets = set()
-    for e in g.edges:
-        if e.origin == dexpp.EdgeOrigin.CHA_OVERRIDE:
-            override_targets.add(g.nodes[e.callee_node].id.class_descriptor)
-    assert {"LDog;", "LCat;"} <= override_targets
+    # CHA: the interface call may dispatch to the Dog and Cat overrides.  The
+    # targets are stored once on the declared node and shared by its sites.
+    assert {t.id.class_descriptor for t in node.dispatch_targets} == {"LDog;", "LCat;"}
+    noise = g.find(dexpp.MethodId("LKennel;", "noise", "(LAnimal;)Ljava/lang/String;"))
+    site = next(e for e in noise.out_edges if e.callee == node)
+    assert site.origin == dexpp.EdgeOrigin.DECLARED
+    assert site.kind == dexpp.InvokeKind.INTERFACE
+    assert list(site.dispatch_targets) == list(node.dispatch_targets)
+    assert not hasattr(dexpp.EdgeOrigin, "CHA_OVERRIDE")
 
     # Upward resolution: Pet defines no sound(), so Pet.describe's call site
     # resolves to the abstract Animal.sound declaration.
@@ -146,15 +149,14 @@ def test_call_graph():
     sites = {(e.caller_node, e.code_offset) for e in declared}
     assert len(declared) == len(sites)
 
-    # Deprecated alias: True only for CHA_OVERRIDE edges, and warns.
-    import warnings
+    # A site's dispatch targets hang off its declared edge only.
+    assert len(inherited[0].dispatch_targets) == 0
 
-    with warnings.catch_warnings(record=True) as caught:
-        warnings.simplefilter("always")
-        cha_edge = next(e for e in g.edges if e.origin == dexpp.EdgeOrigin.CHA_OVERRIDE)
-        assert cha_edge.via_override is True
-        assert inherited[0].via_override is False
-        assert any(issubclass(w.category, DeprecationWarning) for w in caught)
+    # The reverse direction and the neighbour helpers include dispatch.
+    dog = g.find(dexpp.MethodId("LDog;", "sound", "()Ljava/lang/String;"))
+    assert {s.id.class_descriptor for s in dog.dispatch_sources} == {"LAnimal;", "LPet;"}
+    assert {c.id.name for c in dog.callers} == {"noise", "dogNoise", "describe"}
+    assert {c.id.class_descriptor for c in noise.callees} == {"LAnimal;", "LDog;", "LCat;"}
 
     m = g.method_for(node)
     assert m is not None and m.name == "sound" and not m.has_code
@@ -203,22 +205,58 @@ def test_call_graph_views_and_handles():
     # where() filters in C++ and composes with node edge views.
     declared = edges.where(origin=dexpp.EdgeOrigin.DECLARED)
     assert list(declared) == [e for e in edges if e.origin == dexpp.EdgeOrigin.DECLARED]
-    cha_interface = edges.where(
-        origin=dexpp.EdgeOrigin.CHA_OVERRIDE, kind=dexpp.InvokeKind.INTERFACE
+    inherited_virtual = edges.where(
+        origin=dexpp.EdgeOrigin.INHERITED_RESOLUTION, kind=dexpp.InvokeKind.VIRTUAL
     )
+    assert len(inherited_virtual) > 0
     assert all(
-        e.origin == dexpp.EdgeOrigin.CHA_OVERRIDE and e.kind == dexpp.InvokeKind.INTERFACE
-        for e in cha_interface
+        e.origin == dexpp.EdgeOrigin.INHERITED_RESOLUTION and e.kind == dexpp.InvokeKind.VIRTUAL
+        for e in inherited_virtual
     )
     assert len(edges.where()) == len(edges)
     assert list(node.in_edges.where(origin=dexpp.EdgeOrigin.DECLARED)) == [
         e for e in node.in_edges if e.origin == dexpp.EdgeOrigin.DECLARED
     ]
 
+    # Node subsets — dispatch lists, callers, callees — are sequence views too.
+    for subset in (node.dispatch_targets, node.dispatch_sources, node.callers, node.callees):
+        assert isinstance(subset, dexpp.CallNodeView)
+        assert isinstance(subset, collections.abc.Sequence)
+        indices = [n.index for n in subset]
+        assert indices == sorted(set(indices))
+        if indices:
+            assert subset[-1] == subset[len(subset) - 1]
+            assert [n.index for n in subset[:1]] == indices[:1]
+
     # A view keeps the analysis alive after every other reference is gone.
     view = dexpp.AnalysisContext.from_dex("tests/data/polymorphic.dex").call_graph.nodes
     gc.collect()
     assert view[0].id.name
+    sound = dexpp.MethodId("LAnimal;", "sound", "()Ljava/lang/String;")
+    targets = dexpp.AnalysisContext.from_dex("tests/data/polymorphic.dex").call_graph.find(
+        sound
+    ).dispatch_targets
+    callers = dexpp.AnalysisContext.from_dex("tests/data/polymorphic.dex").call_graph.find(
+        sound
+    ).callers
+    gc.collect()
+    assert {t.id.class_descriptor for t in targets} == {"LDog;", "LCat;"}
+    assert {c.id.name for c in callers} == {"noise", "describe"}
+
+
+def test_call_graph_does_not_depend_on_thread_count():
+    def describe(g):
+        return (
+            [(n.id.class_descriptor, n.id.name, n.id.proto, n.resolved) for n in g.nodes],
+            [(e.caller_node, e.callee_node, e.code_offset, e.kind, e.origin) for e in g.edges],
+            [[t.index for t in n.dispatch_targets] for n in g.nodes],
+        )
+
+    path = "tests/data/multidex.apk"
+    one = dexpp.AnalysisContext.from_apk(path, threads=1).call_graph
+    automatic = dexpp.AnalysisContext.from_apk(path).call_graph
+    assert len(one.edges) > 0
+    assert describe(one) == describe(automatic)
 
 
 def test_class_hierarchy():

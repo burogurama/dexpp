@@ -24,12 +24,13 @@ struct AnalysisContextImpl;
 /** How an APK's DEX files are loaded by AnalysisContext::from_apk / from_apk_buffer. */
 struct ApkLoadOptions
 {
-    /** Threads used to decompress and parse the DEX entries.  0 = automatic:
-     *  one per hardware thread, never more than one per DEX entry.  1 = load
-     *  everything on the calling thread.  Extra threads are only started when
-     *  at least 3 DEX entries are deflate-compressed; with fewer, starting
-     *  them costs more than it saves.  Set this to 1 when the caller already
-     *  loads several APKs in parallel, so the machine is not oversubscribed. */
+    /** Threads used to decompress and parse the DEX entries, and later to
+     *  build the context's call graph.  0 = automatic: one per hardware
+     *  thread, never more than one per DEX file.  1 = do everything on the
+     *  calling thread.  Loading only starts extra threads when at least 3 DEX
+     *  entries are deflate-compressed; with fewer, starting them costs more
+     *  than it saves.  Set this to 1 when the caller already analyses several
+     *  APKs in parallel, so the machine is not oversubscribed. */
     unsigned threads = 0;
 };
 
@@ -92,7 +93,10 @@ class AnalysisContext
 
     /** Whole-program call graph for every defined method across all loaded
      *  DEX files.  Built lazily on first access and cached; repeated calls
-     *  return the same reference. */
+     *  return the same reference.  With several DEX files, part of the build
+     *  runs on one thread per DEX file (see ApkLoadOptions::threads; contexts
+     *  loaded from DEX files use the automatic setting).  The result does not
+     *  depend on the number of threads. */
     [[nodiscard]] const CallGraph &call_graph() const;
 
     /** Whole-program class hierarchy: inheritance and interface-implementation

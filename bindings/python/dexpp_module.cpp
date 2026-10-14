@@ -21,6 +21,7 @@
 #include <functional>
 #include <memory>
 #include <optional>
+#include <span>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -173,15 +174,30 @@ struct EdgeRef
     }
 };
 
+/** All nodes of the graph (when @p subset is unset), or the nodes whose
+ *  indices @p subset lists — a node's dispatch targets / sources, or the
+ *  result of callees() / callers().  @p storage owns the indices when they
+ *  were computed for this view. */
 struct CallNodeView
 {
     py::object owner;
     const CallGraph *graph;
+    std::optional<std::span<const uint32_t>> subset;
+    std::shared_ptr<const std::vector<uint32_t>> storage;
 
-    std::size_t size() const { return graph->nodes().size(); }
+    std::size_t size() const { return subset ? subset->size() : graph->nodes().size(); }
     py::object at(std::size_t i) const
     {
-        return py::cast(NodeRef{owner, graph, static_cast<uint32_t>(i)});
+        uint32_t index = subset ? (*subset)[i] : static_cast<uint32_t>(i);
+        return py::cast(NodeRef{owner, graph, index});
+    }
+
+    /** A view over node indices computed for it (callees / callers). */
+    static CallNodeView owning(py::object owner, const CallGraph *graph,
+                               std::vector<uint32_t> indices)
+    {
+        auto held = std::make_shared<const std::vector<uint32_t>>(std::move(indices));
+        return CallNodeView{std::move(owner), graph, std::span<const uint32_t>(*held), held};
     }
 };
 
@@ -203,8 +219,8 @@ struct CallEdgeView
     py::object at(std::size_t i) const { return py::cast(EdgeRef{owner, graph, index_at(i)}); }
 
     /** The edges of this view matching every given filter, selected in C++:
-     *  CHA fan-out can make the graph tens of millions of edges, far too many
-     *  to filter one by one in Python. */
+     *  a large app has millions of call sites, too many to filter one by one
+     *  in Python. */
     CallEdgeView where(std::optional<EdgeOrigin> origin, std::optional<InvokeKind> kind) const
     {
         auto picked = std::make_shared<std::vector<uint32_t>>();
@@ -281,7 +297,6 @@ PYBIND11_MODULE(dexpp, m)
 
     py::enum_<EdgeOrigin>(m, "EdgeOrigin")
         .value("DECLARED", EdgeOrigin::Declared)
-        .value("CHA_OVERRIDE", EdgeOrigin::ChaOverride)
         .value("INHERITED_RESOLUTION", EdgeOrigin::InheritedResolution);
 
     py::enum_<EdgeKind>(m, "EdgeKind")
@@ -719,16 +734,13 @@ PYBIND11_MODULE(dexpp, m)
         .def_property_readonly("code_offset", [](const EdgeRef &e) { return e.get().code_offset; })
         .def_property_readonly("origin", [](const EdgeRef &e) { return e.get().origin; })
         .def_property_readonly(
-            "via_override",
+            "dispatch_targets",
             [](const EdgeRef &e) {
-                PyErr_WarnEx(PyExc_DeprecationWarning,
-                             "CallEdge.via_override is deprecated; use CallEdge.origin. "
-                             "Note `not via_override` no longer identifies declared edges — "
-                             "test origin == EdgeOrigin.DECLARED instead.",
-                             1);
-                return e.get().origin == EdgeOrigin::ChaOverride;
+                return CallNodeView{e.owner, e.graph, e.graph->dispatch_targets(e.get())};
             },
-            "Deprecated: True iff origin == EdgeOrigin.CHA_OVERRIDE.")
+            "Where this call site may also dispatch at runtime (class-hierarchy "
+            "analysis): callee.dispatch_targets for a DECLARED invoke-virtual / "
+            "invoke-interface edge, empty for every other edge.")
         .def(py::self == py::self)
         .def("__hash__", [](const EdgeRef &e) { return std::hash<uint32_t>{}(e.index); })
         .def("__repr__", [](const EdgeRef &e) {
@@ -754,6 +766,35 @@ PYBIND11_MODULE(dexpp, m)
             [](const NodeRef &n) { return CallEdgeView{n.owner, n.graph, &n.get().incoming}; },
             "Edges entering this node (its callers' call sites), as CallEdge objects.")
         .def_property_readonly(
+            "dispatch_targets",
+            [](const NodeRef &n) {
+                return CallNodeView{n.owner, n.graph, n.graph->dispatch_targets(n.index)};
+            },
+            "Methods a virtual / interface call declared against this one may dispatch "
+            "to at runtime, besides itself and its own upward resolution.  Shared by "
+            "every such call site.")
+        .def_property_readonly(
+            "dispatch_sources",
+            [](const NodeRef &n) {
+                return CallNodeView{n.owner, n.graph, n.graph->dispatch_sources(n.index)};
+            },
+            "The reverse of dispatch_targets: methods through which a virtual / "
+            "interface call can dispatch to this one.")
+        .def_property_readonly(
+            "callees",
+            [](const NodeRef &n) {
+                return CallNodeView::owning(n.owner, n.graph, n.graph->callees(n.index));
+            },
+            "Every node this method's call sites may reach, dispatch targets included; "
+            "deduplicated, in index order.")
+        .def_property_readonly(
+            "callers",
+            [](const NodeRef &n) {
+                return CallNodeView::owning(n.owner, n.graph, n.graph->callers(n.index));
+            },
+            "Every node with a call site that may reach this method, through virtual "
+            "dispatch included; deduplicated, in index order.")
+        .def_property_readonly(
             "method", [](const NodeRef &n) { return method_or_none(n.graph->method_for(n.get())); },
             "The Method for a resolved node; None for external methods.")
         .def(py::self == py::self)
@@ -771,7 +812,7 @@ PYBIND11_MODULE(dexpp, m)
              py::arg("kind") = py::none(),
              "The edges of this view matching every given filter, selected in C++ "
              "(e.g. graph.edges.where(origin=EdgeOrigin.DECLARED) for one edge per "
-             "call site, without the class-hierarchy fan-out).");
+             "call site).");
 
     py::class_<CallGraph>(m, "CallGraph")
         .def_property_readonly(
@@ -949,8 +990,9 @@ PYBIND11_MODULE(dexpp, m)
             },
             py::arg("path"), py::arg("threads") = 0,
             "Open an APK and load every classes*.dex inside it, in multidex order. "
-            "threads: 0 = automatic, 1 = load on the calling thread only; extra "
-            "threads are only used when at least 3 DEX entries are deflated.")
+            "threads: 0 = automatic, 1 = the calling thread only.  Used to load "
+            "(extra threads only when at least 3 DEX entries are deflated) and "
+            "later to build the call graph (one thread per DEX file).")
         .def_property_readonly("classes", &AnalysisContext::classes)
         .def_property_readonly("strings",
                                [](const AnalysisContext &ctx) {
