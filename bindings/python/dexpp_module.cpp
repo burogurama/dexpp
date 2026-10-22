@@ -32,6 +32,9 @@ namespace py = pybind11;
 using namespace dex;
 using namespace dex::apk;
 
+/** Registers the dex::model editable-DEX bindings (dexpp_model_py.cpp). */
+void register_model(py::module_ &m);
+
 namespace {
 
 /** Carrier for AnalysisError::Code::FileNotFound; translated to Python's
@@ -1177,4 +1180,8 @@ PYBIND11_MODULE(dexpp, m)
              })
         .def_property_readonly("signing", &Apk::signing,
                                py::return_value_policy::reference_internal);
+
+    // ===== editable DEX model (dex::model) =====
+
+    register_model(m);
 }

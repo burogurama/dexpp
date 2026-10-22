@@ -7,7 +7,9 @@ Run from the project root (fixtures are referenced relatively):
 Also runnable under pytest with the same PYTHONPATH.
 """
 
+import os
 import re
+import tempfile
 
 import dexpp
 
@@ -537,6 +539,138 @@ def test_handles_outlive_context():
     # The Class handle holds its own shared_ptr to the impl.
     assert cls.name == "LTestDex;"
     assert [m.name for m in cls.methods]
+
+
+# ===== editable DEX model (dex::model) =====
+
+# shapes.dex: interface LShape;, abstract LAbstractShape; implementing it, and
+# concrete subclasses LCircle;, LRectangle;.
+
+
+def test_model_read_and_classes():
+    m = dexpp.Model.read_file("tests/data/shapes.dex")
+    assert m.class_count == len(m) > 0
+    assert m.class_descriptors == [
+        "LShape;",
+        "LAbstractShape;",
+        "LCircle;",
+        "LRectangle;",
+    ]
+    assert m.has_class("LCircle;")
+    assert "LCircle;" in m
+    assert not m.has_class("Lno/such/Class;")
+    assert "Lno/such/Class;" not in m
+
+
+def test_model_class_info():
+    m = dexpp.Model.read_file("tests/data/shapes.dex")
+    circle = m.class_info("LCircle;")
+    assert circle is not None
+    assert circle.descriptor == "LCircle;"
+    assert circle.superclass == "LAbstractShape;"
+    assert circle.method_count > 0
+    assert m.class_interfaces("LAbstractShape;") == ["LShape;"]
+    # An interface's own superclass is java.lang.Object.
+    shape = m.class_info("LShape;")
+    assert shape.superclass == "Ljava/lang/Object;"
+    assert m.class_info("Lno/such/Class;") is None
+    assert m.class_interfaces("Lno/such/Class;") == []
+
+
+def test_model_write_round_trip():
+    m = dexpp.Model.read_file("tests/data/shapes.dex")
+    data = m.write()
+    assert isinstance(data, bytes) and len(data) > 0
+    again = dexpp.Model.read(data)
+    assert again.class_count == m.class_count
+    # write(read(write(m))) is a byte fixpoint.
+    assert again.write() == data
+
+
+def test_model_split_one_per_class():
+    src = dexpp.Model.read_file("tests/data/shapes.dex")
+    descriptors = src.class_descriptors
+    work = src.clone()
+    for d in descriptors:
+        one = dexpp.Model(src.version)
+        one.move_class(work, d)
+        part = dexpp.Model.read(one.write())
+        assert part.class_descriptors == [d]
+    assert work.class_count == 0
+    # The clone was drained; the original is untouched.
+    assert src.class_count == len(descriptors)
+
+
+def test_model_copy_remove_and_errors():
+    src = dexpp.Model.read_file("tests/data/shapes.dex")
+    dst = dexpp.Model(src.version)
+    dst.copy_class(src, "LCircle;")
+    assert src.has_class("LCircle;")  # copy left the source intact
+    assert dst.has_class("LCircle;")
+
+    for bad in (
+        lambda: dst.copy_class(src, "LCircle;"),  # destination already has it
+        lambda: dst.move_class(src, "Lno/such/Class;"),  # source has no such class
+    ):
+        try:
+            bad()
+            raise AssertionError("expected ValueError")
+        except ValueError:
+            pass
+
+    assert dst.remove_class("LCircle;")
+    assert not dst.remove_class("LCircle;")
+    assert dst.class_count == 0
+
+
+def test_model_rename_types():
+    m = dexpp.Model.read_file("tests/data/shapes.dex")
+    m.rename_types({"LCircle;": "Lcom/x/Round;"})
+    assert not m.has_class("LCircle;")
+    assert m.has_class("Lcom/x/Round;")
+    # The rename reaches references too, and the model still writes.
+    assert len(m.write()) > 0
+
+
+def test_model_validate_and_stats():
+    m = dexpp.Model.read_file("tests/data/shapes.dex")
+    assert m.validate() == []
+    stats = m.pool_stats
+    assert stats.strings > 0 and stats.types > 0 and stats.methods > 0
+    assert m.required_version >= 35
+
+
+def test_model_new_and_version():
+    m = dexpp.Model(39)
+    assert m.version == 39
+    assert m.class_count == 0
+    m.version = 35
+    assert m.version == 35
+    # An empty model writes to a valid, re-readable DEX.
+    dexpp.Model.read(m.write())
+
+
+def test_model_write_file():
+    m = dexpp.Model.read_file("tests/data/shapes.dex")
+    with tempfile.TemporaryDirectory() as d:
+        path = os.path.join(d, "out.dex")
+        m.write_file(path)
+        assert os.path.getsize(path) > 0
+        reread = dexpp.Model.read_file(path)
+        assert reread.class_count == m.class_count
+
+
+def test_model_errors():
+    try:
+        dexpp.Model.read(b"not a dex")
+        raise AssertionError("expected ValueError")
+    except ValueError:
+        pass
+    try:
+        dexpp.Model.read_file("tests/data/does_not_exist.dex")
+        raise AssertionError("expected FileNotFoundError")
+    except FileNotFoundError:
+        pass
 
 
 def main():

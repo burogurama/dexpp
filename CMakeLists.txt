@@ -143,7 +143,7 @@ if(DEXPP_BUILD_PYTHON)
     )
     FetchContent_MakeAvailable(pybind11)
 
-    pybind11_add_module(dexpp bindings/python/dexpp_module.cpp)
+    pybind11_add_module(dexpp bindings/python/dexpp_module.cpp bindings/python/dexpp_model_py.cpp)
     target_link_libraries(dexpp PRIVATE dexpp_core)
 
     if(SKBUILD)
