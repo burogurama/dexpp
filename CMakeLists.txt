@@ -98,7 +98,7 @@ set_target_properties(dexpp_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
 # C ABI shim: a static library (libdexpp_c.a) exposing bindings/c/dexpp.h, for
 # consumers that speak C rather than C++ (e.g. Go via cgo). Bundles dexpp_core.
 if(DEXPP_BUILD_C)
-    add_library(dexpp_c STATIC bindings/c/dexpp_c.cpp)
+    add_library(dexpp_c STATIC bindings/c/dexpp_c.cpp bindings/c/dexpp_model.cpp)
     target_include_directories(dexpp_c PUBLIC bindings/c)
     target_link_libraries(dexpp_c PUBLIC dexpp_core)
     set_target_properties(dexpp_c PROPERTIES POSITION_INDEPENDENT_CODE ON)
