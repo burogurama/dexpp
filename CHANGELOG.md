@@ -45,6 +45,11 @@ editing a class instruction by instruction stays in C++.
   (`ReadModel`, `ReadModelFile`, `NewModel`, `CopyClass`, `MoveClass`,
   `RemoveClass`, `RenameTypes`, `Validate`, `PoolStats`, `Write`, ...).
 
+### Packaging
+
+- dexpp is now on PyPI: `pip install dexpp`. The wheels are also still
+  attached to each GitHub release.
+
 ### Smaller changes
 
 - `MethodId`, `FieldId` (and their hashes), `AccessFlags` and

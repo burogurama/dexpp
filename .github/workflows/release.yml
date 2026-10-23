@@ -1,9 +1,9 @@
 name: Release
 
 # A v* tag builds the wheels and the sdist and publishes them as a GitHub
-# release, with the matching CHANGELOG.md section as the notes.  Pull requests
-# that touch the packaging, and manual runs, build everything without
-# publishing.
+# release, with the matching CHANGELOG.md section as the notes, then on PyPI.
+# Pull requests that touch the packaging, and manual runs, build everything
+# without publishing.
 on:
   push:
     tags: ["v*"]
@@ -84,3 +84,24 @@ jobs:
         run: |
           gh release create "$GITHUB_REF_NAME" dist/* \
             --title "dex++ $VERSION" --notes-file notes.md
+
+  pypi:
+    name: PyPI
+    # After the GitHub release, so the tag check above also guards this upload:
+    # PyPI never accepts the same version twice.
+    needs: [release]
+    runs-on: ubuntu-24.04
+    # PyPI trusts uploads from this workflow file running in this environment
+    # (trusted publishing), so no API token is stored anywhere.  The repository
+    # settings allow the environment only for v* tags.
+    environment:
+      name: pypi
+      url: https://pypi.org/project/dexpp/
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - uses: pypa/gh-action-pypi-publish@release/v1

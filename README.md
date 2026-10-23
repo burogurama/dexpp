@@ -4,7 +4,7 @@ Fast static analysis of Android APK / DEX files — a C++23 core with Python
 bindings, built as a clean, typed replacement for androguard's analysis API.
 
 The current release is **0.2.0** (alpha): the API may still change between
-0.x releases. See [CHANGELOG.md](CHANGELOG.md).
+0.x releases. See [CHANGELOG.md](https://github.com/burogurama/dexpp/blob/main/CHANGELOG.md).
 
 ## What it does
 
@@ -27,29 +27,17 @@ verify signatures.
 
 ## Install (Python)
 
-dexpp is not on PyPI. Prebuilt wheels are attached to each
-[GitHub release](https://github.com/burogurama/dexpp/releases), for CPython
-3.9 and newer on:
-
-- Linux x86_64 (glibc 2.28+ and musl)
-
-Install the wheel for your platform straight from the release page:
-
 ```bash
-pip install dexpp --no-index \
-    --find-links https://github.com/burogurama/dexpp/releases/expanded_assets/v0.2.0
+pip install dexpp
 ```
 
-`--no-index` makes pip take dexpp only from the release page, never from
-PyPI. Do not drop it: someone else could publish an unrelated package named
-`dexpp` on PyPI.
+PyPI has prebuilt wheels for CPython 3.9 and newer on Linux x86_64 (glibc
+2.28+ and musl). The same wheels are attached to each
+[GitHub release](https://github.com/burogurama/dexpp/releases).
 
-On other platforms, build from a checkout (needs a C++23 compiler — GCC ≥ 13 or
-Clang ≥ 19 — and CMake ≥ 3.18):
-
-```bash
-pip install .
-```
+On other platforms, pip builds dexpp from the source distribution. That needs
+a C++23 compiler (GCC ≥ 13 or Clang ≥ 19) and CMake ≥ 3.18. `pip install .`
+builds a checkout the same way.
 
 The package ships type stubs, so editors and `mypy`/`pyright` get full
 completion.
@@ -110,7 +98,7 @@ for (std::size_t i = 0; i < input.classes.size(); ++i) {
 class can move to another file as it is. See `src/model/io.hpp` for reading,
 writing, `validate()` and `rename_types()`, and `src/model/types.hpp` for the
 model itself.
-- **Go**: see [bindings/go/README.md](bindings/go/README.md). The cgo package
+- **Go**: see [bindings/go/README.md](https://github.com/burogurama/dexpp/blob/main/bindings/go/README.md). The cgo package
   links the C shim from this repository's `build/` directory, so it works from
   a checkout, not through `go get`.
 
