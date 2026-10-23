@@ -3,7 +3,7 @@
 Fast static analysis of Android APK / DEX files — a C++23 core with Python
 bindings, built as a clean, typed replacement for androguard's analysis API.
 
-The current release is **0.1.0** (alpha): the API may still change between
+The current release is **0.2.0** (alpha): the API may still change between
 0.x releases. See [CHANGELOG.md](CHANGELOG.md).
 
 ## What it does
@@ -17,11 +17,13 @@ The current release is **0.1.0** (alpha): the API may still change between
 - **Whole-program** — call graph (with class-hierarchy-aware virtual dispatch),
   class hierarchy, and a cross-reference index (who calls / reads / writes /
   loads what), both forward and reverse.
-- **DEX editing (C++)** — read a DEX file into an editable model, change it or
-  build one from scratch, and write a valid DEX file (`dex::model`).
+- **DEX editing** — read a DEX file into an editable model, change it or
+  build one from scratch, and write a valid DEX file (`dex::model`). From
+  Python (`dexpp.Model`) and Go, the model works a whole class at a time:
+  copy, move, remove and rename classes, then write.
 
-It inspects APK and DEX files and, in C++, edits DEX files. It does not
-decompile or verify signatures.
+It inspects APK and DEX files and edits DEX files. It does not decompile or
+verify signatures.
 
 ## Install (Python)
 
@@ -35,7 +37,7 @@ Install the wheel for your platform straight from the release page:
 
 ```bash
 pip install dexpp --no-index \
-    --find-links https://github.com/burogurama/dexpp/releases/expanded_assets/v0.1.0
+    --find-links https://github.com/burogurama/dexpp/releases/expanded_assets/v0.2.0
 ```
 
 `--no-index` makes pip take dexpp only from the release page, never from

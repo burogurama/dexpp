@@ -1,8 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.2.0
 
-### Editable DEX model (new, C++ only)
+### Editable DEX model (new)
 
 `dex::model` (include `model/model.hpp`, or `dex.hpp`) reads a DEX file into
 plain C++ structs, lets you change them or build new ones from scratch, and
@@ -30,7 +30,20 @@ writes a valid DEX file again.
 - Speed and memory on the largest of them (42 MB, 6.9M instructions): read in
   0.6 s, write in 1.6 s; the model takes about 15 times the file size.
 
-There are no Python or Go bindings for the model yet.
+From Python and Go, the model works a whole class at a time. Building or
+editing a class instruction by instruction stays in C++.
+
+- Python: `dexpp.Model` reads a DEX file (`Model.read`, `Model.read_file`) or
+  starts empty (`Model(version)`). It lists and inspects classes
+  (`class_descriptors`, `class_info`, `class_interfaces`), copies, moves and
+  removes whole classes between models (`copy_class`, `move_class`,
+  `remove_class`), renames types (`rename_types`), and checks and writes the
+  result (`validate`, `pool_stats`, `required_version`, `write`,
+  `write_file`). Errors raise `FileNotFoundError` or `ValueError`.
+- C and Go: `bindings/c/dexpp_model.h` gives the same operations on an opaque
+  `DexppModelDex` handle, and the Go package wraps them as `Model`
+  (`ReadModel`, `ReadModelFile`, `NewModel`, `CopyClass`, `MoveClass`,
+  `RemoveClass`, `RenameTypes`, `Validate`, `PoolStats`, `Write`, ...).
 
 ### Smaller changes
 
