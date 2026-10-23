@@ -49,6 +49,8 @@ editing a class instruction by instruction stays in C++.
 
 - dexpp is now on PyPI: `pip install dexpp`. The wheels are also still
   attached to each GitHub release.
+- dexpp now needs Python 3.14 or newer (breaking: 0.1.0 worked with 3.9 and
+  newer). The wheels are built for CPython 3.14 only.
 
 ### Smaller changes
 
