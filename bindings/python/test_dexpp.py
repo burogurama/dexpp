@@ -7,6 +7,7 @@ Run from the project root (fixtures are referenced relatively):
 Also runnable under pytest with the same PYTHONPATH.
 """
 
+import ast
 import os
 import re
 import tempfile
@@ -671,6 +672,290 @@ def test_model_errors():
         raise AssertionError("expected FileNotFoundError")
     except FileNotFoundError:
         pass
+
+
+# ===== errors =====
+
+
+def _error_from(action):
+    """The dexpp or file error that `action` raises; fails if it raises none."""
+    try:
+        action()
+    except (dexpp.Error, OSError) as error:
+        return error
+    raise AssertionError("expected an error")
+
+
+def test_error_hierarchy():
+    assert issubclass(dexpp.Error, ValueError)
+    for direct in (
+        dexpp.InvalidApkError,
+        dexpp.InvalidDexError,
+        dexpp.UnsupportedDexError,
+        dexpp.ModelError,
+    ):
+        assert direct.__bases__ == (dexpp.Error,)
+    for model_error in (
+        dexpp.InvalidModelError,
+        dexpp.PoolOverflowError,
+        dexpp.VersionTooLowError,
+    ):
+        assert model_error.__bases__ == (dexpp.ModelError,)
+    # The classes belong to the module, like every other name in it.
+    assert dexpp.InvalidModelError.__module__ == "dexpp"
+
+
+def test_errors_are_still_value_errors():
+    # Code written before the specific classes existed catches ValueError.
+    for action in (
+        lambda: dexpp.AnalysisContext.from_dex("tests/data/TestDex.java"),
+        lambda: dexpp.AnalysisContext.from_apk("tests/data/nodex.apk"),
+        lambda: dexpp.Apk.open("tests/data/classes.dex"),
+        lambda: dexpp.Model.read(b"not a dex"),
+    ):
+        try:
+            action()
+            raise AssertionError("expected ValueError")
+        except ValueError:
+            pass
+
+
+def test_invalid_dex_error():
+    not_a_dex = "tests/data/TestDex.java"
+    for action in (
+        lambda: dexpp.AnalysisContext.from_dex(not_a_dex),
+        lambda: dexpp.AnalysisContext.from_dex_files(["tests/data/classes.dex", not_a_dex]),
+        lambda: dexpp.Model.read(b"not a dex"),
+        lambda: dexpp.Model.read_file(not_a_dex),
+    ):
+        error = _error_from(action)
+        assert type(error) is dexpp.InvalidDexError
+        assert str(error) != ""
+
+
+def test_invalid_apk_error():
+    for action in (
+        lambda: dexpp.AnalysisContext.from_apk("tests/data/nodex.apk"),  # no classes.dex
+        lambda: dexpp.AnalysisContext.from_apk("tests/data/classes.dex"),  # not a ZIP
+        lambda: dexpp.Apk.open("tests/data/classes.dex"),
+        lambda: dexpp.Apk.open("tests/data/nodex.apk").analysis(),
+    ):
+        assert type(_error_from(action)) is dexpp.InvalidApkError
+
+
+def test_unsupported_dex_error():
+    # The model does not read the DEX version 41 container format.
+    with open("tests/data/shapes.dex", "rb") as f:
+        data = bytearray(f.read())
+    data[4:7] = b"041"
+    error = _error_from(lambda: dexpp.Model.read(bytes(data)))
+    assert type(error) is dexpp.UnsupportedDexError
+
+
+def test_model_error_for_copy_and_move():
+    src = dexpp.Model.read_file("tests/data/shapes.dex")
+    dst = dexpp.Model(src.version)
+    dst.copy_class(src, "LCircle;")
+    for action in (
+        lambda: dst.copy_class(src, "LCircle;"),  # destination already has it
+        lambda: dst.move_class(src, "LCircle;"),
+        lambda: dst.copy_class(src, "Lno/such/Class;"),  # source has no such class
+        lambda: dst.move_class(src, "Lno/such/Class;"),
+    ):
+        assert type(_error_from(action)) is dexpp.ModelError
+
+
+def test_invalid_model_error_lists_problems():
+    model = dexpp.Model.read_file("tests/data/shapes.dex")
+    model.rename_types({"LCircle;": "not a descriptor"})
+    expected = [(p.where, p.message) for p in model.validate()]
+    assert len(expected) > 0
+
+    for action in (model.write, lambda: model.write_file(os.devnull)):
+        error = _error_from(action)
+        assert type(error) is dexpp.InvalidModelError
+        assert [(p.where, p.message) for p in error.problems] == expected
+        assert all(isinstance(p, dexpp.Problem) for p in error.problems)
+        assert "not a descriptor" in str(error)
+
+    # Made by hand, the error has no problems unless they are given.
+    assert dexpp.InvalidModelError("broken").problems == []
+    assert len(dexpp.InvalidModelError("broken", error.problems).problems) == len(expected)
+
+
+def test_pool_overflow_error():
+    # A DEX file holds at most 65536 methods.  Six copies of a 14796-method
+    # file, each renamed into its own package, need more than that.
+    source = dexpp.Model.read_file(
+        "tests/data/androguard/Annotation_classes.dex", debug_info=False
+    )
+    merged = dexpp.Model(source.version)
+    for copy in range(6):
+        part = source.clone()
+        part.rename_types({d: f"Lcopy{copy}/{d[1:]}" for d in part.class_descriptors})
+        # From the end, so the remaining classes of `part` do not shift.
+        for descriptor in reversed(part.class_descriptors):
+            merged.move_class(part, descriptor)
+    assert merged.pool_stats.methods > 65536
+
+    error = _error_from(merged.write)
+    assert type(error) is dexpp.PoolOverflowError
+    assert "65536" in str(error)
+
+
+def test_version_too_low_error():
+    # inherit.dex has default interface methods, which need DEX version 37.
+    model = dexpp.Model.read_file("tests/data/inherit.dex")
+    assert model.required_version == 37
+    model.version = 35
+    assert type(_error_from(model.write)) is dexpp.VersionTooLowError
+
+    model.version = model.required_version
+    assert len(model.write()) > 0
+
+
+def test_file_errors_are_not_dexpp_errors():
+    model = dexpp.Model.read_file("tests/data/shapes.dex")
+    with tempfile.TemporaryDirectory() as directory:
+        missing = os.path.join(directory, "missing.dex")
+        for action in (
+            lambda: dexpp.AnalysisContext.from_dex(missing),
+            lambda: dexpp.AnalysisContext.from_apk(missing),
+            lambda: dexpp.Apk.open(missing),
+            lambda: dexpp.Model.read_file(missing),
+        ):
+            assert type(_error_from(action)) is FileNotFoundError
+
+        # The path exists but is not a readable file: not "file not found",
+        # and never a crash or a MemoryError.
+        for action in (
+            lambda: dexpp.AnalysisContext.from_dex(directory),
+            lambda: dexpp.AnalysisContext.from_dex_files(["tests/data/classes.dex", directory]),
+            lambda: dexpp.AnalysisContext.from_apk(directory),
+            lambda: dexpp.Apk.open(directory),
+            lambda: dexpp.Model.read_file(directory),
+        ):
+            error = _error_from(action)
+            assert type(error) is OSError
+            assert "directory" in str(error)
+        # A file that cannot be created.
+        unwritable = os.path.join(directory, "no", "such", "folder", "out.dex")
+        assert type(_error_from(lambda: model.write_file(unwritable))) is OSError
+        assert type(_error_from(lambda: model.write_file(directory))) is OSError
+
+
+# ===== the type stubs =====
+
+STUB_PATH = "bindings/python/dexpp.pyi"
+
+
+def _has_docstring(body, index):
+    """Whether the statement after body[index] is a string: an attribute's docstring."""
+    if index + 1 >= len(body):
+        return False
+    following = body[index + 1]
+    return (
+        isinstance(following, ast.Expr)
+        and isinstance(following.value, ast.Constant)
+        and isinstance(following.value.value, str)
+    )
+
+
+def _is_overload(function):
+    return any(
+        isinstance(decorator, ast.Name) and decorator.id == "overload"
+        for decorator in function.decorator_list
+    )
+
+
+def _stub_class_problems(class_node):
+    """What is wrong with one class of the stub, compared with the module's class."""
+    name = class_node.name
+    if name not in vars(dexpp):
+        return [f"the module has no class {name}"]
+    runtime_class = vars(dexpp)[name]
+    problems = []
+    if ast.get_docstring(class_node) is None:
+        problems.append(f"{name} has no docstring")
+
+    stub_members = set()
+    for index, item in enumerate(class_node.body):
+        if isinstance(item, ast.FunctionDef):
+            member, documented = item.name, ast.get_docstring(item) is not None
+            if _is_overload(item) is True or (member.startswith("__") and member != "__init__"):
+                stub_members.add(member)
+                continue
+        elif isinstance(item, ast.AnnAssign):
+            member, documented = item.target.id, _has_docstring(class_node.body, index)
+        elif isinstance(item, ast.Assign):
+            member, documented = item.targets[0].id, _has_docstring(class_node.body, index)
+        else:
+            continue
+        stub_members.add(member)
+        if member not in dir(runtime_class):
+            problems.append(f"the module has no {name}.{member}")
+        if documented is False:
+            problems.append(f"{name}.{member} has no docstring")
+
+    runtime_members = {member for member in vars(runtime_class) if not member.startswith("_")}
+    # pybind11 gives every enum `name` and `value`; the stub does not repeat them.
+    implicit = {"name", "value"} if "__entries" in vars(runtime_class) else set()
+    for member in sorted(runtime_members - stub_members - implicit):
+        problems.append(f"the stub has no {name}.{member}")
+    return problems
+
+
+def test_stub_matches_module_and_is_documented():
+    # The Python reference of the documentation is generated from the stub
+    # file.  So the stub must name exactly what the module has, and every
+    # public name in it must have a docstring.
+    with open(STUB_PATH, encoding="utf-8") as f:
+        stub = ast.parse(f.read())
+
+    problems = []
+    stub_names = set()
+    for node in stub.body:
+        if isinstance(node, ast.ClassDef):
+            stub_names.add(node.name)
+            problems.extend(_stub_class_problems(node))
+        elif isinstance(node, ast.FunctionDef):
+            stub_names.add(node.name)
+            if node.name not in vars(dexpp):
+                problems.append(f"the module has no function {node.name}")
+            if ast.get_docstring(node) is None:
+                problems.append(f"{node.name} has no docstring")
+        elif isinstance(node, ast.Assign):
+            # A type alias, such as `Instruction = Union[...]`.
+            alias = node.targets[0].id
+            stub_names.add(alias)
+            if alias not in vars(dexpp):
+                problems.append(f"the module has no {alias}")
+            if _has_docstring(stub.body, stub.body.index(node)) is False:
+                problems.append(f"{alias} has no docstring")
+
+    module_names = {
+        name
+        for name, value in vars(dexpp).items()
+        if not name.startswith("_") and (isinstance(value, type) or callable(value))
+    }
+    for name in sorted(module_names - stub_names):
+        problems.append(f"the stub has no {name}")
+
+    assert problems == [], "\n".join(problems)
+
+
+def test_type_aliases_exist_at_runtime():
+    # The stub's two unions are real objects, usable outside annotations.
+    ctx = dexpp.AnalysisContext.from_dex("tests/data/classes.dex")
+    cls = ctx.find_class("LTestDex;")
+    hello = next(m for m in cls.methods if m.name == "helloDex")
+    assert all(isinstance(i, dexpp.Instruction) for i in hello.instructions)
+    assert not isinstance("const-string", dexpp.Instruction)
+
+    annotated = dexpp.AnalysisContext.from_dex("tests/data/annotated.dex").find_class("LAnnotated;")
+    for field in annotated.fields:
+        assert isinstance(field.initial_value, dexpp.AnnotationValue)
+    assert not isinstance(object(), dexpp.AnnotationValue)
 
 
 def main():

@@ -1,7 +1,9 @@
 /** Python bindings for the dex++ analysis API.
  *
  *  Mirrors the public surface of src/dex.hpp.  Conventions at the boundary:
- *  - std::expected errors raise FileNotFoundError / ValueError.
+ *  - std::expected errors raise dexpp's own exceptions (dexpp_errors.hpp):
+ *    InvalidApkError, InvalidDexError, or their base class dexpp.Error, which
+ *    is a ValueError.  A path that cannot be opened raises FileNotFoundError.
  *  - Null handles (is_valid() == false) and not-found sentinels become None.
  *  - TypeDescriptor is flattened to a plain str: unlike the other handles it
  *    does not keep the AnalysisContext alive, so exposing it as an object
@@ -22,11 +24,11 @@
 #include <memory>
 #include <optional>
 #include <span>
-#include <stdexcept>
 #include <string>
 #include <vector>
 
 #include "dex.hpp"
+#include "dexpp_errors.hpp"
 
 namespace py = pybind11;
 using namespace dex;
@@ -37,12 +39,25 @@ void register_model(py::module_ &m);
 
 namespace {
 
-/** Carrier for AnalysisError::Code::FileNotFound; translated to Python's
- *  FileNotFoundError by the translator registered in the module init. */
-struct DexFileNotFound : std::runtime_error
+/** Raise the Python exception for an AnalysisError: FileNotFoundError for a
+ *  path that does not exist, OSError for one that exists but cannot be read,
+ *  InvalidApkError / InvalidDexError for a file that is not what it should
+ *  be, and their base class dexpp.Error for any other code. */
+[[noreturn]] void raise(const AnalysisError &error)
 {
-    using std::runtime_error::runtime_error;
-};
+    switch (error.code) {
+    case AnalysisError::Code::FileNotFound:
+        dexpp_py::raise_file_not_found(error.message);
+    case AnalysisError::Code::CannotRead:
+        dexpp_py::raise_os_error(error.message);
+    case AnalysisError::Code::InvalidApk:
+        dexpp_py::raise_error("InvalidApkError", error.message);
+    case AnalysisError::Code::InvalidDexFile:
+        dexpp_py::raise_error("InvalidDexError", error.message);
+    default:
+        dexpp_py::raise_error("Error", error.message);
+    }
+}
 
 /** Convert a possibly-null handle to a Python object (None when invalid). */
 py::object class_or_none(Class cls)
@@ -270,15 +285,7 @@ PYBIND11_MODULE(dexpp, m)
     m.doc() = "Python bindings for dex++, a static-analysis library for Android DEX files";
     m.attr("__version__") = DEXPP_VERSION;
 
-    py::register_exception_translator([](std::exception_ptr p) {
-        try {
-            if (p)
-                std::rethrow_exception(p);
-        }
-        catch (const DexFileNotFound &e) {
-            PyErr_SetString(PyExc_FileNotFoundError, e.what());
-        }
-    });
+    dexpp_py::define_error_classes(m);
 
     // ===== free functions =====
 
@@ -960,11 +967,8 @@ PYBIND11_MODULE(dexpp, m)
             "from_dex",
             [](const std::string &path) {
                 auto result = AnalysisContext::from_dex(path);
-                if (!result.has_value()) {
-                    if (result.error().code == AnalysisError::Code::FileNotFound)
-                        throw DexFileNotFound(result.error().message);
-                    throw py::value_error(result.error().message);
-                }
+                if (!result.has_value())
+                    raise(result.error());
                 return std::move(result.value());
             },
             py::arg("path"), "Parse a single DEX file from disk.")
@@ -972,11 +976,8 @@ PYBIND11_MODULE(dexpp, m)
             "from_dex_files",
             [](const std::vector<std::string> &paths) {
                 auto result = AnalysisContext::from_dex_files(paths);
-                if (!result.has_value()) {
-                    if (result.error().code == AnalysisError::Code::FileNotFound)
-                        throw DexFileNotFound(result.error().message);
-                    throw py::value_error(result.error().message);
-                }
+                if (!result.has_value())
+                    raise(result.error());
                 return std::move(result.value());
             },
             py::arg("paths"), "Parse multiple DEX files (e.g. multi-dex splits) in one context.")
@@ -984,11 +985,8 @@ PYBIND11_MODULE(dexpp, m)
             "from_apk",
             [](const std::string &path, unsigned threads) {
                 auto result = AnalysisContext::from_apk(path, {.threads = threads});
-                if (!result.has_value()) {
-                    if (result.error().code == AnalysisError::Code::FileNotFound)
-                        throw DexFileNotFound(result.error().message);
-                    throw py::value_error(result.error().message);
-                }
+                if (!result.has_value())
+                    raise(result.error());
                 return std::move(result.value());
             },
             py::arg("path"), py::arg("threads") = 0,
@@ -1132,11 +1130,8 @@ PYBIND11_MODULE(dexpp, m)
             "open",
             [](const std::string &path) {
                 auto result = Apk::open(path);
-                if (!result.has_value()) {
-                    if (result.error().code == AnalysisError::Code::FileNotFound)
-                        throw DexFileNotFound(result.error().message);
-                    throw py::value_error(result.error().message);
-                }
+                if (!result.has_value())
+                    raise(result.error());
                 return std::move(result.value());
             },
             py::arg("path"), "Open an APK (ZIP) from disk.")
@@ -1160,7 +1155,7 @@ PYBIND11_MODULE(dexpp, m)
              [](const Apk &apk) {
                  auto result = apk.analysis();
                  if (!result.has_value())
-                     throw py::value_error(result.error().message);
+                     raise(result.error());
                  return std::move(result.value());
              })
         .def_property_readonly("resources",
@@ -1180,6 +1175,42 @@ PYBIND11_MODULE(dexpp, m)
              })
         .def_property_readonly("signing", &Apk::signing,
                                py::return_value_policy::reference_internal);
+
+    // ===== type aliases =====
+
+    // The stubs name two unions, dexpp.Instruction and dexpp.AnnotationValue.
+    // They exist here too, so code that names them outside an annotation
+    // (isinstance(x, dexpp.Instruction), a cast, an eagerly evaluated
+    // annotation) works at runtime.
+    {
+        py::object union_of = py::module_::import("typing").attr("Union");
+        py::object builtins = py::module_::import("builtins");
+        py::list instructions;
+        for (const char *name :
+             {"NopInstruction",         "GotoInstruction",           "IfInstruction",
+              "IfZeroInstruction",      "SwitchInstruction",         "ReturnInstruction",
+              "ThrowInstruction",       "MoveInstruction",           "ConstInstruction",
+              "ConstStringInstruction", "ConstClassInstruction",     "ConstHandleInstruction",
+              "TypeInstruction",        "FilledNewArrayInstruction", "MonitorInstruction",
+              "FillArrayInstruction",   "CompareInstruction",        "ArrayOpInstruction",
+              "FieldInstruction",       "InvokeInstruction",         "InvokeCustomInstruction",
+              "UnaryOpInstruction",     "BinaryOpInstruction",       "BinaryLitInstruction"})
+            instructions.append(m.attr(name));
+        m.attr("Instruction") = union_of[py::tuple(instructions)];
+
+        // A list value holds more values and a nested annotation is an
+        // Annotation; at runtime the union names just `list`.
+        py::list values;
+        values.append(py::none());
+        for (const char *name : {"bool", "int", "float", "str"})
+            values.append(builtins.attr(name));
+        for (const char *name :
+             {"TypeRef", "EnumRef", "FieldRef", "MethodRef", "MethodTypeRef", "MethodHandleRef"})
+            values.append(m.attr(name));
+        values.append(builtins.attr("list"));
+        values.append(m.attr("Annotation"));
+        m.attr("AnnotationValue") = union_of[py::tuple(values)];
+    }
 
     // ===== editable DEX model (dex::model) =====
 

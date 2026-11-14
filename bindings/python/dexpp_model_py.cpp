@@ -2,7 +2,9 @@
  *
  *  Registered into the single `dexpp` module by register_model(), called from
  *  dexpp_module.cpp.  Same conventions as the analysis binding:
- *  - read/write errors raise FileNotFoundError (a missing file) or ValueError.
+ *  - errors raise dexpp's own exceptions (dexpp_errors.hpp), one per kind of
+ *    model error; a file that cannot be read or written raises
+ *    FileNotFoundError or OSError.
  *  - a not-found class is None (class_info) or False (has_class).
  *  - access flags are a plain int bitmask; DEX bytes are Python `bytes`.
  *
@@ -21,6 +23,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "dexpp_errors.hpp"
 #include "model/model.hpp"
 
 namespace py = pybind11;
@@ -29,17 +32,31 @@ namespace {
 
 using dex::model::Dex;
 
-/** Raise the right Python exception for a model Error: FileNotFoundError when
- *  a file could not be opened, ValueError otherwise (malformed input, an
- *  unsupported feature, an invalid model, a pool overflow, a version too low).
- *  For Invalid, the message already summarizes validate()'s problems. */
+/** Raise the Python exception for a model Error that is not about a file:
+ *  one exception class per kind.  InvalidModelError carries the problems
+ *  validate() found, as a list of Problem. */
 [[noreturn]] void raise(const dex::model::Error &error)
 {
-    if (error.kind == dex::model::Error::Kind::Io) {
-        PyErr_SetString(PyExc_FileNotFoundError, error.message.c_str());
+    using Kind = dex::model::Error::Kind;
+    switch (error.kind) {
+    case Kind::Malformed:
+        dexpp_py::raise_error("InvalidDexError", error.message);
+    case Kind::Unsupported:
+        dexpp_py::raise_error("UnsupportedDexError", error.message);
+    case Kind::TooLarge:
+        dexpp_py::raise_error("PoolOverflowError", error.message);
+    case Kind::VersionTooLow:
+        dexpp_py::raise_error("VersionTooLowError", error.message);
+    case Kind::Invalid: {
+        py::object type = py::module_::import("dexpp").attr("InvalidModelError");
+        py::object exception = type(error.message, py::cast(error.problems));
+        PyErr_SetObject(type.ptr(), exception.ptr());
         throw py::error_already_set();
     }
-    throw py::value_error(error.message);
+    case Kind::Io:
+        break; // the callers that touch files handle it before they get here
+    }
+    dexpp_py::raise_error("ModelError", error.message);
 }
 
 /** The index of the class with this descriptor, or -1. */
@@ -144,6 +161,8 @@ void register_model(py::module_ &m)
                 dex::model::ReadOptions options;
                 options.debug_info = debug_info;
                 auto result = dex::model::read_file(path, options);
+                if (!result && result.error().kind == dex::model::Error::Kind::Io)
+                    dexpp_py::raise_read_failure(path, result.error().message);
                 if (!result)
                     raise(result.error());
                 return std::move(*result);
@@ -220,33 +239,35 @@ void register_model(py::module_ &m)
             "move_class",
             [](Dex &dst, Dex &src, std::string_view descriptor) {
                 if (class_index(dst, descriptor) >= 0)
-                    throw py::value_error(std::string("destination already has class ") +
-                                          std::string(descriptor));
+                    dexpp_py::raise_error("ModelError",
+                                          std::string("destination already has class ") +
+                                              std::string(descriptor));
                 long i = class_index(src, descriptor);
                 if (i < 0)
-                    throw py::value_error(std::string("source has no class ") +
-                                          std::string(descriptor));
+                    dexpp_py::raise_error("ModelError", std::string("source has no class ") +
+                                                            std::string(descriptor));
                 auto it = src.classes.begin() + i;
                 dst.classes.push_back(std::move(*it));
                 src.classes.erase(it);
             },
             py::arg("src"), py::arg("descriptor"),
             "Move the class out of src and into this model.  The class is moved, not copied.  "
-            "Raises ValueError if src has no such class or this model already has one.")
+            "Raises ModelError if src has no such class or this model already has one.")
         .def(
             "copy_class",
             [](Dex &dst, const Dex &src, std::string_view descriptor) {
                 if (class_index(dst, descriptor) >= 0)
-                    throw py::value_error(std::string("destination already has class ") +
-                                          std::string(descriptor));
+                    dexpp_py::raise_error("ModelError",
+                                          std::string("destination already has class ") +
+                                              std::string(descriptor));
                 long i = class_index(src, descriptor);
                 if (i < 0)
-                    throw py::value_error(std::string("source has no class ") +
-                                          std::string(descriptor));
+                    dexpp_py::raise_error("ModelError", std::string("source has no class ") +
+                                                            std::string(descriptor));
                 dst.classes.push_back(src.classes[static_cast<std::size_t>(i)]);
             },
             py::arg("src"), py::arg("descriptor"),
-            "Copy the class from src into this model, leaving src unchanged.  Raises ValueError as "
+            "Copy the class from src into this model, leaving src unchanged.  Raises ModelError as "
             "move_class does.")
         .def(
             "remove_class",
@@ -285,14 +306,17 @@ void register_model(py::module_ &m)
                 return py::bytes(reinterpret_cast<const char *>(result->data()), result->size());
             },
             py::arg("debug_info") = true,
-            "The model as DEX bytes.  Raises ValueError if the model is invalid, a pool overflows, "
-            "or a feature needs a higher version.")
+            "The model as DEX bytes.  Raises InvalidModelError if the model is invalid, "
+            "PoolOverflowError if a pool overflows, VersionTooLowError if a feature needs a "
+            "higher version.")
         .def(
             "write_file",
             [](const Dex &dex, const std::string &path, bool debug_info) {
                 dex::model::WriteOptions options;
                 options.debug_info = debug_info;
                 auto result = dex::model::write_file(dex, path, options);
+                if (!result && result.error().kind == dex::model::Error::Kind::Io)
+                    dexpp_py::raise_os_error(result.error().message);
                 if (!result)
                     raise(result.error());
             },

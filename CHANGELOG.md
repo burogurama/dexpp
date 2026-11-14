@@ -2,6 +2,35 @@
 
 ## Unreleased
 
+### Python bindings
+
+- dexpp now raises its own exceptions, one per kind of error, where it raised
+  a plain `ValueError` before:
+
+  | Exception | Raised when |
+  | --------- | ----------- |
+  | `InvalidApkError` | a file is not a ZIP archive, or an APK has no `classes.dex` |
+  | `InvalidDexError` | a DEX file cannot be parsed |
+  | `UnsupportedDexError` | `Model.read` gets a format it does not read (DEX version 41) |
+  | `InvalidModelError` | `Model.write` gets a model that breaks rules of the format; its `problems` attribute lists them |
+  | `PoolOverflowError` | `Model.write` would need a table with more entries than the format allows |
+  | `VersionTooLowError` | `Model.write` gets a model that needs a higher DEX version |
+  | `ModelError` | `Model.copy_class` or `Model.move_class` cannot find the class, or the destination already has it; also the base class of the three above |
+
+  All of them derive from `dexpp.Error`, and `dexpp.Error` derives from
+  `ValueError`, so code that catches `ValueError` keeps working.
+- `Model.read_file` and `Model.write_file` raised `FileNotFoundError` for every
+  file problem. `read_file` now raises it only when the file does not exist,
+  and `OSError` when the file exists but cannot be read. `write_file` raises
+  `OSError` when the file cannot be created or written (breaking for code that
+  caught `FileNotFoundError` around `write_file`).
+- `AnalysisContext.from_dex`, `from_dex_files`, `from_apk` and `Apk.open` now
+  raise `OSError` for a path that exists but cannot be read. A directory path
+  made them raise `MemoryError` before (see "Fixes").
+- `dexpp.Instruction` and `dexpp.AnnotationValue` now exist in the module. The
+  type stubs already declared these two unions, but the module did not have
+  them, so `isinstance(x, dexpp.Instruction)` raised `AttributeError`.
+
 ### Fixes
 
 - Loading a path that is a directory no longer fails with an out-of-memory
