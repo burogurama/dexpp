@@ -18,7 +18,7 @@ constexpr uint16_t RES_TABLE_TYPE = 0x0002;
 constexpr uint16_t RES_STRING_POOL_TYPE = 0x0001;
 constexpr uint16_t RES_TABLE_PACKAGE_TYPE = 0x0200;
 constexpr uint16_t RES_TABLE_TYPE_TYPE = 0x0201;
-constexpr uint16_t RES_TABLE_TYPESPEC_TYPE = 0x0202;
+[[maybe_unused]] constexpr uint16_t RES_TABLE_TYPESPEC_TYPE = 0x0202; // skipped, not decoded
 
 // ResTable_entry flags.
 constexpr uint16_t ENTRY_FLAG_COMPLEX = 0x0001;

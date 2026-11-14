@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Build
+
+- dex++'s own sources are now compiled with `-Wall -Wextra`, and the warnings
+  GCC 13 and Clang 19 reported are fixed. The new CMake option
+  `DEXPP_WERROR=ON` turns a warning into an error. It is off by default, so a
+  newer compiler that warns about something new does not break a build from
+  source; CI builds with it on.
+
 ## 0.2.0
 
 ### Editable DEX model (new)

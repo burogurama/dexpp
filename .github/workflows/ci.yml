@@ -42,8 +42,10 @@ jobs:
           sudo ./llvm.sh ${{ matrix.clang_version }}
       - name: Install toolchain
         run: sudo apt-get update && sudo apt-get install -y ${{ matrix.cxx }}
+      # DEXPP_WERROR: a compiler warning in the project's own sources (library,
+      # C shim, tests) fails the build, under both compilers.
       - name: Configure
-        run: cmake -S . -B build
+        run: cmake -S . -B build -DDEXPP_WERROR=ON
       - name: Build
         run: cmake --build build -j
       - name: Test
@@ -121,7 +123,7 @@ jobs:
       - name: Install toolchain
         run: sudo apt-get update && sudo apt-get install -y g++-13
       - name: Build extension in place
-        run: cmake -S . -B build -DDEXPP_BUILD_PYTHON=ON && cmake --build build -j
+        run: cmake -S . -B build -DDEXPP_BUILD_PYTHON=ON -DDEXPP_WERROR=ON && cmake --build build -j
       - name: Run binding tests
         run: PYTHONPATH=build python3 bindings/python/test_dexpp.py
       - name: Wheel install smoke test

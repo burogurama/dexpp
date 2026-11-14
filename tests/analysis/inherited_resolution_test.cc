@@ -298,9 +298,10 @@ TEST_F(InheritedResolutionTest, EdgeInvariantsSweep)
             ++s.declared;
         if (e.origin == EdgeOrigin::InheritedResolution)
             ++s.inherited;
-        if (e.origin != EdgeOrigin::Declared)
+        if (e.origin != EdgeOrigin::Declared) {
             EXPECT_TRUE(g.nodes()[e.callee_node].resolved)
                 << "non-declared edge to unresolved node " << e.callee_node;
+        }
         EXPECT_TRUE(s.callees.insert(e.callee_node).second)
             << "duplicate callee at caller " << e.caller_node << " offset " << e.code_offset;
         for (uint32_t t : g.dispatch_targets(e)) {

@@ -185,8 +185,8 @@ struct CallNodeView
 {
     py::object owner;
     const CallGraph *graph;
-    std::optional<std::span<const uint32_t>> subset;
-    std::shared_ptr<const std::vector<uint32_t>> storage;
+    std::optional<std::span<const uint32_t>> subset = std::nullopt;
+    std::shared_ptr<const std::vector<uint32_t>> storage = nullptr;
 
     std::size_t size() const { return subset ? subset->size() : graph->nodes().size(); }
     py::object at(std::size_t i) const
@@ -212,7 +212,7 @@ struct CallEdgeView
     py::object owner;
     const CallGraph *graph;
     const std::vector<uint32_t> *subset = nullptr;
-    std::shared_ptr<const std::vector<uint32_t>> storage;
+    std::shared_ptr<const std::vector<uint32_t>> storage = nullptr;
 
     std::size_t size() const { return subset ? subset->size() : graph->edges().size(); }
     uint32_t index_at(std::size_t i) const

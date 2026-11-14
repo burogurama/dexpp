@@ -2,7 +2,7 @@
 // signed with apksigner (v1 + v2 + v3) using a throwaway RSA-2048 key:
 //   CN=Dexpp Test, O=DexppOrg, C=MA, serial ba51e610667560a3.
 // The fingerprint below is ground truth from:
-//   unzip -p signed.apk 'META-INF/*.RSA' | openssl pkcs7 -inform DER -print_certs \
+//   unzip -p signed.apk 'META-INF/*.RSA' | openssl pkcs7 -inform DER -print_certs
 //     | openssl x509 -fingerprint -sha256 -noout
 
 #include <gtest/gtest.h>

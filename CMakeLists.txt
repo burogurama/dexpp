@@ -13,6 +13,7 @@ option(DEXPP_BUILD_TESTS "Build the unit tests and demo CLI" ON)
 option(DEXPP_BUILD_C "Build the C ABI shim (bindings/c, for Go/cgo and other FFI)" ON)
 set(DEXPP_SANITIZE "" CACHE STRING
     "Sanitizers to build everything with, e.g. 'address,undefined' (empty = off)")
+option(DEXPP_WERROR "Treat compiler warnings in dex++'s own sources as errors" OFF)
 
 # SKBUILD is set by scikit-build-core during `pip install` / wheel builds:
 # build only the Python module there, no tests, demo CLI, or C shim.
@@ -29,6 +30,15 @@ if(DEXPP_SANITIZE)
     add_compile_options(-fsanitize=${DEXPP_SANITIZE}
                         -fno-sanitize-recover=all -fno-omit-frame-pointer -g)
     add_link_options(-fsanitize=${DEXPP_SANITIZE})
+endif()
+
+# Warnings are turned on for dex++'s own sources only.  The fetched libdeflate,
+# googletest and pybind11 sources are not ours to fix, so they keep their own
+# flags.  -Werror is opt-in (CI sets it): a compiler newer than the ones CI
+# uses may warn about something new, and that must not break a user's build.
+set(DEXPP_WARNING_FLAGS -Wall -Wextra)
+if(DEXPP_WERROR)
+    list(APPEND DEXPP_WARNING_FLAGS -Werror)
 endif()
 
 include(FetchContent)
@@ -53,7 +63,7 @@ set(LIBDEFLATE_SOURCES
 )
 set_source_files_properties(${LIBDEFLATE_SOURCES} PROPERTIES COMPILE_OPTIONS "-std=c11")
 
-add_library(dexpp_core STATIC
+set(DEXPP_CORE_SOURCES
     src/common/ids.cpp
     src/raw/error.cpp
     src/raw/parser.cpp
@@ -87,6 +97,12 @@ add_library(dexpp_core STATIC
     src/apk/manifest.cpp
     src/apk/signing.cpp
     src/apk/apk.cpp
+)
+# Per source file, not per target: dexpp_core also holds the libdeflate sources.
+set_source_files_properties(${DEXPP_CORE_SOURCES} PROPERTIES COMPILE_OPTIONS "${DEXPP_WARNING_FLAGS}")
+
+add_library(dexpp_core STATIC
+    ${DEXPP_CORE_SOURCES}
     ${LIBDEFLATE_SOURCES}
 )
 
@@ -101,6 +117,7 @@ if(DEXPP_BUILD_C)
     add_library(dexpp_c STATIC bindings/c/dexpp_c.cpp bindings/c/dexpp_model.cpp)
     target_include_directories(dexpp_c PUBLIC bindings/c)
     target_link_libraries(dexpp_c PUBLIC dexpp_core)
+    target_compile_options(dexpp_c PRIVATE ${DEXPP_WARNING_FLAGS})
     set_target_properties(dexpp_c PROPERTIES POSITION_INDEPENDENT_CODE ON)
 endif()
 
@@ -116,6 +133,7 @@ if(DEXPP_BUILD_TESTS)
     )
 
     target_link_libraries(main_test PRIVATE dexpp_core)
+    target_compile_options(main_test PRIVATE ${DEXPP_WARNING_FLAGS})
 
     enable_testing()
 
@@ -131,6 +149,7 @@ if(DEXPP_BUILD_TESTS)
         dexpp_core
         GTest::gtest_main
     )
+    target_compile_options(unit_tests PRIVATE ${DEXPP_WARNING_FLAGS})
 
     include(GoogleTest)
     gtest_discover_tests(unit_tests WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
@@ -145,6 +164,7 @@ if(DEXPP_BUILD_PYTHON)
 
     pybind11_add_module(dexpp bindings/python/dexpp_module.cpp bindings/python/dexpp_model_py.cpp)
     target_link_libraries(dexpp PRIVATE dexpp_core)
+    target_compile_options(dexpp PRIVATE ${DEXPP_WARNING_FLAGS})
 
     if(SKBUILD)
         install(TARGETS dexpp DESTINATION .)
