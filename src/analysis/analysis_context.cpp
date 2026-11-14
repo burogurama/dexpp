@@ -4,7 +4,6 @@
 #include <atomic>
 #include <charconv>
 #include <exception>
-#include <fstream>
 #include <numeric>
 #include <system_error>
 #include <thread>
@@ -19,6 +18,7 @@
 #endif
 
 #include "analysis_context_impl.hpp"
+#include "raw/file_io.hpp"
 #include "raw/parser.hpp"
 #include "raw/zip.hpp"
 
@@ -108,19 +108,14 @@ AnalysisContext::AnalysisContext(std::shared_ptr<AnalysisContextImpl> impl) : im
 
 static std::expected<std::vector<uint8_t>, AnalysisError> read_file(const std::string &path)
 {
-    std::ifstream file(path, std::ios::binary);
-    if (!file.is_open()) {
-        return std::unexpected(
-            AnalysisError{AnalysisError::Code::FileNotFound, "Cannot open file: " + path});
+    auto bytes = raw::read_whole_file(path);
+    if (!bytes) {
+        const AnalysisError::Code code = bytes.error().kind == raw::FileError::Kind::NotFound
+                                             ? AnalysisError::Code::FileNotFound
+                                             : AnalysisError::Code::CannotRead;
+        return std::unexpected(AnalysisError{code, bytes.error().message});
     }
-
-    file.seekg(0, std::ios::end);
-    auto size = static_cast<std::size_t>(file.tellg());
-    file.seekg(0, std::ios::beg);
-
-    std::vector<uint8_t> buffer(size);
-    file.read(reinterpret_cast<char *>(buffer.data()), static_cast<std::streamsize>(size));
-    return buffer;
+    return std::move(*bytes);
 }
 
 // The analysis layer never eagerly decodes the string pool; string_of()

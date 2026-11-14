@@ -70,6 +70,7 @@ set(DEXPP_CORE_SOURCES
     src/raw/types.cpp
     src/raw/parsing_utils.cpp
     src/raw/zip.cpp
+    src/raw/file_io.cpp
     src/raw/mutf8.cpp
     src/raw/descriptors.cpp
     src/raw/digest.cpp

@@ -1,11 +1,11 @@
 #include "raw/parser.hpp"
 #include "raw/constants.hpp"
 #include "raw/digest.hpp"
+#include "raw/file_io.hpp"
 #include "raw/parsing_utils.hpp"
 #include <algorithm>
 #include <bit>
 #include <cstring>
-#include <fstream>
 #include <string>
 #include <vector>
 
@@ -1125,24 +1125,14 @@ std::expected<DexFile, ParseError> parse_buffer(std::span<const uint8_t> buffer,
 
 std::expected<DexFile, ParseError> parse_file(const std::string &path, ParseOptions options)
 {
-    std::ifstream file(path, std::ios::binary | std::ios::ate);
-    if (!file.is_open()) {
-        return std::unexpected(
-            ParseError{ParseError::Code::NullPointer, "Cannot open file: " + path, 0});
+    auto buffer = read_whole_file(path);
+    if (!buffer) {
+        const ParseError::Code code = buffer.error().kind == FileError::Kind::NotFound
+                                          ? ParseError::Code::NullPointer
+                                          : ParseError::Code::TruncatedFile;
+        return std::unexpected(ParseError{code, buffer.error().message, 0});
     }
-
-    auto size = static_cast<std::size_t>(file.tellg());
-    file.seekg(0);
-
-    std::vector<uint8_t> buffer(size);
-    file.read(reinterpret_cast<char *>(buffer.data()), static_cast<std::streamsize>(size));
-
-    if (!file) {
-        return std::unexpected(
-            ParseError{ParseError::Code::TruncatedFile, "Failed to read file: " + path, 0});
-    }
-
-    return parse_buffer(std::span<const uint8_t>(buffer), options);
+    return parse_buffer(std::span<const uint8_t>(*buffer), options);
 }
 
 } // namespace dex::raw::parser

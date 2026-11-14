@@ -1,6 +1,5 @@
 #include <algorithm>
 #include <format>
-#include <fstream>
 #include <iterator>
 #include <map>
 #include <tuple>
@@ -8,6 +7,7 @@
 
 #include "model/io.hpp"
 #include "raw/constants.hpp"
+#include "raw/file_io.hpp"
 #include "raw/mutf8.hpp"
 #include "raw/opcodes.hpp"
 #include "raw/parser.hpp"
@@ -954,14 +954,10 @@ std::expected<Dex, Error> read(std::span<const uint8_t> bytes, const ReadOptions
 
 std::expected<Dex, Error> read_file(const std::string &path, const ReadOptions &options)
 {
-    std::ifstream in(path, std::ios::binary);
-    if (!in)
-        return std::unexpected(Error{Error::Kind::Io, std::format("cannot open {}", path), {}});
-    std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(in)),
-                               std::istreambuf_iterator<char>());
-    if (in.bad())
-        return std::unexpected(Error{Error::Kind::Io, std::format("cannot read {}", path), {}});
-    return read(bytes, options);
+    auto bytes = raw::read_whole_file(path);
+    if (!bytes)
+        return std::unexpected(Error{Error::Kind::Io, bytes.error().message, {}});
+    return read(*bytes, options);
 }
 
 } // namespace dex::model

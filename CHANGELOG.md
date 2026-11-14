@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+### Fixes
+
+- Loading a path that is a directory no longer fails with an out-of-memory
+  error. `AnalysisContext::from_dex`, `from_dex_files`, `from_apk`,
+  `apk::Apk::open` and `raw::parser::parse_file` read the size of the
+  "file", got a meaningless value, and tried to allocate that much memory.
+  They now return an error. The new error code `AnalysisError::Code::CannotRead`
+  means "the path exists but cannot be read"; `FileNotFound` now means only
+  that the path does not exist.
+- `model::read_file` no longer lets a `std::ios_base::failure` exception
+  escape for a path it can open but not read, such as a directory. It returns
+  an `Io` error.
+- Every loader now reads its file through one function,
+  `raw::read_whole_file`, which does not trust a file size it did not read.
+
 ### Build
 
 - dex++'s own sources are now compiled with `-Wall -Wextra`, and the warnings

@@ -1,9 +1,9 @@
 #include "apk/apk.hpp"
 
-#include <fstream>
 #include <mutex>
 
 #include "apk/axml.hpp"
+#include "raw/file_io.hpp"
 #include "raw/zip.hpp"
 
 namespace dex::apk {
@@ -38,19 +38,16 @@ Apk::Apk(std::shared_ptr<ApkImpl> impl) : impl_(std::move(impl)) {}
 
 std::expected<Apk, AnalysisError> Apk::open(const std::string &path)
 {
-    std::ifstream file(path, std::ios::binary);
-    if (!file.is_open()) {
-        return std::unexpected(
-            AnalysisError{AnalysisError::Code::FileNotFound, "Cannot open file: " + path});
+    auto bytes = raw::read_whole_file(path);
+    if (!bytes) {
+        const AnalysisError::Code code = bytes.error().kind == raw::FileError::Kind::NotFound
+                                             ? AnalysisError::Code::FileNotFound
+                                             : AnalysisError::Code::CannotRead;
+        return std::unexpected(AnalysisError{code, bytes.error().message});
     }
 
-    file.seekg(0, std::ios::end);
-    auto size = static_cast<std::size_t>(file.tellg());
-    file.seekg(0, std::ios::beg);
-
     auto impl = std::make_shared<ApkImpl>();
-    impl->bytes.resize(size);
-    file.read(reinterpret_cast<char *>(impl->bytes.data()), static_cast<std::streamsize>(size));
+    impl->bytes = std::move(*bytes);
 
     // Validate it is actually a ZIP now, so open() fails fast on a bad file
     // rather than at first entry access.
