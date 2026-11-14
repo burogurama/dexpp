@@ -1,0 +1,83 @@
+# Doxygen configuration for the C++ and C API reference.
+# Run from the repository root (docs/build.sh does): doxygen docs/Doxyfile
+# The output goes into docs/reference/cpp-api/, which MkDocs then copies into
+# the site as it is.
+
+PROJECT_NAME           = "dex++"
+PROJECT_NUMBER         = $(DEXPP_VERSION)
+PROJECT_BRIEF          = "C++ and C API reference"
+
+OUTPUT_DIRECTORY       = docs/reference/cpp-api
+HTML_OUTPUT            = .
+GENERATE_HTML          = YES
+GENERATE_LATEX         = NO
+
+# The public API: what src/dex.hpp includes, and the C headers.  Private
+# headers (analysis_context_impl.hpp, invoke_sites.hpp, model/rules.hpp,
+# apk/string_pool.hpp) and the raw parser layer are left out on purpose.
+INPUT                  = docs/cpp-mainpage.md \
+                         src/dex.hpp \
+                         src/version.hpp \
+                         src/common/ids.hpp \
+                         src/common/access_flags.hpp \
+                         src/common/annotation_visibility.hpp \
+                         src/analysis/analysis_context.hpp \
+                         src/analysis/analysis_error.hpp \
+                         src/analysis/annotations.hpp \
+                         src/analysis/call_graph.hpp \
+                         src/analysis/cfg.hpp \
+                         src/analysis/class.hpp \
+                         src/analysis/class_hierarchy.hpp \
+                         src/analysis/class_ref.hpp \
+                         src/analysis/field.hpp \
+                         src/analysis/instruction.hpp \
+                         src/analysis/method.hpp \
+                         src/analysis/type_descriptor.hpp \
+                         src/analysis/xrefs.hpp \
+                         src/apk/apk.hpp \
+                         src/apk/axml.hpp \
+                         src/apk/manifest.hpp \
+                         src/apk/resources.hpp \
+                         src/apk/signing.hpp \
+                         src/model/model.hpp \
+                         src/model/types.hpp \
+                         src/model/io.hpp \
+                         bindings/c/dexpp.h \
+                         bindings/c/dexpp_model.h
+RECURSIVE              = NO
+USE_MDFILE_AS_MAINPAGE = docs/cpp-mainpage.md
+STRIP_FROM_PATH        = src bindings/c
+STRIP_FROM_INC_PATH    = src bindings/c
+
+# Show every public declaration, also the ones without a comment yet.
+EXTRACT_ALL            = YES
+EXTRACT_PRIVATE        = NO
+EXTRACT_STATIC         = YES
+EXCLUDE_SYMBOLS        = dex::detail dex::*::detail detail
+HIDE_UNDOC_RELATIONS   = NO
+
+# The headers write "/** First sentence.  More text. */", and the first
+# sentence becomes the short description.  Doxygen ends that sentence at the
+# first period followed by a space, so "(e.g. this)" would cut it short.  The
+# filter puts Doxygen's escape ("\ ") after such abbreviations while reading
+# the files; the sources stay as they are.
+JAVADOC_AUTOBRIEF      = YES
+INPUT_FILTER           = "sed -e 's/e\.g\. /e.g.\\ /g' -e 's/i\.e\. /i.e.\\ /g' -e 's/ vs\. / vs.\\ /g'"
+MARKDOWN_SUPPORT       = YES
+BUILTIN_STL_SUPPORT    = YES
+SORT_MEMBER_DOCS       = NO
+INLINE_SIMPLE_STRUCTS  = NO
+SHOW_INCLUDE_FILES     = YES
+SOURCE_BROWSER         = NO
+VERBATIM_HEADERS       = NO
+
+HTML_COLORSTYLE        = AUTO_LIGHT
+GENERATE_TREEVIEW      = YES
+SEARCHENGINE           = YES
+HAVE_DOT               = NO
+
+QUIET                  = YES
+WARNINGS               = YES
+WARN_IF_UNDOCUMENTED   = NO
+WARN_IF_DOC_ERROR      = YES
+WARN_AS_ERROR          = FAIL_ON_WARNINGS

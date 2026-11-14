@@ -179,7 +179,7 @@ struct MethodHandle
 struct NamedValue;
 
 /** An annotation's type and its explicitly set elements.  Elements left at
- *  their @interface defaults are absent. */
+ *  their `@interface` defaults are absent. */
 struct EncodedAnnotation
 {
     std::string type; ///< Class descriptor of the annotation type.

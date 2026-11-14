@@ -92,7 +92,10 @@ struct ParameterRegister
 class Method
 {
   public:
-    /** @param method_abs_idx  Absolute index into the DEX file's method_ids table.
+    /** Used by the library; get handles from Class::methods() instead.
+     *  @param impl            The context the handle belongs to and keeps alive.
+     *  @param dex_idx         Index of the DEX file inside that context.
+     *  @param method_abs_idx  Absolute index into the DEX file's method_ids table.
      *  @param access_flags    Flags from the enclosing EncodedMethod.
      *  @param code_off        Byte offset of the code_item, or 0 for abstract/native. */
     Method(std::shared_ptr<const detail::AnalysisContextImpl> impl, std::size_t dex_idx,
@@ -116,7 +119,7 @@ class Method
      *  native).  Equivalent to !instructions().empty() but cheaper. */
     bool has_code() const { return code_off_ != 0; }
 
-    /** Returns true for '<init>' and '<clinit>' methods. */
+    /** Returns true for `<init>` and `<clinit>` methods. */
     bool is_constructor() const;
 
     bool is_static() const { return has_flag(access_flags(), AccessFlags::Static); }

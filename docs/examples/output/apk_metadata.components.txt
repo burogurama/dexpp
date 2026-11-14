@@ -1,0 +1,5 @@
+ACTIVITY com.example.dexpp.MainActivity exported
+SERVICE com.example.dexpp.SyncService private
+RECEIVER com.example.dexpp.BootReceiver exported
+PROVIDER com.example.dexpp.DataProvider private
+['android.intent.action.MAIN']

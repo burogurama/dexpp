@@ -25,7 +25,10 @@ struct AnalysisContextImpl;
 class Field
 {
   public:
-    /** @param field_abs_idx  Absolute index into the DEX file's field_ids table.
+    /** Used by the library; get handles from Class::fields() instead.
+     *  @param impl           The context the handle belongs to and keeps alive.
+     *  @param dex_idx        Index of the DEX file inside that context.
+     *  @param field_abs_idx  Absolute index into the DEX file's field_ids table.
      *  @param access_flags   Flags from the enclosing EncodedField. */
     Field(std::shared_ptr<const detail::AnalysisContextImpl> impl, std::size_t dex_idx,
           uint32_t field_abs_idx, uint32_t access_flags);

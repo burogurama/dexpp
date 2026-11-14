@@ -154,6 +154,19 @@ if(DEXPP_BUILD_TESTS)
 
     include(GoogleTest)
     gtest_discover_tests(unit_tests WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+
+    # The C++ examples the documentation shows (docs/examples/cpp).  They are
+    # built and run with the tests, so the documentation cannot show code that
+    # no longer compiles or no longer works.
+    file(GLOB DOC_EXAMPLE_SOURCES docs/examples/cpp/*.cpp)
+    foreach(example_source ${DOC_EXAMPLE_SOURCES})
+        get_filename_component(example_name ${example_source} NAME_WE)
+        add_executable(example_${example_name} ${example_source})
+        target_link_libraries(example_${example_name} PRIVATE dexpp_core)
+        target_compile_options(example_${example_name} PRIVATE ${DEXPP_WARNING_FLAGS})
+        add_test(NAME example_${example_name} COMMAND example_${example_name}
+                 WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+    endforeach()
 endif()
 
 if(DEXPP_BUILD_PYTHON)

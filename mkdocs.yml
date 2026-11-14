@@ -1,0 +1,117 @@
+# The documentation site (https://burogurama.github.io/dexpp/).
+# Build it with docs/build.sh; see docs/README.md.
+site_name: dex++
+site_description: >-
+  Fast static analysis of Android APK and DEX files: a C++23 library with
+  Python, C and Go bindings.
+site_url: https://burogurama.github.io/dexpp/
+repo_url: https://github.com/burogurama/dexpp
+repo_name: burogurama/dexpp
+edit_uri: ""
+docs_dir: docs
+
+theme:
+  name: material
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+  features:
+    - navigation.sections
+    - navigation.top
+    - navigation.footer
+    - content.code.copy
+    - search.highlight
+    - toc.follow
+
+# Files in docs/ that are tooling or tested example sources, not pages.
+exclude_docs: |
+  /README.md
+  /Doxyfile
+  /cpp-mainpage.md
+  /build.sh
+  /hooks.py
+  /requirements.txt
+  /examples/
+  __pycache__/
+
+hooks:
+  - docs/hooks.py
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          # The reference is generated from the type stubs, so building the
+          # site does not need the compiled module.
+          paths: [build-docs/stubs]
+          options:
+            docstring_style: google
+            show_source: false
+            show_root_heading: true
+            show_root_full_path: false
+            heading_level: 2
+            members_order: source
+            show_if_no_docstring: true
+            show_signature_annotations: true
+            separate_signature: true
+            signature_crossrefs: true
+            show_symbol_type_heading: true
+            show_symbol_type_toc: true
+            filters: ["!^_", "^__init__$"]
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.superfences
+  - pymdownx.snippets:
+      # Guides include the tested example files (docs/examples) instead of
+      # copying their code; "." is for CHANGELOG.md.
+      base_path: [docs/examples, "."]
+      check_paths: true
+      dedent_subsections: true
+
+nav:
+  - Home: index.md
+  - Getting started:
+      - Install: install.md
+      - Quick start: quickstart.md
+      - Concepts: guide/concepts.md
+  - Guides:
+      - APK metadata: guide/apk.md
+      - Classes, methods and bytecode: guide/code.md
+      - Call graph: guide/call-graph.md
+      - Class hierarchy and cross-references: guide/hierarchy-xrefs.md
+      - Editing DEX files: guide/editing-dex.md
+  - Other languages:
+      - C++: cpp.md
+      - C and Go: c-go.md
+  - Python reference:
+      - Overview: reference/python/index.md
+      - APK, manifest, resources, signing: reference/python/apk.md
+      - Context, classes, methods, fields: reference/python/analysis.md
+      - Annotations and values: reference/python/annotations.md
+      - Instructions: reference/python/instructions.md
+      - Control-flow graph: reference/python/cfg.md
+      - Call graph: reference/python/call-graph.md
+      - Class hierarchy and cross-references: reference/python/hierarchy-xrefs.md
+      - Editable DEX model: reference/python/model.md
+      - Errors: reference/python/errors.md
+  - C++ and C reference: reference/cpp.md
+  - Changelog: changelog.md

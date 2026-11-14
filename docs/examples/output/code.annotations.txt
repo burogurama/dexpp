@@ -1,0 +1,2 @@
+LMarker; RUNTIME {'level': 3, 'name': 'cls', 'tags': ['a', 'b']}
+42 'hello'

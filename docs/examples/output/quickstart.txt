@@ -1,0 +1,5 @@
+package: com.example.dexpp 1.2.3
+permissions: ['android.permission.INTERNET', 'android.permission.CAMERA']
+launcher: com.example.dexpp.MainActivity
+signed by: C=MA, O=DexppOrg, CN=Dexpp Test 6c9647205d1ae141...
+LTestDex; ['<init>', 'helloDex', 'main']

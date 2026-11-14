@@ -26,6 +26,7 @@ classifiers = [
 
 [project.urls]
 Homepage = "https://github.com/burogurama/dexpp"
+Documentation = "https://burogurama.github.io/dexpp/"
 Issues = "https://github.com/burogurama/dexpp/issues"
 Changelog = "https://github.com/burogurama/dexpp/blob/main/CHANGELOG.md"
 
@@ -37,8 +38,9 @@ wheel.expand-macos-universal-tags = true
 # the bundled libdeflate in .dist-info.
 wheel.packages = []
 # The sdist carries only what the wheel build needs: the test fixtures (tens of
-# MB, some of them third-party APKs) and CI config stay in the repository.
-sdist.exclude = ["tests/", ".github/"]
+# MB, some of them third-party APKs), the documentation sources and CI config
+# stay in the repository.
+sdist.exclude = ["tests/", ".github/", "docs/", "mkdocs.yml"]
 
 [tool.scikit-build.metadata.version]
 provider = "scikit_build_core.metadata.regex"

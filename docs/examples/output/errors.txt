@@ -1,0 +1,6 @@
+com.example.dexpp
+tests/data/missing.apk does not exist
+None
+not an APK: tests/data/classes.dex: no end-of-central-directory record (not a ZIP archive)
+None
+InvalidDexError - tests/data/TestDex.java: Invalid DEX magic number

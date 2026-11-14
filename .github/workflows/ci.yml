@@ -126,6 +126,15 @@ jobs:
         run: cmake -S . -B build -DDEXPP_BUILD_PYTHON=ON -DDEXPP_WERROR=ON && cmake --build build -j
       - name: Run binding tests
         run: PYTHONPATH=build python3 bindings/python/test_dexpp.py
+      # The examples the documentation shows, and the output it shows for them.
+      - name: Run documentation examples
+        run: PYTHONPATH=build python3 docs/examples/check.py
+      # The examples write the type of every variable.  This checks those
+      # types against the stubs, so an example cannot state a wrong type.
+      - name: Type-check documentation examples
+        run: |
+          pip install mypy==2.4.1
+          MYPYPATH=bindings/python mypy --strict docs/examples/*.py
       - name: Wheel install smoke test
         run: |
           pip install .

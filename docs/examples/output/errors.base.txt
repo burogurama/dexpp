@@ -1,0 +1,1 @@
+InvalidDexError - tests/data/TestDex.java: Invalid DEX magic number

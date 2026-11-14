@@ -81,7 +81,7 @@ struct AnnotationElement
 /** A resolved annotation instance attached to a class, method, or field.
  *
  *  Only explicitly written elements appear in `elements` — values left at
- *  their @interface defaults are absent (DEX stores defaults separately, in
+ *  their `@interface` defaults are absent (DEX stores defaults separately, in
  *  the dalvik.annotation.AnnotationDefault system annotation on the
  *  annotation class itself). */
 struct Annotation

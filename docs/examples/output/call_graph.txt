@@ -1,0 +1,10 @@
+16 methods, 18 edges
+LKennel;->noise resolved: True
+  calls LAnimal;->sound INTERFACE at offset 0
+['LCat;->sound', 'LDog;->sound']
+['LAnimal;->sound', 'LCat;->sound', 'LDog;->sound']
+['LKennel;->dogNoise', 'LKennel;->noise', 'LPet;->describe']
+['LPet;->sound', 'Ljava/lang/Object;-><init>', 'Ljava/lang/StringBuilder;-><init>', 'Ljava/lang/StringBuilder;->append', 'Ljava/lang/StringBuilder;->toString']
+None
+17 call sites, 1 of them invoke-interface
+LPet;->describe resolves to LAnimal;->sound

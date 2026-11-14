@@ -1,0 +1,76 @@
+name: Docs
+
+# Builds the documentation site (docs/build.sh) and publishes it on GitHub
+# Pages.
+#
+# A v* tag publishes, so the site always describes the latest release.  Pull
+# requests that touch what the site is built from only build it; the build is
+# strict, so a broken link or a Doxygen warning fails the job.  A manual run
+# publishes the branch or tag it is started on: on main, use it only while
+# main has the same API as the latest release.
+on:
+  push:
+    tags: ["v*"]
+  pull_request:
+    paths:
+      - docs/**
+      - mkdocs.yml
+      - CHANGELOG.md
+      - bindings/python/dexpp.pyi
+      - bindings/c/*.h
+      - src/**/*.hpp
+      - .github/workflows/docs.yml
+  workflow_dispatch:
+
+# One publication at a time; a running one is not cancelled half-way.
+concurrency:
+  group: docs-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build:
+    name: build site
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check the tag matches the library version
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          version=$(sed -n 's/^#define DEXPP_VERSION "\(.*\)"$/\1/p' src/version.hpp)
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "tag $GITHUB_REF_NAME does not match src/version.hpp ($version)"
+            exit 1
+          fi
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - name: Install Doxygen
+        run: sudo apt-get update && sudo apt-get install -y doxygen
+      - name: Install the site tools
+        run: pip install -r docs/requirements.txt
+      - name: Build the site
+        run: docs/build.sh
+      - name: Upload the site
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: site
+
+  publish:
+    name: publish on GitHub Pages
+    if: github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-24.04
+    # GitHub Pages accepts the upload from this job through a short-lived
+    # token; nothing is pushed to the repository.  The repository settings
+    # must allow the github-pages environment for v* tags (and main).
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Publish
+        id: deployment
+        uses: actions/deploy-pages@v5

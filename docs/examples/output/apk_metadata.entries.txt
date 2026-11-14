@@ -1,0 +1,2 @@
+['AndroidManifest.xml', 'resources.arsc', 'classes.dex']
+980 bytes of classes.dex

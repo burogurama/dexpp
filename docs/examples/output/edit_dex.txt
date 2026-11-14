@@ -1,0 +1,18 @@
+DEX version 35 with 4 classes
+['LShape;', 'LAbstractShape;', 'LCircle;', 'LRectangle;']
+LCircle; extends LAbstractShape; - 4 methods
+['LShape;']
+['class0.dex', 'class1.dex', 'class2.dex', 'class3.dex']
+4 classes
+same bytes as the original model: True
+['LShape;', 'LAbstractShape;', 'Lcom/example/Round;', 'LRectangle;']
+problems: []
+22 strings, 8 types, 12 methods
+needs DEX version 35
+1364 bytes; writing is repeatable: True
+InvalidDexError: not a DEX file (bad magic)
+2 problems
+  not a descriptor - invalid class descriptor "not a descriptor"
+  not a descriptor-><init>(Ljava/lang/String;D)V, item 3 - invalid class descriptor "not a descriptor"
+VersionTooLowError: the model needs DEX 037 (LGreeter;->greet()V: a private or default interface method), but its version is 035
+written with version 37 - 4024 bytes

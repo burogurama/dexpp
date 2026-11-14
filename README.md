@@ -6,6 +6,9 @@ bindings, built as a clean, typed replacement for androguard's analysis API.
 The current release is **0.2.0** (alpha): the API may still change between
 0.x releases. See [CHANGELOG.md](https://github.com/burogurama/dexpp/blob/main/CHANGELOG.md).
 
+**Documentation: <https://burogurama.github.io/dexpp/>** — guides, the Python
+reference, and the C++ and C reference, for the latest release.
+
 ## What it does
 
 - **APK metadata** — manifest (package, SDK levels, permissions, components and
@@ -117,3 +120,4 @@ model itself.
 - `src/dex.hpp` — the single public umbrella header.
 - `bindings/python/` — the pybind11 module, stubs, and Python tests.
 - `bindings/c/`, `bindings/go/` — the C ABI shim and the Go package over it.
+- `docs/` — the sources of the documentation site (see `docs/README.md`).

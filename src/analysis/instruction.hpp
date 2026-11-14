@@ -145,7 +145,7 @@ struct TypeInstruction
 struct FilledNewArrayInstruction
 {
     InstructionBase base;
-    uint32_t type_index;            ///< Array type (e.g. type@N for "[I").
+    uint32_t type_index;            ///< Array type (e.g. `type@N` for "[I").
     std::vector<uint16_t> arg_regs; ///< Element registers, decoded from 35c/3rc.
 };
 
@@ -267,8 +267,8 @@ bool is_terminator(const Instruction &insn);
 std::string_view opcode_name(uint8_t opcode);
 
 /** Render one decoded instruction as "<mnemonic> <operands>" (no leading code
- *  offset).  Constant-pool operands appear as raw indices — string@N, type@N,
- *  method@N, field@N, site@N — because this function has no AnalysisContext to
+ *  offset).  Constant-pool operands appear as raw indices — `string@N`, `type@N`,
+ *  `method@N`, `field@N`, `site@N` — because this function has no AnalysisContext to
  *  resolve them; use the analysis layer when you need resolved names. */
 std::string to_string(const Instruction &insn);
 

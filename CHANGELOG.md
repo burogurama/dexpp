@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+### Documentation
+
+- dex++ now has a documentation site, <https://burogurama.github.io/dexpp/>:
+  guides for APK metadata, code analysis, the call graph, cross-references and
+  DEX editing, a Python reference, and a C++ and C reference. It is published
+  from each release tag, so it describes the latest release.
+- Every class, method and property in the Python type stubs now has a
+  docstring, so editors show a description next to each completion.
+- The examples in the guides are run by the tests, with the output the guides
+  show.
+
 ### Python bindings
 
 - dexpp now raises its own exceptions, one per kind of error, where it raised

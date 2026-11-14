@@ -18,11 +18,11 @@
 
 namespace dex::apk {
 
-/** An <intent-filter> distilled to the parts that matter for triage. */
+/** An `<intent-filter>` distilled to the parts that matter for triage. */
 struct IntentFilter
 {
-    std::vector<std::string> actions;    ///< android:name of each <action>.
-    std::vector<std::string> categories; ///< android:name of each <category>.
+    std::vector<std::string> actions;    ///< android:name of each `<action>`.
+    std::vector<std::string> categories; ///< android:name of each `<category>`.
 
     bool has_action(std::string_view name) const
     {
@@ -78,7 +78,7 @@ class Manifest
   public:
     explicit Manifest(axml::XmlDocument doc);
 
-    /** package attribute of the <manifest> element. */
+    /** package attribute of the `<manifest>` element. */
     std::string_view package() const { return package_; }
     /** android:versionCode, if present. */
     std::optional<int64_t> version_code() const { return version_code_; }
@@ -88,11 +88,11 @@ class Manifest
     std::optional<int64_t> min_sdk() const { return min_sdk_; }
     std::optional<int64_t> target_sdk() const { return target_sdk_; }
 
-    /** android:name of every <uses-permission>. */
+    /** android:name of every `<uses-permission>`. */
     const std::vector<std::string> &permissions() const { return permissions_; }
-    /** android:name of every <permission> the app itself declares. */
+    /** android:name of every `<permission>` the app itself declares. */
     const std::vector<std::string> &declared_permissions() const { return declared_permissions_; }
-    /** android:protectionLevel of an app-declared <permission> (the raw Android
+    /** android:protectionLevel of an app-declared `<permission>` (the raw Android
      *  value), or nullopt if the permission is not declared by this app. The
      *  base level is the low nibble: 0 normal, 1 dangerous, 2 signature,
      *  3 signatureOrSystem; higher bits are flags (e.g. 0x10 privileged). */

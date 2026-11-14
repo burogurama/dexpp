@@ -1,0 +1,13 @@
+['LAbstractShape;']
+['LAbstractShape;', 'Ljava/lang/Object;', 'LShape;']
+['LAbstractShape;', 'LCircle;', 'LRectangle;']
+['LAbstractShape;']
+['LCircle;', 'LRectangle;']
+True True
+False
+Ljava/io/PrintStream; println is called by main at 6
+['Hello Dex++!!']
+loaded in LTestDex; helloDex
+1 reads, 0 writes
+NEW_INSTANCE in LPet; describe at 0
+NEW_INSTANCE in LDog; describe at 0
