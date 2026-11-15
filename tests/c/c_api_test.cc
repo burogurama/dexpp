@@ -1,7 +1,5 @@
-// The C API for analysis (bindings/c/dexpp.h), called the way a C program
-// calls it.  Every allocation is freed with the function the header names for
-// it, so the sanitizer run reports a leak, a double free or a use after free
-// in the shim.
+// The C API for analysis (bindings/c/dexpp.h): loading, errors, classes,
+// class references, methods and fields.  See c_test_util.hpp.
 
 #include <gtest/gtest.h>
 
@@ -11,30 +9,14 @@
 #include <string>
 #include <vector>
 
+#include "c_test_util.hpp"
 #include "dexpp.h"
 
-namespace {
-
-/** Copy a string the C API returned and free it. */
-std::string take(char *s)
-{
-    EXPECT_NE(s, nullptr);
-    std::string copy = s == nullptr ? "" : s;
-    dexpp_string_free(s);
-    return copy;
-}
-
-DexppContext *open_dex(const char *path)
-{
-    char *err = nullptr;
-    DexppContext *ctx = dexpp_context_from_dex(path, &err);
-    EXPECT_NE(ctx, nullptr) << (err == nullptr ? "" : err);
-    EXPECT_EQ(err, nullptr);
-    dexpp_string_free(err);
-    return ctx;
-}
-
-} // namespace
+using c_test::message;
+using c_test::open_dex;
+using c_test::str;
+using c_test::take;
+using c_test::take_all;
 
 TEST(CApiContext, LoadsADexFileAndListsItsClasses)
 {
@@ -54,50 +36,93 @@ TEST(CApiContext, LoadsADexFileAndListsItsClasses)
     dexpp_context_free(ctx);
 }
 
-TEST(CApiContext, LoadsAnApkInMultidexOrder)
+TEST(CApiContext, LoadsAnApkInMultidexOrderWithAnyThreadCount)
 {
-    char *err = nullptr;
-    DexppContext *ctx = dexpp_context_from_apk("tests/data/app.apk", &err);
-    ASSERT_NE(ctx, nullptr) << (err == nullptr ? "" : err);
-    EXPECT_EQ(err, nullptr);
+    for (uint32_t threads : {0u, 1u, 4u}) {
+        DexppError *err = nullptr;
+        DexppContext *ctx = dexpp_context_from_apk("tests/data/app.apk", threads, &err);
+        ASSERT_NE(ctx, nullptr) << message(err);
+        EXPECT_EQ(err, nullptr);
 
-    size_t count = 0;
-    DexppClass **classes = dexpp_context_classes(ctx, &count);
-    ASSERT_EQ(count, 2u);
-    EXPECT_EQ(take(dexpp_class_name(classes[0])), "LTestDex;");
-    EXPECT_EQ(take(dexpp_class_name(classes[1])), "LFibonacci;");
-
-    dexpp_class_array_free(classes, count);
-    dexpp_context_free(ctx);
+        size_t count = 0;
+        DexppClass **classes = dexpp_context_classes(ctx, &count);
+        ASSERT_EQ(count, 2u);
+        EXPECT_EQ(take(dexpp_class_name(classes[0])), "LTestDex;");
+        EXPECT_EQ(take(dexpp_class_name(classes[1])), "LFibonacci;");
+        dexpp_class_array_free(classes, count);
+        dexpp_context_free(ctx);
+    }
 }
 
-TEST(CApiContext, ReportsLoadErrorsThroughErr)
+TEST(CApiContext, LoadsSeveralDexFiles)
+{
+    const char *paths[] = {"tests/data/classes.dex", "tests/data/fibonacci.dex"};
+    DexppError *err = nullptr;
+    DexppContext *ctx = dexpp_context_from_dex_files(paths, 2, &err);
+    ASSERT_NE(ctx, nullptr) << message(err);
+    EXPECT_EQ(err, nullptr);
+    DexppClass *a = dexpp_context_find_class(ctx, "LTestDex;");
+    DexppClass *b = dexpp_context_find_class(ctx, "LFibonacci;");
+    EXPECT_NE(a, nullptr);
+    EXPECT_NE(b, nullptr);
+    dexpp_class_free(a);
+    dexpp_class_free(b);
+    dexpp_context_free(ctx);
+
+    const char *bad[] = {"tests/data/classes.dex", "tests/data/no_such_file.dex"};
+    EXPECT_EQ(dexpp_context_from_dex_files(bad, 2, &err), nullptr);
+    ASSERT_NE(err, nullptr);
+    EXPECT_EQ(dexpp_error_code(err), DEXPP_ERROR_FILE_NOT_FOUND);
+    dexpp_error_free(err);
+}
+
+TEST(CApiErrors, LoadErrorsCarryACodeAndAMessage)
 {
     struct Case
     {
         const char *path;
         bool apk;
+        DexppErrorCode code;
     };
-    for (const Case &c : {Case{"tests/data/no_such_file.dex", false},
-                          Case{"tests/data/TestDex.java", false}, // not a DEX file
-                          Case{"tests/data", false},              // a directory
-                          Case{"tests/data/no_such_file.apk", true},
-                          Case{"tests/data/classes.dex", true}, // not a ZIP archive
-                          Case{"tests/data/nodex.apk", true}}) {
+    for (const Case &c : {Case{"tests/data/no_such_file.dex", false, DEXPP_ERROR_FILE_NOT_FOUND},
+                          Case{"tests/data/TestDex.java", false, DEXPP_ERROR_INVALID_DEX},
+                          Case{"tests/data", false, DEXPP_ERROR_CANNOT_READ},
+                          Case{"tests/data/no_such_file.apk", true, DEXPP_ERROR_FILE_NOT_FOUND},
+                          Case{"tests/data/classes.dex", true, DEXPP_ERROR_INVALID_APK},
+                          Case{"tests/data/nodex.apk", true, DEXPP_ERROR_INVALID_APK},
+                          Case{"tests/data", true, DEXPP_ERROR_CANNOT_READ}}) {
         SCOPED_TRACE(c.path);
-        char *err = nullptr;
+        DexppError *err = nullptr;
         DexppContext *ctx =
-            c.apk ? dexpp_context_from_apk(c.path, &err) : dexpp_context_from_dex(c.path, &err);
+            c.apk ? dexpp_context_from_apk(c.path, 0, &err) : dexpp_context_from_dex(c.path, &err);
         EXPECT_EQ(ctx, nullptr);
         ASSERT_NE(err, nullptr);
-        EXPECT_NE(std::string(err), "");
-        dexpp_string_free(err);
+        EXPECT_EQ(dexpp_error_code(err), c.code);
+        EXPECT_NE(message(err), "");
+        EXPECT_EQ(dexpp_error_problem_count(err), 0u);
+        EXPECT_EQ(dexpp_error_problem_where(err, 0), nullptr);
+        EXPECT_EQ(dexpp_error_problem_message(err, 0), nullptr);
+        dexpp_error_free(err);
 
-        // The message is optional: a null `err` is allowed.
-        EXPECT_EQ(c.apk ? dexpp_context_from_apk(c.path, nullptr)
+        // The details are optional: a null `err` is allowed.
+        EXPECT_EQ(c.apk ? dexpp_context_from_apk(c.path, 0, nullptr)
                         : dexpp_context_from_dex(c.path, nullptr),
                   nullptr);
     }
+}
+
+TEST(CApiErrors, SuccessSetsErrToNull)
+{
+    // A stale pointer in *err is overwritten with NULL on success.
+    DexppError *stale = nullptr;
+    EXPECT_EQ(dexpp_context_from_dex("tests/data/no_such_file.dex", &stale), nullptr);
+    ASSERT_NE(stale, nullptr);
+    DexppError *err = stale;
+    DexppContext *ctx = dexpp_context_from_dex("tests/data/classes.dex", &err);
+    ASSERT_NE(ctx, nullptr);
+    EXPECT_EQ(err, nullptr);
+    dexpp_error_free(stale);
+    dexpp_context_free(ctx);
 }
 
 TEST(CApiContext, FindsAClassByDescriptor)
@@ -114,21 +139,24 @@ TEST(CApiContext, FindsAClassByDescriptor)
     dexpp_context_free(ctx);
 }
 
-TEST(CApiContext, ReturnsTheStringPool)
+TEST(CApiContext, ReturnsTheStringPoolWithNulBytes)
 {
-    DexppContext *ctx = open_dex("tests/data/classes.dex");
+    DexppContext *ctx = open_dex("tests/data/multistring.dex");
     ASSERT_NE(ctx, nullptr);
 
     size_t count = 0;
-    char **strings = dexpp_context_strings(ctx, &count);
+    DexppText *strings = dexpp_context_strings(ctx, &count);
     ASSERT_GT(count, 0u);
     std::set<std::string> values;
-    for (size_t i = 0; i < count; ++i)
-        values.insert(strings[i]);
-    EXPECT_TRUE(values.contains("Hello Dex++!!"));
-    EXPECT_TRUE(values.contains("LTestDex;"));
+    for (size_t i = 0; i < count; ++i) {
+        values.insert(str(strings[i]));
+        EXPECT_EQ(strings[i].data[strings[i].length], '\0'); // also NUL-terminated
+    }
+    EXPECT_TRUE(values.contains(std::string("test\0embedded", 13)));
+    EXPECT_TRUE(values.contains("Hello, World!"));
+    EXPECT_TRUE(values.contains(""));
 
-    dexpp_string_array_free(strings, count);
+    dexpp_text_array_free(strings, count);
     dexpp_context_free(ctx);
 }
 
@@ -144,31 +172,64 @@ TEST(CApiClass, DescribesAClass)
     ASSERT_NE(circle, nullptr);
 
     EXPECT_EQ(take(dexpp_class_package(circle)), ""); // the default package
-    EXPECT_EQ(take(dexpp_class_superclass(circle)), "LAbstractShape;");
-    EXPECT_EQ(take(dexpp_class_superclass(shape)), "Ljava/lang/Object;");
+    EXPECT_EQ(take(dexpp_class_source_file(circle)), "Shapes.java");
+
+    DexppClassRef *sup = dexpp_class_superclass(circle);
+    ASSERT_NE(sup, nullptr);
+    EXPECT_EQ(take(dexpp_class_ref_descriptor(sup)), "LAbstractShape;");
+    EXPECT_EQ(dexpp_class_ref_is_resolved(sup), 1);
+    DexppClass *resolved = dexpp_class_ref_resolve(sup);
+    ASSERT_NE(resolved, nullptr);
+    EXPECT_EQ(take(dexpp_class_name(resolved)), "LAbstractShape;");
+    dexpp_class_free(resolved);
+    dexpp_class_ref_free(sup);
+
+    DexppClassRef *object = dexpp_class_superclass(shape);
+    ASSERT_NE(object, nullptr);
+    EXPECT_EQ(take(dexpp_class_ref_descriptor(object)), "Ljava/lang/Object;");
+    EXPECT_EQ(dexpp_class_ref_is_resolved(object), 0); // not in the file
+    EXPECT_EQ(dexpp_class_ref_resolve(object), nullptr);
+    dexpp_class_ref_free(object);
 
     EXPECT_EQ(dexpp_class_is_interface(shape), 1);
     EXPECT_EQ(dexpp_class_is_interface(circle), 0);
     EXPECT_EQ(dexpp_class_is_abstract(abstract_shape), 1);
     EXPECT_EQ(dexpp_class_is_abstract(circle), 0);
-    const unsigned int kInterface = 0x0200;
-    EXPECT_NE(dexpp_class_access_flags(shape) & kInterface, 0u);
-    EXPECT_EQ(dexpp_class_access_flags(circle) & kInterface, 0u);
+    EXPECT_NE(dexpp_class_access_flags(shape) & DEXPP_ACC_INTERFACE, 0u);
+    EXPECT_EQ(dexpp_class_access_flags(circle) & DEXPP_ACC_INTERFACE, 0u);
 
     size_t count = 0;
-    char **interfaces = dexpp_class_interfaces(abstract_shape, &count);
+    DexppClassRef **interfaces = dexpp_class_interfaces(abstract_shape, &count);
     ASSERT_EQ(count, 1u);
-    EXPECT_STREQ(interfaces[0], "LShape;");
-    dexpp_string_array_free(interfaces, count);
+    EXPECT_EQ(take(dexpp_class_ref_descriptor(interfaces[0])), "LShape;");
+    dexpp_class_ref_array_free(interfaces, count);
 
-    // A class with no interfaces: the result is still freed the same way.
+    // A class with no interfaces: NULL and 0, freed the same way.
     interfaces = dexpp_class_interfaces(circle, &count);
+    EXPECT_EQ(interfaces, nullptr);
     EXPECT_EQ(count, 0u);
-    dexpp_string_array_free(interfaces, count);
+    dexpp_class_ref_array_free(interfaces, count);
 
     dexpp_class_free(shape);
     dexpp_class_free(abstract_shape);
     dexpp_class_free(circle);
+    dexpp_context_free(ctx);
+}
+
+TEST(CApiClass, JavaLangObjectHasNoSuperclassAndNoSourceFileIsNull)
+{
+    // tests/data has no java.lang.Object, so the "no superclass" case is
+    // checked through the hierarchy instead; here: no annotations, no fields.
+    DexppContext *ctx = open_dex("tests/data/classes.dex");
+    ASSERT_NE(ctx, nullptr);
+    DexppClass *cls = dexpp_context_find_class(ctx, "LTestDex;");
+    ASSERT_NE(cls, nullptr);
+    size_t count = 99;
+    DexppAnnotation *annotations = dexpp_class_annotations(cls, &count);
+    EXPECT_EQ(annotations, nullptr);
+    EXPECT_EQ(count, 0u);
+    dexpp_annotation_array_free(annotations, count);
+    dexpp_class_free(cls);
     dexpp_context_free(ctx);
 }
 
@@ -185,25 +246,36 @@ TEST(CApiMethod, DescribesTheMethodsOfAClass)
 
     bool saw_main = false;
     for (size_t i = 0; i < count; ++i) {
-        std::string name = take(dexpp_method_name(methods[i]));
-        std::string descriptor = take(dexpp_method_descriptor(methods[i]));
-        EXPECT_EQ(dexpp_method_has_code(methods[i]), 1) << name;
+        DexppMethod *m = methods[i];
+        std::string name = take(dexpp_method_name(m));
+        std::string descriptor = take(dexpp_method_descriptor(m));
+        EXPECT_EQ(dexpp_method_has_code(m), 1) << name;
+        DexppClassRef *owner = dexpp_method_declaring_class(m);
+        EXPECT_EQ(take(dexpp_class_ref_descriptor(owner)), "LTestDex;");
+        dexpp_class_ref_free(owner);
         if (name == "<init>") {
             EXPECT_EQ(descriptor, "()V");
-            EXPECT_EQ(dexpp_method_is_static(methods[i]), 0);
-            EXPECT_EQ(dexpp_method_call_count(methods[i]), 1u);
+            EXPECT_EQ(dexpp_method_is_static(m), 0);
+            EXPECT_EQ(dexpp_method_is_constructor(m), 1);
+            EXPECT_EQ(take(dexpp_method_return_type(m)), "V");
         }
         if (name == "helloDex") {
             EXPECT_EQ(descriptor, "()Ljava/lang/String;");
-            EXPECT_EQ(dexpp_method_is_static(methods[i]), 1);
-            EXPECT_EQ(dexpp_method_call_count(methods[i]), 0u);
+            EXPECT_EQ(dexpp_method_is_static(m), 1);
+            EXPECT_EQ(dexpp_method_is_constructor(m), 0);
+            size_t n = 99;
+            char **params = dexpp_method_parameters(m, &n);
+            EXPECT_EQ(params, nullptr);
+            EXPECT_EQ(n, 0u);
+            dexpp_string_array_free(params, n);
         }
         if (name == "main") {
             saw_main = true;
             EXPECT_EQ(descriptor, "([Ljava/lang/String;)V");
-            EXPECT_EQ(dexpp_method_is_static(methods[i]), 1);
-            EXPECT_EQ(dexpp_method_access_flags(methods[i]), 0x9u); // public static
-            EXPECT_EQ(dexpp_method_call_count(methods[i]), 2u);
+            EXPECT_EQ(dexpp_method_access_flags(m), DEXPP_ACC_PUBLIC | DEXPP_ACC_STATIC);
+            size_t n = 0;
+            char **params = dexpp_method_parameters(m, &n);
+            EXPECT_EQ(take_all(params, n), (std::vector<std::string>{"[Ljava/lang/String;"}));
         }
     }
     EXPECT_TRUE(saw_main);
@@ -225,11 +297,86 @@ TEST(CApiMethod, AnAbstractMethodHasNoCode)
     ASSERT_GT(count, 0u);
     for (size_t i = 0; i < count; ++i) {
         EXPECT_EQ(dexpp_method_has_code(methods[i]), 0);
-        EXPECT_EQ(dexpp_method_call_count(methods[i]), 0u);
+        EXPECT_EQ(dexpp_method_register_count(methods[i]), 0u);
+        size_t n = 99;
+        DexppInstruction *insns = dexpp_method_instructions(methods[i], &n);
+        EXPECT_EQ(insns, nullptr);
+        EXPECT_EQ(n, 0u);
+        dexpp_instruction_array_free(insns, n);
+        DexppBasicBlock *blocks = dexpp_method_cfg(methods[i], &n);
+        EXPECT_EQ(blocks, nullptr);
+        EXPECT_EQ(n, 0u);
+        dexpp_basic_block_array_free(blocks, n);
     }
 
     dexpp_method_array_free(methods, count);
     dexpp_class_free(shape);
+    dexpp_context_free(ctx);
+}
+
+TEST(CApiField, DescribesFieldsAndInitialValues)
+{
+    DexppContext *ctx = open_dex("tests/data/annotated.dex");
+    ASSERT_NE(ctx, nullptr);
+    DexppClass *cls = dexpp_context_find_class(ctx, "LAnnotated;");
+    ASSERT_NE(cls, nullptr);
+
+    size_t count = 0;
+    DexppField **fields = dexpp_class_fields(cls, &count);
+    ASSERT_EQ(count, 6u);
+    std::set<std::string> seen;
+    for (size_t i = 0; i < count; ++i) {
+        DexppField *f = fields[i];
+        std::string name = take(dexpp_field_name(f));
+        seen.insert(name);
+        DexppClassRef *owner = dexpp_field_declaring_class(f);
+        EXPECT_EQ(take(dexpp_class_ref_descriptor(owner)), "LAnnotated;");
+        dexpp_class_ref_free(owner);
+        EXPECT_NE(dexpp_field_access_flags(f) & DEXPP_ACC_STATIC, 0u) << name;
+
+        DexppValue v{};
+        int has_value = dexpp_field_initial_value(f, &v);
+        if (name == "MAGIC") {
+            EXPECT_EQ(take(dexpp_field_type(f)), "I");
+            ASSERT_EQ(has_value, 1);
+            EXPECT_EQ(v.kind, DEXPP_VALUE_INT);
+            EXPECT_EQ(v.int_value, 42);
+            size_t n = 0;
+            DexppAnnotation *annotations = dexpp_field_annotations(f, &n);
+            ASSERT_EQ(n, 1u);
+            EXPECT_STREQ(annotations[0].type_descriptor, "LMarker;");
+            dexpp_annotation_array_free(annotations, n);
+        }
+        else if (name == "GREETING") {
+            ASSERT_EQ(has_value, 1);
+            EXPECT_EQ(v.kind, DEXPP_VALUE_STRING);
+            EXPECT_EQ(str(v.string_value), "hello");
+        }
+        else if (name == "BIG") {
+            ASSERT_EQ(has_value, 1);
+            EXPECT_EQ(v.int_value, 1234567890123);
+        }
+        else if (name == "PI") {
+            ASSERT_EQ(has_value, 1);
+            EXPECT_EQ(v.kind, DEXPP_VALUE_FLOAT);
+            EXPECT_DOUBLE_EQ(v.float_value, 3.25);
+        }
+        else if (name == "FLAG") {
+            ASSERT_EQ(has_value, 1);
+            EXPECT_EQ(v.kind, DEXPP_VALUE_BOOL);
+            EXPECT_EQ(v.bool_value, 1);
+        }
+        else if (name == "counter") {
+            EXPECT_EQ(has_value, 0);
+        }
+        if (has_value != 0)
+            dexpp_value_clear(&v);
+        EXPECT_EQ(v.kind, DEXPP_VALUE_NULL);
+    }
+    EXPECT_EQ(seen, (std::set<std::string>{"MAGIC", "GREETING", "BIG", "PI", "FLAG", "counter"}));
+
+    dexpp_field_array_free(fields, count);
+    dexpp_class_free(cls);
     dexpp_context_free(ctx);
 }
 
@@ -242,11 +389,15 @@ TEST(CApiLifetime, HandlesStayValidAfterTheContextIsFreed)
     size_t count = 0;
     DexppMethod **methods = dexpp_class_methods(cls, &count);
     ASSERT_EQ(count, 3u);
+    DexppClassRef *sup = dexpp_class_superclass(cls);
 
     // Free the owners first: the context, then the class.
     dexpp_context_free(ctx);
     EXPECT_EQ(take(dexpp_class_name(cls)), "LTestDex;");
     dexpp_class_free(cls);
+
+    EXPECT_EQ(take(dexpp_class_ref_descriptor(sup)), "Ljava/lang/Object;");
+    dexpp_class_ref_free(sup);
 
     std::set<std::string> names;
     for (size_t i = 0; i < count; ++i) {
@@ -284,117 +435,49 @@ TEST(CApiLifetime, HandlesOfAnArrayCanBeFreedOneByOne)
     }
 }
 
-TEST(CApiApk, ReadsThePackageAndItsComponents)
+TEST(CApiMemory, FreeingNullIsAllowed)
 {
-    char *err = nullptr;
-    DexppApk *apk = dexpp_apk_open("tests/data/sample.apk", &err);
-    ASSERT_NE(apk, nullptr) << (err == nullptr ? "" : err);
-    EXPECT_EQ(err, nullptr);
-
-    EXPECT_EQ(take(dexpp_apk_package(apk)), "com.example.dexpp");
-
-    size_t count = 0;
-    DexppComponent *components = dexpp_apk_components(apk, &count);
-    ASSERT_EQ(count, 4u);
-    for (size_t i = 0; i < count; ++i) {
-        std::string name = components[i].name;
-        if (name == "com.example.dexpp.MainActivity") {
-            EXPECT_EQ(components[i].kind, 0);
-            EXPECT_EQ(components[i].exported, 1);
-            EXPECT_EQ(components[i].reachable, 1);
-        }
-        if (name == "com.example.dexpp.SyncService") {
-            EXPECT_EQ(components[i].kind, 1);
-            EXPECT_EQ(components[i].exported, 0);
-            EXPECT_EQ(components[i].reachable, 0);
-        }
-        if (name == "com.example.dexpp.BootReceiver") {
-            EXPECT_EQ(components[i].kind, 2);
-        }
-        if (name == "com.example.dexpp.DataProvider") {
-            EXPECT_EQ(components[i].kind, 3);
-        }
-    }
-    dexpp_component_array_free(components, count);
-
-    DexppContext *ctx = dexpp_apk_analysis(apk, &err);
-    ASSERT_NE(ctx, nullptr) << (err == nullptr ? "" : err);
-    EXPECT_EQ(err, nullptr);
-    // The context does not need the APK handle.
-    dexpp_apk_free(apk);
-    DexppClass *cls = dexpp_context_find_class(ctx, "LTestDex;");
-    EXPECT_NE(cls, nullptr);
-    dexpp_class_free(cls);
-    dexpp_context_free(ctx);
-}
-
-TEST(CApiApk, SeparatesExportedFromReachable)
-{
-    DexppApk *apk = dexpp_apk_open("tests/data/reachable.apk", nullptr);
-    ASSERT_NE(apk, nullptr);
-
-    size_t count = 0;
-    DexppComponent *components = dexpp_apk_components(apk, &count);
-    ASSERT_EQ(count, 8u);
-    size_t exported = 0;
-    size_t reachable = 0;
-    for (size_t i = 0; i < count; ++i) {
-        exported += static_cast<size_t>(components[i].exported);
-        reachable += static_cast<size_t>(components[i].reachable);
-        if (std::string(components[i].name) == "com.dexpp.reach.SigActivity") {
-            EXPECT_EQ(components[i].exported, 1);
-            EXPECT_EQ(components[i].reachable, 0);
-        }
-    }
-    EXPECT_EQ(exported, 7u);
-    EXPECT_EQ(reachable, 5u);
-    dexpp_component_array_free(components, count);
-
-    // This APK has a manifest but no code.
-    char *err = nullptr;
-    EXPECT_EQ(dexpp_apk_analysis(apk, &err), nullptr);
-    ASSERT_NE(err, nullptr);
-    dexpp_string_free(err);
-    EXPECT_EQ(dexpp_apk_analysis(apk, nullptr), nullptr);
-
-    dexpp_apk_free(apk);
-}
-
-TEST(CApiApk, AnApkWithoutAManifestHasNoPackageAndNoComponents)
-{
-    DexppApk *apk = dexpp_apk_open("tests/data/app.apk", nullptr);
-    ASSERT_NE(apk, nullptr);
-
-    EXPECT_EQ(dexpp_apk_package(apk), nullptr);
-    size_t count = 99;
-    DexppComponent *components = dexpp_apk_components(apk, &count);
-    EXPECT_EQ(components, nullptr);
-    EXPECT_EQ(count, 0u);
-    dexpp_component_array_free(components, count);
-
-    dexpp_apk_free(apk);
-}
-
-TEST(CApiApk, ReportsOpenErrorsThroughErr)
-{
-    for (const char *path :
-         {"tests/data/no_such_file.apk", "tests/data/classes.dex", "tests/data"}) {
-        SCOPED_TRACE(path);
-        char *err = nullptr;
-        EXPECT_EQ(dexpp_apk_open(path, &err), nullptr);
-        ASSERT_NE(err, nullptr);
-        EXPECT_NE(std::string(err), "");
-        dexpp_string_free(err);
-        EXPECT_EQ(dexpp_apk_open(path, nullptr), nullptr);
-    }
-}
-
-TEST(CApiStrings, FreeingNullIsAllowed)
-{
+    dexpp_error_free(nullptr);
     dexpp_string_free(nullptr);
     dexpp_string_array_free(nullptr, 0);
+    dexpp_text_array_free(nullptr, 0);
+    dexpp_buffer_free(nullptr);
+    dexpp_index_array_free(nullptr, 0);
+    dexpp_method_id_array_free(nullptr, 0);
+    dexpp_annotation_array_free(nullptr, 0);
     dexpp_context_free(nullptr);
     dexpp_class_free(nullptr);
+    dexpp_class_array_free(nullptr, 0);
+    dexpp_class_ref_free(nullptr);
+    dexpp_class_ref_array_free(nullptr, 0);
     dexpp_method_free(nullptr);
+    dexpp_method_array_free(nullptr, 0);
+    dexpp_field_free(nullptr);
+    dexpp_field_array_free(nullptr, 0);
+    dexpp_parameter_register_array_free(nullptr, 0);
+    dexpp_method_call_array_free(nullptr, 0);
+    dexpp_field_access_array_free(nullptr, 0);
+    dexpp_string_load_array_free(nullptr, 0);
+    dexpp_type_use_array_free(nullptr, 0);
+    dexpp_try_block_array_free(nullptr, 0);
+    dexpp_instruction_array_free(nullptr, 0);
+    dexpp_basic_block_array_free(nullptr, 0);
+    dexpp_call_graph_free(nullptr);
+    dexpp_call_node_array_free(nullptr, 0);
+    dexpp_call_edge_array_free(nullptr, 0);
+    dexpp_class_hierarchy_free(nullptr);
+    dexpp_xrefs_free(nullptr);
+    dexpp_method_xref_array_free(nullptr, 0);
+    dexpp_method_ref_group_array_free(nullptr, 0);
+    dexpp_field_xref_array_free(nullptr, 0);
+    dexpp_string_xref_array_free(nullptr, 0);
+    dexpp_type_xref_array_free(nullptr, 0);
     dexpp_apk_free(nullptr);
+
+    DexppText empty{};
+    dexpp_text_clear(&empty);
+    DexppValue value{};
+    dexpp_value_clear(&value);
+    DexppMethodId id{};
+    dexpp_method_id_clear(&id);
 }
