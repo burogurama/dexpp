@@ -30,7 +30,8 @@ uint32_t node_index(const CallGraph &g, const CallNode *node)
     return static_cast<uint32_t>(node - g.nodes().data());
 }
 
-// "Class.name" of every listed node, for order-independent comparisons.
+// "<class descriptor>.<method name>" of every listed node, for order-independent
+// comparisons.
 template <typename Nodes> std::set<std::string> names_of(const CallGraph &g, const Nodes &nodes)
 {
     std::set<std::string> out;

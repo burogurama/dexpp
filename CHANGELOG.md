@@ -98,7 +98,7 @@ thing. The old names are gone; there are no aliases.
 
 ### Python bindings
 
-- The enums `InvokeKind`, `EdgeOrigin`, `EdgeKind`, `TypeRefKind`,
+- The enums `InvokeKind`, `EdgeOrigin`, `CfgEdgeKind`, `TypeUseKind`,
   `OperandWidth`, `AnnotationVisibility` and `ComponentKind` are now real
   Python enums, subclasses of `enum.Enum`, as the type stubs already said.
   `list(dexpp.InvokeKind)` lists the members, `isinstance(kind, enum.Enum)` is
