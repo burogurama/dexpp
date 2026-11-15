@@ -145,7 +145,7 @@ TEST(SwitchDecodeTest, MalformedPayloadEmptyCases)
     EXPECT_TRUE(sw->cases.empty()) << "Mismatched sentinel must yield empty cases";
 }
 
-// ===== type-instruction fixes (regression for the androguard differential) =====
+// ===== type-instruction fixes (regressions found by differential testing) =====
 
 // check-cast (0x1f, format 21c) is a single in-place register: src must be
 // nullopt, not a duplicate of dest.

@@ -1,7 +1,7 @@
 # dex++
 
-Fast static analysis of Android APK / DEX files — a C++23 core with Python
-bindings, built as a clean, typed replacement for androguard's analysis API.
+Fast static analysis of Android APK / DEX files — a C++23 core with Python, C
+and Go bindings.
 
 The current release is **0.2.0** (alpha): the API may still change between
 0.x releases. See [CHANGELOG.md](https://github.com/burogurama/dexpp/blob/main/CHANGELOG.md).
