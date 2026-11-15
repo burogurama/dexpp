@@ -65,6 +65,10 @@
 
 ### Fixes
 
+- `Model.read` in Python read the wrong memory when it got a buffer whose bytes
+  are not next to each other, such as a reversed or strided `memoryview`: it
+  read forward from the buffer's start and could go past its end. It now reads
+  the bytes in order, copying them first when the buffer is not contiguous.
 - Loading a path that is a directory no longer fails with an out-of-memory
   error. `AnalysisContext::from_dex`, `from_dex_files`, `from_apk`,
   `apk::Apk::open` and `raw::parser::parse_file` read the size of the

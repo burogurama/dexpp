@@ -63,6 +63,50 @@ using dex::model::Dex;
     dexpp_py::raise_error("ModelError", error.message);
 }
 
+/** The bytes of a Python bytes-like object, in order, in one block of memory.
+ *
+ *  A buffer can be non-contiguous: a reversed or strided memoryview has its
+ *  bytes spread out, and reading size bytes forward from its start reads past
+ *  the end.  So ask for a C-contiguous buffer first (bytes, bytearray, a plain
+ *  memoryview and array.array give one without copying), and when the object
+ *  cannot give one, copy it into a bytes object, which keeps the logical
+ *  order. */
+class ContiguousBytes
+{
+  public:
+    explicit ContiguousBytes(const py::handle &data)
+    {
+        if (PyObject_GetBuffer(data.ptr(), &view_, PyBUF_C_CONTIGUOUS) == 0) {
+            has_view_ = true;
+            bytes_ = std::span<const uint8_t>(static_cast<const uint8_t *>(view_.buf),
+                                              static_cast<std::size_t>(view_.len));
+            return;
+        }
+        PyErr_Clear(); // not C-contiguous: fall back to a copy
+        copy_ = py::reinterpret_steal<py::object>(PyBytes_FromObject(data.ptr()));
+        if (!copy_)
+            throw py::error_already_set();
+        bytes_ = std::span<const uint8_t>(
+            reinterpret_cast<const uint8_t *>(PyBytes_AS_STRING(copy_.ptr())),
+            static_cast<std::size_t>(PyBytes_GET_SIZE(copy_.ptr())));
+    }
+    ~ContiguousBytes()
+    {
+        if (has_view_)
+            PyBuffer_Release(&view_);
+    }
+    ContiguousBytes(const ContiguousBytes &) = delete;
+    ContiguousBytes &operator=(const ContiguousBytes &) = delete;
+
+    std::span<const uint8_t> bytes() const { return bytes_; }
+
+  private:
+    Py_buffer view_{};
+    bool has_view_ = false;
+    py::object copy_;
+    std::span<const uint8_t> bytes_;
+};
+
 /** The index of the class with this descriptor, or -1. */
 long class_index(const Dex &dex, std::string_view descriptor)
 {
@@ -149,13 +193,10 @@ void register_model(py::module_ &m)
         .def_static(
             "read",
             [](py::buffer data, bool debug_info) {
-                py::buffer_info info = data.request();
+                ContiguousBytes bytes(data);
                 dex::model::ReadOptions options;
                 options.debug_info = debug_info;
-                auto bytes = std::span<const uint8_t>(static_cast<const uint8_t *>(info.ptr),
-                                                      static_cast<std::size_t>(info.size) *
-                                                          static_cast<std::size_t>(info.itemsize));
-                auto result = dex::model::read(bytes, options);
+                auto result = dex::model::read(bytes.bytes(), options);
                 if (!result)
                     raise(result.error());
                 return std::move(*result);

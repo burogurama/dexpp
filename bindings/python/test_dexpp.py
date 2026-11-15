@@ -701,6 +701,30 @@ def test_model_write_file():
         assert reread.class_count == m.class_count
 
 
+def test_model_read_accepts_any_bytes_like():
+    with open("tests/data/shapes.dex", "rb") as f:
+        data = f.read()
+    expected = dexpp.Model.read(data).write()
+
+    assert dexpp.Model.read(bytearray(data)).write() == expected
+    assert dexpp.Model.read(memoryview(data)).write() == expected
+
+    # A view whose bytes are not next to each other in memory: every byte of
+    # the DEX appears twice in `doubled`, and the view takes every other one.
+    doubled = bytes(byte for byte in data for _ in range(2))
+    strided = memoryview(doubled)[::2]
+    assert strided.c_contiguous is False
+    assert dexpp.Model.read(strided).write() == expected
+
+    # A reversed view is not a DEX file: it is refused, and nothing is read
+    # past the end of the buffer.
+    try:
+        dexpp.Model.read(memoryview(data)[::-1])
+        raise AssertionError("expected InvalidDexError")
+    except dexpp.InvalidDexError:
+        pass
+
+
 def test_model_errors():
     try:
         dexpp.Model.read(b"not a dex")
