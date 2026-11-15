@@ -65,6 +65,13 @@
 
 ### Fixes
 
+- Go: the short methods of `Class` and `Method` (`Name`, `Package`,
+  `Superclass`, `AccessFlags` and others), and the early-return paths of
+  `Classes`, `Strings`, `Interfaces`, `Methods` and `Components`, did not keep
+  their handle alive during the C call. In code such as
+  `ctx.FindClass(d).Name()`, the garbage collector could free the handle while
+  C was still using it. Every method now keeps its handle alive until it
+  returns.
 - `Model.read` in Python read the wrong memory when it got a buffer whose bytes
   are not next to each other, such as a reversed or strided `memoryview`: it
   read forward from the buffer's start and could go past its end. It now reads
