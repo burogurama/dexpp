@@ -2,6 +2,15 @@
 
 import dexpp
 
+# --8<-- [start:load]
+apk_ctx: dexpp.AnalysisContext = dexpp.AnalysisContext.from_apk("tests/data/app.apk")
+dex_ctx: dexpp.AnalysisContext = dexpp.AnalysisContext.from_dex("tests/data/classes.dex")
+split_ctx: dexpp.AnalysisContext = dexpp.AnalysisContext.from_dex_files(
+    ["tests/data/inherit_a.dex", "tests/data/inherit_b.dex"]
+)
+print(len(apk_ctx.classes()), len(dex_ctx.classes()), len(split_ctx.classes()))
+# --8<-- [end:load]
+
 # --8<-- [start:classes]
 ctx: dexpp.AnalysisContext = dexpp.AnalysisContext.from_dex("tests/data/shapes.dex")
 

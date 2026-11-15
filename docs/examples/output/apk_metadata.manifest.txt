@@ -1,5 +1,6 @@
-com.example.dexpp 7 1.2.3
+com.example.dexpp
+version: 7 1.2.3
 sdk: 21 to 34
 uses: ['android.permission.INTERNET', 'android.permission.CAMERA']
 declares: ['com.example.dexpp.CUSTOM']
-debuggable: True allow_backup: False
+debuggable: True allow backup: False

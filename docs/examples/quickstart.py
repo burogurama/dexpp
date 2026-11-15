@@ -1,5 +1,6 @@
 """Quick start: open an APK, read its metadata, then look at its code."""
 
+# --8<-- [start:quickstart]
 import dexpp
 
 apk: dexpp.Apk = dexpp.Apk.open("tests/data/signed.apk")
@@ -7,7 +8,8 @@ apk: dexpp.Apk = dexpp.Apk.open("tests/data/signed.apk")
 # Package metadata comes from the manifest. It is None when the APK has none.
 manifest: dexpp.Manifest | None = apk.manifest
 assert manifest is not None
-print("package:", manifest.package, manifest.version_name)
+print("package:", manifest.package)
+print("version:", manifest.version_name)
 print("permissions:", manifest.permissions)
 print("launcher:", manifest.launcher_activity)
 
@@ -22,3 +24,4 @@ classes: list[dexpp.Class] = ctx.classes()
 for cls in classes:
     method_names: list[str] = [method.name for method in cls.methods]
     print(cls.descriptor, method_names)
+# --8<-- [end:quickstart]

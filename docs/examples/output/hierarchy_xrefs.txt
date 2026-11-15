@@ -8,6 +8,8 @@ False
 Ljava/io/PrintStream; println is called by main at 6
 ['Hello Dex++!!']
 loaded in LTestDex; helloDex
+'Goodbye, World!' loaded by <clinit> at 4
+'Hello, World!' loaded by <clinit> at 0
 1 reads, 0 writes
 NEW_INSTANCE in LPet; describe at 0
 NEW_INSTANCE in LDog; describe at 0

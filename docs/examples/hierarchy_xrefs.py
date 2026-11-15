@@ -1,5 +1,7 @@
 """The class hierarchy and the cross-reference index."""
 
+import re
+
 import dexpp
 
 # --8<-- [start:hierarchy]
@@ -42,6 +44,19 @@ for string_site in string_sites:
     assert method is not None
     print("loaded in", method.declaring_class.descriptor, method.name)
 # --8<-- [end:strings]
+
+# --8<-- [start:pattern]
+greetings_ctx: dexpp.AnalysisContext = dexpp.AnalysisContext.from_dex("tests/data/multistring.dex")
+greetings: dexpp.Xrefs = greetings_ctx.xrefs
+
+world: re.Pattern[str] = re.compile(r"World!$")
+values: list[str] = sorted(greetings.referenced_strings())  # in no fixed order
+for value in values:
+    if world.search(value) is not None:
+        for pattern_site in greetings.string_refs(value):
+            loader: dexpp.MethodId = greetings.referrers[pattern_site.referrer]
+            print(repr(value), "loaded by", loader.name, "at", pattern_site.code_offset)
+# --8<-- [end:pattern]
 
 # --8<-- [start:fields]
 out: dexpp.FieldId = dexpp.FieldId("Ljava/lang/System;", "out", "Ljava/io/PrintStream;")
