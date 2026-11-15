@@ -9,6 +9,7 @@ Also runnable under pytest with the same PYTHONPATH.
 
 import ast
 import enum
+import gc
 import inspect
 import os
 import pickle
@@ -796,6 +797,207 @@ def test_handles_outlive_context():
     # The Class handle holds its own shared_ptr to the impl.
     assert cls.descriptor == "LTestDex;"
     assert [m.name for m in cls.methods]
+
+
+# ===== nothing outlives the memory it reads =====
+#
+# A value object (StringLoad, CfgEdge, BasicBlock, ...) holds no handle, so it
+# does not keep the analysis alive: it must own a copy of its strings.  Other
+# objects (views, the call graph, a manifest) read memory that belongs to the
+# analysis or to the APK, so they must keep that owner alive.  Each test below
+# takes objects from an analysis, drops every other reference to it, reuses
+# the memory it freed, and only then reads the objects.  An object that still
+# pointed into the freed memory would read another analysis's strings, or bytes
+# that are not even UTF-8.
+
+# Small fixtures that load as DEX files, used to reuse freed memory.
+_BUSY_FIXTURES = (
+    "tests/data/classes.dex",
+    "tests/data/multistring.dex",
+    "tests/data/shapes.dex",
+    "tests/data/trycatch.dex",
+    "tests/data/fibonacci.dex",
+    "tests/data/polymorphic.dex",
+    "tests/data/annotated.dex",
+    "tests/data/inherit.dex",
+)
+
+
+def _after_owners_are_freed(take):
+    """Call take(), which loads an analysis or APK and returns objects taken
+    from it, and return those objects once nothing else holds the analysis.
+
+    The locals of take(), the only other references, are gone when it
+    returns, and gc.collect() frees any cycle.  Then more analyses are loaded
+    and every string, try block and CFG of theirs is decoded, so the C++ heap
+    hands the freed memory out again.  Those analyses are returned too: the
+    caller keeps them alive while it reads, so the reused memory stays in use.
+    """
+    taken = take()
+    gc.collect()
+    busy = []
+    for _ in range(10):
+        for path in _BUSY_FIXTURES:
+            ctx = dexpp.AnalysisContext.from_dex(path)
+            ctx.strings()
+            for cls in ctx.classes():
+                for method in cls.methods:
+                    method.parameter_registers
+                    method.try_blocks
+                    method.cfg
+            busy.append(ctx)
+    return taken, busy
+
+
+def _method(path, class_descriptor, name):
+    """The method called @p name of a class in a newly loaded DEX file."""
+    cls = dexpp.AnalysisContext.from_dex(path).find_class(class_descriptor)
+    assert cls is not None
+    return next(m for m in cls.methods if m.name == name)
+
+
+def test_string_loads_own_their_values():
+    def take():
+        clinit = _method("tests/data/multistring.dex", "LMultiStringTest;", "<clinit>")
+        return clinit.string_loads()
+
+    loads, busy = _after_owners_are_freed(take)
+    assert [s.value for s in loads] == [
+        "Hello, World!",
+        "Goodbye, World!",
+        "How are you?",
+        "I am fine, thanks!",
+        "\U0001f389 Party time! \U0001f38a",
+        "",
+        "test\x00embedded",
+    ]
+
+
+def test_type_uses_own_their_descriptors():
+    def take():
+        return _method("tests/data/polymorphic.dex", "LDog;", "describe").type_uses()
+
+    uses, busy = _after_owners_are_freed(take)
+    assert [(u.descriptor, u.kind) for u in uses] == [
+        ("Ljava/lang/StringBuilder;", dexpp.TypeUseKind.NEW_INSTANCE)
+    ]
+
+
+def test_parameter_registers_own_their_types():
+    def take():
+        main = _method("tests/data/classes.dex", "LTestDex;", "main")
+        compute = _method("tests/data/fibonacci.dex", "LFibonacci;", "compute")
+        return main.parameter_registers + compute.parameter_registers
+
+    registers, busy = _after_owners_are_freed(take)
+    assert [(r.reg, r.type, r.is_this, r.is_wide) for r in registers] == [
+        (1, "[Ljava/lang/String;", False, False),
+        (9, "LFibonacci;", True, False),
+        (10, "I", False, False),
+    ]
+
+
+def test_try_blocks_and_catch_handlers_own_their_types():
+    def take():
+        divide = _method("tests/data/trycatch.dex", "LTryCatch;", "divide")
+        safe = _method("tests/data/trycatch.dex", "LTryCatch;", "safeParse")
+        tries = divide.try_blocks + safe.try_blocks
+        return tries, [h for t in tries for h in t.handlers]
+
+    (tries, handlers), busy = _after_owners_are_freed(take)
+    assert [[h.type_descriptor for h in t.handlers] for t in tries] == [
+        ["Ljava/lang/ArithmeticException;"],
+        ["Ljava/lang/NumberFormatException;"],
+        [],
+    ]
+    assert [h.type_descriptor for h in handlers] == [
+        "Ljava/lang/ArithmeticException;",
+        "Ljava/lang/NumberFormatException;",
+    ]
+
+
+def test_cfg_edges_own_their_catch_types():
+    def take():
+        safe = _method("tests/data/trycatch.dex", "LTryCatch;", "safeParse")
+        return [e for b in safe.cfg.blocks for e in b.successors]
+
+    edges, busy = _after_owners_are_freed(take)
+    assert [e.catch_type for e in edges if e.kind is dexpp.CfgEdgeKind.EXCEPTION] == [
+        "Ljava/lang/NumberFormatException;"
+    ]
+    assert all(e.catch_type is None for e in edges if e.kind is not dexpp.CfgEdgeKind.EXCEPTION)
+
+
+def test_basic_blocks_own_their_edges():
+    def take():
+        cfg = _method("tests/data/trycatch.dex", "LTryCatch;", "divide").cfg
+        # Every way to get a block: from the view, a slice of it, iterating
+        # it, and the two lookups on the Cfg.
+        return [cfg.blocks[0], cfg.blocks[0:1][0], next(iter(cfg.blocks)), cfg.entry,
+                cfg.block_at_offset(0)]
+
+    blocks, busy = _after_owners_are_freed(take)
+    for block in blocks:
+        assert block.index == 0 and block.start_offset == 0
+        assert [(e.kind, e.catch_type) for e in block.successors] == [
+            (dexpp.CfgEdgeKind.FALLTHROUGH, None),
+            (dexpp.CfgEdgeKind.EXCEPTION, "Ljava/lang/ArithmeticException;"),
+        ]
+
+
+def test_borrowed_objects_keep_their_owner_alive():
+    # These objects read memory that the analysis or the APK owns, without a
+    # copy, so each must keep its owner alive by itself.
+    sound = dexpp.MethodId("LAnimal;", "sound", "()Ljava/lang/String;")
+
+    def take():
+        divide = _method("tests/data/trycatch.dex", "LTryCatch;", "divide")
+        graph = dexpp.AnalysisContext.from_dex("tests/data/polymorphic.dex").call_graph
+        node = graph.find(sound)
+        assert node is not None
+        xrefs = dexpp.AnalysisContext.from_dex("tests/data/classes.dex").xrefs
+        manifest = dexpp.Apk.open("tests/data/sample.apk").manifest
+        assert manifest is not None
+        resources = dexpp.Apk.open("tests/data/sample.apk").resources
+        assert resources is not None
+        signing = dexpp.Apk.open("tests/data/signed.apk").signing
+        return {
+            "cfg": divide.cfg,
+            "blocks": _method("tests/data/trycatch.dex", "LTryCatch;", "divide").cfg.blocks,
+            "instructions": _method("tests/data/classes.dex", "LTestDex;", "main").instructions,
+            "node_id": node.id,
+            "in_edges": node.in_edges,
+            "dispatch_targets": node.dispatch_targets,
+            "edge": node.in_edges[0],
+            "referrers": xrefs.referrers,
+            "hierarchy": dexpp.AnalysisContext.from_dex("tests/data/polymorphic.dex")
+            .class_hierarchy,
+            "components": manifest.components,
+            "intent_filters": manifest.components_of(dexpp.ComponentKind.ACTIVITY)[0]
+            .intent_filters,
+            "manifest": dexpp.Apk.open("tests/data/sample.apk").manifest,
+            "resources": resources,
+            "certificates": signing.certificates,
+        }
+
+    t, busy = _after_owners_are_freed(take)
+    assert [(e.kind, e.catch_type) for e in t["cfg"].entry.successors][1] == (
+        dexpp.CfgEdgeKind.EXCEPTION, "Ljava/lang/ArithmeticException;"
+    )
+    assert t["blocks"][0].successors[1].catch_type == "Ljava/lang/ArithmeticException;"
+    assert dexpp.to_string(t["instructions"][0]).startswith("sget-object")
+    assert (t["node_id"].class_descriptor, t["node_id"].name) == ("LAnimal;", "sound")
+    assert {e.caller.id.name for e in t["in_edges"]} == {"noise", "describe"}
+    assert {n.id.class_descriptor for n in t["dispatch_targets"]} == {"LDog;", "LCat;"}
+    assert t["edge"].callee.id == sound
+    assert "helloDex" in [r.name for r in t["referrers"]]
+    assert set(t["hierarchy"].all_descendants("LAnimal;")) == {"LPet;", "LDog;", "LCat;"}
+    assert "com.example.dexpp.MainActivity" in [c.name for c in t["components"]]
+    assert t["intent_filters"][0].is_launcher
+    assert t["manifest"].package == "com.example.dexpp"
+    app_name = t["resources"].id_of("string", "app_name")
+    assert app_name is not None and t["resources"].resolve_string(app_name) == "Dexpp Sample"
+    assert t["certificates"][0].subject == "C=MA, O=DexppOrg, CN=Dexpp Test"
 
 
 def test_handles_are_equal_when_they_point_at_the_same_thing():

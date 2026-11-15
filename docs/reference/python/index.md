@@ -50,7 +50,11 @@ type checker see.
   file loaded twice gives two analyses, and their objects are not equal.
   Identities (`MethodId`, `FieldId`) and the small value classes (`TypeValue`,
   `ResourceName` and the like) are equal when their content is equal.
-- **Lifetime.** Every object keeps the analysis it came from alive. You never
-  have to keep the `AnalysisContext` or `Apk` around yourself.
+- **Lifetime.** You never have to keep the `AnalysisContext` or `Apk` around
+  yourself. Handles, views, the call graph, the class hierarchy, the
+  cross-reference index, a `Cfg`, and an APK's `Manifest`, `ResourceTable` and
+  `SigningInfo` keep the analysis or APK they came from alive. Small value
+  objects, such as `StringLoad`, `CfgEdge`,
+  `BasicBlock` or `MethodId`, hold their own copy of their data instead.
 
 The version of the installed package is `dexpp.__version__`.

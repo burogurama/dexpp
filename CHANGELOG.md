@@ -437,6 +437,19 @@ aliases.
   `ctx.FindClass(d).Name()`, the garbage collector could free the handle while
   C was still using it. Every method now keeps its handle alive until it
   returns.
+- Python: some small value objects could read freed memory. These strings
+  pointed into the analysis's memory: `StringLoad.value`, `TypeUse.descriptor`,
+  `CatchHandler.type_descriptor` (in `TryBlock.handlers`),
+  `ParameterRegister.type`, and `CfgEdge.catch_type` (in
+  `BasicBlock.successors`). But these objects do not keep the analysis alive.
+  So once the last `AnalysisContext` and every handle from it were gone,
+  reading one of these strings gave garbage, raised `UnicodeDecodeError`, or
+  crashed. It happened to the results of `string_loads()`, `type_uses()`,
+  `try_blocks` and `parameter_registers`, and to every `BasicBlock` from
+  `Cfg.blocks`, `Cfg.entry` and `Cfg.block_at_offset()`. These objects now
+  hold their own copy of each string, made when the object is created, so
+  they stay valid on their own. The Python API does not change. C, Go and
+  Java were not affected: they always copied the strings.
 - `Model.read` in Python read the wrong memory when it got a buffer whose bytes
   are not next to each other, such as a reversed or strided `memoryview`: it
   read forward from the buffer's start and could go past its end. It now reads
