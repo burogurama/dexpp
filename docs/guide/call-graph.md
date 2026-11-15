@@ -60,11 +60,17 @@ one and collects the methods a call could land in.
   call declared against `node` may run.
 - `node.dispatch_sources` is the reverse: the declared methods through which a
   call can reach `node`.
-- `node.callees` is the simple answer to "what can this method call": the
+- `node.callees()` is the simple answer to "what can this method call": the
   callee of each outgoing edge plus the dispatch targets of each virtual or
   interface call.
-- `node.callers` is the simple answer to "who can call this method", with
+- `node.callers()` is the simple answer to "who can call this method", with
   dispatch included.
+
+`dispatch_targets` and `dispatch_sources` are properties, because the graph
+stores them. `callees()` and `callers()` are methods, because each call
+collects the nodes again, removes the duplicates and sorts them. For a method
+that is called from many places, `callers()` goes through every one of those
+call sites. Keep the result when you need it more than once.
 
 ```python
 --8<-- "call_graph.py:callers"
@@ -149,11 +155,11 @@ works on `graph.edges` and on a node's `out_edges` and `in_edges`.
 
 ## Views
 
-`graph.nodes`, `graph.edges`, and the node lists such as `callers` are
-read-only sequences that do not copy the graph. Indexing, slicing, `len()` and
-iteration work as on a list. Nodes and edges compare equal when they are the
-same node or edge of the same graph, and they can be put in sets and used as
-dictionary keys.
+`graph.nodes`, `graph.edges`, and the node lists such as `dispatch_targets`
+and the result of `callers()` are read-only sequences that do not copy the
+graph. Indexing, slicing, `len()` and iteration work as on a list. Nodes and
+edges compare equal when they are the same node or edge of the same graph, and
+they can be put in sets and used as dictionary keys.
 
 ## What the graph does not model
 

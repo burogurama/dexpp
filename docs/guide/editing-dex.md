@@ -24,6 +24,10 @@ The model is separate from the analysis API. A `Model` is not an
 - `Model(version)` makes an empty model.
 - `len(model)` and `model.class_count` are the number of classes.
   `descriptor in model` tests for a class.
+- `class_descriptors()` returns the descriptor of every class, in model
+  order. Each call copies them into a new list. Because it is a copy, you can
+  loop over it while you move or remove classes, as the merge example below
+  does.
 - `class_info(descriptor)` returns a small summary, or `None`.
 
 Pass `debug_info=False` to `read` or `read_file` to leave out line numbers and

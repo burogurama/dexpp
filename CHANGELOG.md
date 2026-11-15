@@ -62,12 +62,20 @@
   `MethodHandleRef` and `ResourceName` could be compared but not hashed, so
   they could not be dictionary keys or set members. They now have a hash that
   matches their equality.
-- Breaking: four properties that do a lot of work on every read are now
-  methods, so they need `()`: `AnalysisContext.strings()` (copies every string
-  of every DEX file), `Xrefs.referenced_strings()`, `Model.required_version()`
-  (runs the whole validator) and `Model.pool_stats()` (walks the whole model).
-  The rule, written in the Python reference, is that a property is cheap or
-  cached and a method computes.
+- Breaking: nine properties that do a lot of work on every read are now
+  methods, so they need `()`: `AnalysisContext.classes()` (makes a new `Class`
+  object for every class of every DEX file), `AnalysisContext.strings()`
+  (copies every string of every DEX file), `Xrefs.referenced_strings()`,
+  `CallNode.callers()` and `CallNode.callees()` (collect, deduplicate and sort
+  the nodes again; for a method called from many places, `callers()` goes
+  through every one of those call sites; both still return a `CallNodeView`),
+  `Apk.entries()` (reads the whole ZIP central directory again),
+  `Model.class_descriptors()` (copies every descriptor),
+  `Model.required_version()` (runs the whole validator) and
+  `Model.pool_stats()` (walks the whole model). The rule, written in the
+  Python reference, is that a property is cheap or cached and a method
+  computes. Code that still reads one of them without `()` gets the bound
+  method instead of the result.
 - `Method.instructions` is now a `dexpp.InstructionView`, a read-only
   sequence over the decoded bytecode, like `Cfg.blocks`. It copies nothing up
   front; before, every read of the property built a new list of every

@@ -8,7 +8,7 @@ import dexpp
 # --8<-- [start:read]
 model: dexpp.Model = dexpp.Model.read_file("tests/data/shapes.dex")
 print("DEX version", model.version, "with", len(model), "classes")
-print(model.class_descriptors)
+print(model.class_descriptors())
 
 info: dexpp.ClassInfo | None = model.class_info("LCircle;")
 assert info is not None
@@ -18,7 +18,7 @@ print(model.class_interfaces("LAbstractShape;"))
 
 # --8<-- [start:split]
 out_dir: str = tempfile.mkdtemp()
-for index, descriptor in enumerate(model.class_descriptors):
+for index, descriptor in enumerate(model.class_descriptors()):
     one: dexpp.Model = dexpp.Model(model.version)
     one.copy_class(model, descriptor)
     one.write_file(os.path.join(out_dir, f"class{index}.dex"))
@@ -31,7 +31,7 @@ print(file_names)
 merged: dexpp.Model = dexpp.Model(model.version)
 for file_name in file_names:
     part: dexpp.Model = dexpp.Model.read_file(os.path.join(out_dir, file_name))
-    for descriptor in part.class_descriptors:
+    for descriptor in part.class_descriptors():
         merged.move_class(part, descriptor)
 
 print(len(merged), "classes")
@@ -41,7 +41,7 @@ print("same bytes as the original model:", merged.write() == model.write())
 # --8<-- [start:rename]
 renames: dict[str, str] = {"LCircle;": "Lcom/example/Round;"}
 model.rename_types(renames)
-print(model.class_descriptors)
+print(model.class_descriptors())
 # --8<-- [end:rename]
 
 # --8<-- [start:validate]

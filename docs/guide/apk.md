@@ -152,6 +152,11 @@ appears in several schemes is listed once.
 --8<-- "output/apk_metadata.entries.txt"
 ```
 
+`apk.entries()` returns the name of every entry, in the order of the
+archive's table of contents (the ZIP central directory). Each call reads the
+whole table of contents again, and a large app can have thousands of entries,
+so keep the list when you need it more than once.
+
 `apk.read(name)` returns the uncompressed bytes of one entry, or `None` when
 the archive has no entry with that name.
 

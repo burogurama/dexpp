@@ -28,8 +28,11 @@ def test_version():
 
 def test_load_and_classes():
     ctx = dexpp.AnalysisContext.from_dex("tests/data/classes.dex")
-    names = [c.name for c in ctx.classes]
+    names = [c.name for c in ctx.classes()]
     assert "LTestDex;" in names
+    # A method makes a new list, of equal classes, on each call.
+    classes = ctx.classes()
+    assert ctx.classes() == classes and ctx.classes() is not classes
 
     cls = ctx.find_class("LTestDex;")
     assert cls is not None
@@ -72,7 +75,7 @@ def test_from_apk():
 def test_from_apk_threads():
     # multidex.apk has four deflated DEX entries, enough for the parallel path.
     def names(ctx):
-        return [c.name for c in ctx.classes]
+        return [c.name for c in ctx.classes()]
 
     serial = dexpp.AnalysisContext.from_apk("tests/data/multidex.apk", threads=1)
     parallel = dexpp.AnalysisContext.from_apk("tests/data/multidex.apk", threads=4)
@@ -202,8 +205,11 @@ def test_call_graph():
     # The reverse direction and the neighbour helpers include dispatch.
     dog = g.find(dexpp.MethodId("LDog;", "sound", "()Ljava/lang/String;"))
     assert {s.id.class_descriptor for s in dog.dispatch_sources} == {"LAnimal;", "LPet;"}
-    assert {c.id.name for c in dog.callers} == {"noise", "dogNoise", "describe"}
-    assert {c.id.class_descriptor for c in noise.callees} == {"LAnimal;", "LDog;", "LCat;"}
+    assert {c.id.name for c in dog.callers()} == {"noise", "dogNoise", "describe"}
+    assert {c.id.class_descriptor for c in noise.callees()} == {"LAnimal;", "LDog;", "LCat;"}
+    # Each call computes a new view with the same nodes.
+    assert list(dog.callers()) == list(dog.callers())
+    assert list(noise.callees()) == list(noise.callees())
 
     m = g.method_for(node)
     assert m is not None and m.name == "sound" and not m.has_code
@@ -266,7 +272,7 @@ def test_call_graph_views_and_handles():
     ]
 
     # Node subsets — dispatch lists, callers, callees — are sequence views too.
-    for subset in (node.dispatch_targets, node.dispatch_sources, node.callers, node.callees):
+    for subset in (node.dispatch_targets, node.dispatch_sources, node.callers(), node.callees()):
         assert isinstance(subset, dexpp.CallNodeView)
         assert isinstance(subset, collections.abc.Sequence)
         indices = [n.index for n in subset]
@@ -285,7 +291,7 @@ def test_call_graph_views_and_handles():
     ).dispatch_targets
     callers = dexpp.AnalysisContext.from_dex("tests/data/polymorphic.dex").call_graph.find(
         sound
-    ).callers
+    ).callers()
     gc.collect()
     assert {t.id.class_descriptor for t in targets} == {"LDog;", "LCat;"}
     assert {c.id.name for c in callers} == {"noise", "describe"}
@@ -458,7 +464,7 @@ def test_initial_values():
 
 def test_apk_and_manifest():
     apk = dexpp.Apk.open("tests/data/sample.apk")
-    assert "classes.dex" in apk.entries
+    assert "classes.dex" in apk.entries()
     assert apk.read("classes.dex") is not None
     assert apk.read("nope") is None
 
@@ -595,8 +601,8 @@ def test_handles_are_equal_when_they_point_at_the_same_thing():
     assert circle == ctx.find_class("LCircle;")
     assert hash(circle) == hash(ctx.find_class("LCircle;"))
     assert circle != rectangle
-    assert circle in ctx.classes
-    assert len(set(ctx.classes) | set(ctx.classes)) == len(ctx.classes)
+    assert circle in ctx.classes()
+    assert len(set(ctx.classes()) | set(ctx.classes())) == len(ctx.classes())
 
     methods = circle.methods
     assert methods[0] == circle.methods[0] and methods[0] != methods[1]
@@ -666,7 +672,7 @@ def test_every_class_with_equality_is_hashable():
 def test_model_read_and_classes():
     m = dexpp.Model.read_file("tests/data/shapes.dex")
     assert m.class_count == len(m) > 0
-    assert m.class_descriptors == [
+    assert m.class_descriptors() == [
         "LShape;",
         "LAbstractShape;",
         "LCircle;",
@@ -705,13 +711,13 @@ def test_model_write_round_trip():
 
 def test_model_split_one_per_class():
     src = dexpp.Model.read_file("tests/data/shapes.dex")
-    descriptors = src.class_descriptors
+    descriptors = src.class_descriptors()
     work = src.clone()
     for d in descriptors:
         one = dexpp.Model(src.version)
         one.move_class(work, d)
         part = dexpp.Model.read(one.write())
-        assert part.class_descriptors == [d]
+        assert part.class_descriptors() == [d]
     assert work.class_count == 0
     # The clone was drained; the original is untouched.
     assert src.class_count == len(descriptors)
@@ -930,8 +936,8 @@ def test_pool_overflow_error():
     merged = dexpp.Model(source.version)
     for copy in range(9400):
         part = source.clone()
-        part.rename_types({d: f"Lcopy{copy}/{d[1:]}" for d in part.class_descriptors})
-        for descriptor in part.class_descriptors:
+        part.rename_types({d: f"Lcopy{copy}/{d[1:]}" for d in part.class_descriptors()})
+        for descriptor in part.class_descriptors():
             merged.move_class(part, descriptor)
     assert merged.pool_stats().fields > 65536
 
@@ -1090,6 +1096,23 @@ def _property_problems(class_name, function_node, runtime_class):
         return []
     kinds = {True: "a property", False: "a method"}
     return [f"{class_name}.{member} is {kinds[in_module]} in the module, {kinds[in_stub]} in the stub"]
+
+
+def test_work_done_again_on_every_read_is_a_method():
+    # The rule of the reference: a property is cheap or cached, a method
+    # computes.  Each of these does work in proportion to the whole program,
+    # the whole archive or many call sites every time, so it must stay a method.
+    computed = {
+        dexpp.AnalysisContext: ["classes", "strings"],
+        dexpp.Xrefs: ["referenced_strings"],
+        dexpp.CallNode: ["callers", "callees"],
+        dexpp.Apk: ["entries"],
+        dexpp.Model: ["class_descriptors", "required_version", "pool_stats"],
+    }
+    for runtime_class, members in computed.items():
+        for member in members:
+            attribute = inspect.getattr_static(runtime_class, member)
+            assert callable(attribute) and not isinstance(attribute, property), member
 
 
 def test_stub_matches_module_and_is_documented():

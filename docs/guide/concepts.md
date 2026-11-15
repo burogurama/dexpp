@@ -100,7 +100,8 @@ Every later read returns the cached object.
 
 Everything in this table is a property: it is cheap, or built once and kept.
 Work that is done again on every call is a method instead, such as
-`ctx.strings()`, which copies every string of every DEX file into a new list.
+`ctx.strings()`, which copies every string of every DEX file into a new list,
+and `ctx.classes()`, which makes a new `Class` object for every class.
 
 ## Resolved and external
 

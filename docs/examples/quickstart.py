@@ -18,6 +18,7 @@ for certificate in signing.certificates:
 
 # The code: every classes*.dex of the APK in one analysis context.
 ctx: dexpp.AnalysisContext = apk.analysis()
-for cls in ctx.classes:
+classes: list[dexpp.Class] = ctx.classes()
+for cls in classes:
     method_names: list[str] = [method.name for method in cls.methods]
     print(cls.name, method_names)

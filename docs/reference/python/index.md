@@ -36,8 +36,9 @@ type checker see.
 - **Properties and methods.** A property is cheap or cached: reading it does
   little work, or returns something that was built once and kept, such as
   `cls.methods` or `ctx.call_graph`. A method computes: it does its work again
-  on every call, such as `ctx.strings()`, which copies the whole string table,
-  or `model.pool_stats()`, which walks the whole model. Keep the result of a
+  on every call, such as `ctx.classes()`, which makes a new object for every
+  class, `ctx.strings()`, which copies the whole string table, or
+  `model.pool_stats()`, which walks the whole model. Keep the result of a
   method when you need it more than once.
 - **Views.** `CallGraph.nodes`, `CallGraph.edges`, `Xrefs.referrers` and
   `Cfg.blocks` and `Method.instructions` are read-only sequences that do not copy the data. They support

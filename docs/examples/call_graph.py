@@ -30,7 +30,7 @@ sound: dexpp.CallNode | None = graph.find(sound_id)
 assert sound is not None
 
 targets: dexpp.CallNodeView = sound.dispatch_targets
-callees: dexpp.CallNodeView = noise.callees
+callees: dexpp.CallNodeView = noise.callees()
 print(sorted(label(target) for target in targets))
 print(sorted(label(callee) for callee in callees))
 # --8<-- [end:dispatch]
@@ -40,7 +40,7 @@ dog_sound_id: dexpp.MethodId = dexpp.MethodId("LDog;", "sound", "()Ljava/lang/St
 dog_sound: dexpp.CallNode | None = graph.find(dog_sound_id)
 assert dog_sound is not None
 
-callers: dexpp.CallNodeView = dog_sound.callers
+callers: dexpp.CallNodeView = dog_sound.callers()
 print(sorted(label(caller) for caller in callers))
 # --8<-- [end:callers]
 

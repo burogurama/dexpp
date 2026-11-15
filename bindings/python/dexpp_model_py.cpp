@@ -238,7 +238,7 @@ void register_model(py::module_ &m)
         .def_property_readonly(
             "class_count", [](const Dex &dex) { return dex.classes.size(); },
             "The number of classes in the model.")
-        .def_property_readonly(
+        .def(
             "class_descriptors",
             [](const Dex &dex) {
                 std::vector<std::string> out;
@@ -247,7 +247,7 @@ void register_model(py::module_ &m)
                     out.push_back(cls.type);
                 return out;
             },
-            "Every class's descriptor, in model order.")
+            "Every class's descriptor, in model order.  Each call copies them into a new list.")
         .def(
             "has_class",
             [](const Dex &dex, std::string_view descriptor) {
