@@ -1,5 +1,7 @@
 #include "class_hierarchy.hpp"
 
+#include "class_hierarchy_builder.hpp"
+
 #include <queue>
 #include <unordered_set>
 #include <utility>
@@ -171,7 +173,22 @@ bool ClassHierarchy::is_interface(std::string_view descriptor) const
     return n && n->is_iface;
 }
 
-ClassHierarchy build_class_hierarchy(const detail::AnalysisContextImpl &impl)
+namespace detail {
+
+/** Lets build_class_hierarchy() fill ClassHierarchy's private members. */
+struct ClassHierarchyAccess
+{
+    static ClassHierarchy build(const AnalysisContextImpl &impl);
+};
+
+ClassHierarchy build_class_hierarchy(const AnalysisContextImpl &impl)
+{
+    return ClassHierarchyAccess::build(impl);
+}
+
+} // namespace detail
+
+ClassHierarchy detail::ClassHierarchyAccess::build(const AnalysisContextImpl &impl)
 {
     // build_call_graph() reads the class_defs by these same rules into its own
     // integer hierarchy; keep the two in sync.

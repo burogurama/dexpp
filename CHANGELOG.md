@@ -575,6 +575,10 @@ aliases.
   the internal parser layer, so it was the one public function that tied users
   to that layer. `Method::cfg()` is the way to get a control-flow graph. The
   public headers no longer include any `raw/` header.
+- `dex::build_call_graph`, `dex::build_xrefs` and `dex::build_class_hierarchy`
+  are no longer public. They took the library's private implementation type,
+  so no user could call them. `AnalysisContext::call_graph()`, `xrefs()` and
+  `class_hierarchy()` are the way to get these, as before.
 - In the parser layer, `raw::ParseError::Code::NullPointer`, which
   `raw::parser::parse_file` used for a file it could not open, is replaced by
   `FileNotFound` and `CannotRead`.

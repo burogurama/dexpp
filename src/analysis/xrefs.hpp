@@ -18,6 +18,7 @@ namespace dex {
 class Method;
 namespace detail {
 struct AnalysisContextImpl;
+struct XrefsAccess;
 } // namespace detail
 
 /** What a type-referencing instruction does with its type operand. */
@@ -148,7 +149,7 @@ class Xrefs
     }
 
   private:
-    friend Xrefs build_xrefs(std::shared_ptr<const detail::AnalysisContextImpl>);
+    friend struct detail::XrefsAccess; // the builder, in xrefs.cpp
 
     /** Heterogeneous hasher/equal so queries take string_view without an
      *  intermediate std::string copy. */
@@ -193,9 +194,5 @@ class Xrefs
     std::unordered_map<std::string, std::vector<TypeXref>, SvHash, SvEq> type_map_;
     std::weak_ptr<const detail::AnalysisContextImpl> impl_;
 };
-
-/** Build the whole-program cross-reference index from an analysis-context
- *  implementation.  Used internally by AnalysisContext::xrefs()'s lazy cache. */
-Xrefs build_xrefs(std::shared_ptr<const detail::AnalysisContextImpl> impl);
 
 } // namespace dex

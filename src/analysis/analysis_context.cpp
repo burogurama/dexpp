@@ -18,11 +18,14 @@
 #endif
 
 #include "analysis_context_impl.hpp"
+#include "call_graph_builder.hpp"
 #include "cfg_builder.hpp"
+#include "class_hierarchy_builder.hpp"
 #include "joining_threads.hpp"
 #include "raw/file_io.hpp"
 #include "raw/parser.hpp"
 #include "raw/zip.hpp"
+#include "xrefs_builder.hpp"
 
 namespace dex {
 

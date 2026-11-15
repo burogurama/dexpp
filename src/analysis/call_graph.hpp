@@ -16,6 +16,7 @@ namespace dex {
 class Method;
 namespace detail {
 struct AnalysisContextImpl;
+struct CallGraphAccess;
 } // namespace detail
 
 /** Kind of invoke instruction at a call site, derived from the opcode. */
@@ -206,7 +207,7 @@ class CallGraph
     bool empty() const { return nodes_.empty(); }
 
   private:
-    friend CallGraph build_call_graph(std::shared_ptr<const detail::AnalysisContextImpl>);
+    friend struct detail::CallGraphAccess; // the builder, in call_graph.cpp
 
     /** Back-reference to the defined method behind a Defined node, used by
      *  method_for() to construct a Method handle on demand. */
@@ -235,9 +236,5 @@ class CallGraph
     std::vector<std::size_t> dispatch_source_offsets_;
     std::vector<uint32_t> dispatch_source_values_;
 };
-
-/** Build the whole-program call graph from an analysis-context implementation.
- *  Used internally by AnalysisContext::call_graph()'s lazy cache. */
-CallGraph build_call_graph(std::shared_ptr<const detail::AnalysisContextImpl> impl);
 
 } // namespace dex

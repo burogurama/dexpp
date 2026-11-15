@@ -13,8 +13,9 @@ GENERATE_HTML          = YES
 GENERATE_LATEX         = NO
 
 # The public API: what src/dex.hpp includes, and the C headers.  Private
-# headers (analysis_context_impl.hpp, invoke_sites.hpp, model/rules.hpp,
-# apk/string_pool.hpp) and the raw parser layer are left out on purpose.
+# headers (analysis_context_impl.hpp, the analysis/*_builder.hpp headers,
+# invoke_sites.hpp, model/rules.hpp, apk/string_pool.hpp) and the raw parser
+# layer are left out on purpose.
 INPUT                  = docs/cpp-mainpage.md \
                          src/dex.hpp \
                          src/version.hpp \

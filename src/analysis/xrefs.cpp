@@ -1,5 +1,7 @@
 #include "xrefs.hpp"
 
+#include "xrefs_builder.hpp"
+
 #include <type_traits>
 #include <variant>
 
@@ -115,7 +117,22 @@ std::span<const TypeXref> Xrefs::type_refs(std::string_view descriptor) const
     return it->second;
 }
 
-Xrefs build_xrefs(std::shared_ptr<const detail::AnalysisContextImpl> impl)
+namespace detail {
+
+/** Lets build_xrefs() fill the index's private members. */
+struct XrefsAccess
+{
+    static Xrefs build(std::shared_ptr<const AnalysisContextImpl> impl);
+};
+
+Xrefs build_xrefs(std::shared_ptr<const AnalysisContextImpl> impl)
+{
+    return XrefsAccess::build(std::move(impl));
+}
+
+} // namespace detail
+
+Xrefs detail::XrefsAccess::build(std::shared_ptr<const AnalysisContextImpl> impl)
 {
     Xrefs x;
     x.impl_ = impl;

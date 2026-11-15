@@ -11,7 +11,7 @@
 namespace dex {
 
 namespace detail {
-struct AnalysisContextImpl;
+struct ClassHierarchyAccess;
 } // namespace detail
 
 /** Whole-program inheritance and interface-implementation graph.
@@ -87,7 +87,7 @@ class ClassHierarchy
     bool empty() const { return nodes_.empty(); }
 
   private:
-    friend ClassHierarchy build_class_hierarchy(const detail::AnalysisContextImpl &);
+    friend struct detail::ClassHierarchyAccess; // the builder, in class_hierarchy.cpp
 
     struct Node
     {
@@ -123,9 +123,5 @@ class ClassHierarchy
 
     std::unordered_map<std::string, Node, SvHash, SvEq> nodes_;
 };
-
-/** Build the whole-program class hierarchy from an analysis-context impl.
- *  Used internally by AnalysisContext::class_hierarchy()'s lazy cache. */
-ClassHierarchy build_class_hierarchy(const detail::AnalysisContextImpl &impl);
 
 } // namespace dex

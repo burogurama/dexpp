@@ -1,5 +1,7 @@
 #include "call_graph.hpp"
 
+#include "call_graph_builder.hpp"
+
 #include <algorithm>
 #include <atomic>
 #include <deque>
@@ -333,7 +335,22 @@ std::vector<uint32_t> CallGraph::callers(uint32_t node) const
     return out;
 }
 
-CallGraph build_call_graph(std::shared_ptr<const detail::AnalysisContextImpl> impl)
+namespace detail {
+
+/** Lets build_call_graph() fill CallGraph's private members. */
+struct CallGraphAccess
+{
+    static CallGraph build(std::shared_ptr<const AnalysisContextImpl> impl);
+};
+
+CallGraph build_call_graph(std::shared_ptr<const AnalysisContextImpl> impl)
+{
+    return CallGraphAccess::build(std::move(impl));
+}
+
+} // namespace detail
+
+CallGraph detail::CallGraphAccess::build(std::shared_ptr<const AnalysisContextImpl> impl)
 {
     CallGraph g;
     g.impl_ = impl;
