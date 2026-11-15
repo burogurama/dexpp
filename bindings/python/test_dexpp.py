@@ -9,10 +9,12 @@ Also runnable under pytest with the same PYTHONPATH.
 
 import ast
 import enum
+import inspect
 import os
 import pickle
 import re
 import tempfile
+import types
 
 import dexpp
 
@@ -1038,6 +1040,204 @@ def test_stub_matches_module_and_is_documented():
         problems.append(f"the stub has no {name}")
 
     assert problems == [], "\n".join(problems)
+
+
+# ===== keyword arguments =====
+#
+# Every function and method in the stub must accept its arguments under the
+# names the stub gives them: a call such as ctx.find_class(descriptor=...)
+# passes mypy, so it must work at runtime too.  The test compares, for each
+# function, the stub's parameters with the module's: the names in order, the
+# kind of each (positional or keyword-only) and whether it has a default.
+#
+# How the module's parameters are read:
+# - A function written in Python (the exception classes) has a real
+#   signature, read with inspect.signature.
+# - A pybind11 function has no __text_signature__, so inspect.signature fails
+#   on it.  pybind11 writes the signature as the first line of __doc__
+#   instead, for example
+#   "find_class(self: dexpp.AnalysisContext, descriptor: str) -> object".
+#   It builds that line from the same argument records it matches keyword
+#   arguments against when the function is called: a name given with
+#   py::arg is printed as that name, an argument without py::arg is printed
+#   as arg0, arg1, ... and cannot be passed by keyword, and py::kw_only() is
+#   printed as "*".  So the line shows exactly what a call accepts.  A
+#   function whose __doc__ does not start with one plain signature (an
+#   overloaded function, or a module built with signatures turned off) is
+#   reported as a problem, so the test cannot pass by reading nothing.
+#
+# Dunder methods other than __init__ are skipped: Python's syntax calls them
+# (len(x), x[i], a == b), never with keyword arguments.
+
+
+def _split_parameters(text):
+    """Split a parameter list at the commas outside brackets and quotes."""
+    parts, current, depth, quote, escaped = [], [], 0, None, False
+    for char in text:
+        if quote is not None:
+            if escaped is True:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == quote:
+                quote = None
+        elif char in "\"'":
+            quote = char
+        elif char in "([{":
+            depth += 1
+        elif char in ")]}":
+            depth -= 1
+        elif char == "," and depth == 0:
+            parts.append("".join(current).strip())
+            current = []
+            continue
+        current.append(char)
+    if "".join(current).strip() != "":
+        parts.append("".join(current).strip())
+    return parts
+
+
+def _pybind11_parameters(function):
+    """(name, kind, has_default) of each parameter, from the signature line of
+    a pybind11 function's __doc__; None when the doc has no plain signature."""
+    doc = function.__doc__ or ""
+    head = function.__name__ + "("
+    if doc.startswith(head) is False or "\nOverloaded function." in doc:
+        return None
+    depth, end = 0, None
+    for index in range(len(head) - 1, len(doc)):
+        if doc[index] == "(":
+            depth += 1
+        elif doc[index] == ")":
+            depth -= 1
+            if depth == 0:
+                end = index
+                break
+    parameters, kind = [], "positional"
+    for part in _split_parameters(doc[len(head) : end]):
+        if part == "*":
+            kind = "keyword"
+        elif part == "/":
+            parameters = [(name, "positional-only", default) for name, _, default in parameters]
+        elif part.startswith("*"):
+            parameters.append((part.split(":")[0], "variadic", False))
+        else:
+            parameters.append((part.split(":")[0].strip(), kind, " = " in part))
+    return parameters
+
+
+_KINDS = {
+    inspect.Parameter.POSITIONAL_ONLY: "positional-only",
+    inspect.Parameter.POSITIONAL_OR_KEYWORD: "positional",
+    inspect.Parameter.KEYWORD_ONLY: "keyword",
+    inspect.Parameter.VAR_POSITIONAL: "variadic",
+    inspect.Parameter.VAR_KEYWORD: "variadic",
+}
+
+
+def _runtime_parameters(function):
+    """(name, kind, has_default) of each parameter of a module function."""
+    if isinstance(function, types.FunctionType):
+        return [
+            (p.name, _KINDS[p.kind], p.default is not inspect.Parameter.empty)
+            for p in inspect.signature(function).parameters.values()
+        ]
+    return _pybind11_parameters(function)
+
+
+def _stub_parameters(function_node):
+    """(name, kind, has_default) of each parameter of a stub function."""
+    arguments = function_node.args
+    positional = arguments.posonlyargs + arguments.args
+    first_default = len(positional) - len(arguments.defaults)
+    parameters = []
+    for index, argument in enumerate(positional):
+        kind = "positional-only" if index < len(arguments.posonlyargs) else "positional"
+        parameters.append((argument.arg, kind, index >= first_default))
+    if arguments.vararg is not None:
+        parameters.append(("*" + arguments.vararg.arg, "variadic", False))
+    for argument, default in zip(arguments.kwonlyargs, arguments.kw_defaults):
+        parameters.append((argument.arg, "keyword", default is not None))
+    if arguments.kwarg is not None:
+        parameters.append(("**" + arguments.kwarg.arg, "variadic", False))
+    return parameters
+
+
+def _decorators(function_node):
+    return {d.id for d in function_node.decorator_list if isinstance(d, ast.Name)}
+
+
+def _parameter_problems(label, function_node, runtime_function, is_method):
+    """What differs between the stub's and the module's parameters of one function."""
+    expected = _stub_parameters(function_node)
+    actual = _runtime_parameters(runtime_function)
+    if actual is None:
+        return [f"{label}: the module's signature cannot be read from its __doc__"]
+    if is_method is True:
+        # Both name the instance `self`; it is never passed by keyword.
+        expected, actual = expected[1:], actual[1:]
+    if actual != expected:
+        return [f"{label}: the module has {actual}, the stub says {expected}"]
+    return []
+
+
+def _keyword_problems(stub):
+    """Every stub function whose parameters the module does not accept by name."""
+    problems = []
+    for node in stub.body:
+        if isinstance(node, ast.FunctionDef):
+            problems.extend(_parameter_problems(node.name, node, vars(dexpp)[node.name], False))
+        if isinstance(node, ast.ClassDef) is False:
+            continue
+        runtime_class = vars(dexpp)[node.name]
+        for item in node.body:
+            if isinstance(item, ast.FunctionDef) is False:
+                continue
+            decorators = _decorators(item)
+            dunder = item.name.startswith("__") and item.name != "__init__"
+            if dunder is True or decorators & {"property", "overload"}:
+                continue
+            problems.extend(
+                _parameter_problems(
+                    f"{node.name}.{item.name}",
+                    item,
+                    getattr(runtime_class, item.name),
+                    "staticmethod" not in decorators,
+                )
+            )
+    return problems
+
+
+def test_stub_parameters_can_be_passed_by_keyword():
+    with open(STUB_PATH, encoding="utf-8") as f:
+        stub = ast.parse(f.read())
+    problems = _keyword_problems(stub)
+    assert problems == [], "\n".join(problems)
+
+
+def test_keyword_arguments_work():
+    # A few real calls by keyword, one of each kind of function the test
+    # above reads: a pybind11 method, a pybind11 static method, a keyword-only
+    # argument, and a class written in Python.
+    ctx = dexpp.AnalysisContext.from_apk(path="tests/data/app.apk", threads=1)
+    assert ctx.find_class(descriptor="LTestDex;").name == "LTestDex;"
+    sites = ctx.xrefs.string_refs(value="Hello Dex++!!")
+    assert len(sites) == 1
+    assert ctx.xrefs.referrer_id(referrer=sites[0].referrer).name == "helloDex"
+    assert ctx.class_hierarchy.is_subtype_of(sub="LTestDex;", super="Ljava/lang/Object;")
+    declared = ctx.call_graph.edges.where(origin=dexpp.EdgeOrigin.DECLARED)
+    assert len(declared) > 0
+
+    apk = dexpp.Apk.open(path="tests/data/sample.apk")
+    app_name = apk.resources.id_of(type="string", entry="app_name")
+    assert apk.resolve_string(reference_id=app_name) == "Dexpp Sample"
+    assert len(apk.manifest.components_of(kind=dexpp.ComponentKind.ACTIVITY)) == 1
+
+    with open("tests/data/shapes.dex", "rb") as f:
+        model = dexpp.Model.read(data=f.read(), debug_info=False)
+    assert model.has_class(descriptor="LCircle;")
+    error = dexpp.InvalidModelError(message="broken", problems=[])
+    assert str(error) == "broken" and error.problems == []
 
 
 def test_access_flags():

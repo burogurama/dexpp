@@ -45,6 +45,13 @@
   which gives the same number `int(kind)` gave. Passing anything other than a
   member of the right enum to `CallEdgeView.where` or `Manifest.components_of`
   raises `TypeError`.
+- Every function and method now takes its arguments by keyword, under the
+  names the type stubs give them. Before, 25 of them took positional arguments
+  only, so a call such as `ctx.find_class(descriptor="LFoo;")` or
+  `xrefs.string_refs(value="...")` passed the type checker and then failed with
+  `TypeError`. The type stubs now also say that `Model.read` takes any
+  bytes-like object (`bytes`, `bytearray`, `memoryview`), which it always
+  accepted.
 - `Method.instructions` is now a `dexpp.InstructionView`, a read-only
   sequence over the decoded bytecode, like `Cfg.blocks`. It copies nothing up
   front; before, every read of the property built a new list of every

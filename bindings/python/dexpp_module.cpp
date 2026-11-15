@@ -143,18 +143,22 @@ py::class_<View> bind_view(py::module_ &m, const char *name, const char *doc)
 {
     py::class_<View> cls(m, name, doc);
     cls.def("__len__", &View::size)
-        .def("__getitem__",
-             [](const View &v, py::ssize_t i) { return v.at(checked_index(i, v.size())); })
-        .def("__getitem__",
-             [](const View &v, const py::slice &s) {
-                 std::size_t start = 0, stop = 0, step = 0, length = 0;
-                 if (!s.compute(v.size(), &start, &stop, &step, &length))
-                     throw py::error_already_set();
-                 py::list out;
-                 for (std::size_t k = 0; k < length; ++k, start += step)
-                     out.append(v.at(start));
-                 return out;
-             })
+        .def(
+            "__getitem__",
+            [](const View &v, py::ssize_t i) { return v.at(checked_index(i, v.size())); },
+            py::arg("index"))
+        .def(
+            "__getitem__",
+            [](const View &v, const py::slice &s) {
+                std::size_t start = 0, stop = 0, step = 0, length = 0;
+                if (!s.compute(v.size(), &start, &stop, &step, &length))
+                    throw py::error_already_set();
+                py::list out;
+                for (std::size_t k = 0; k < length; ++k, start += step)
+                    out.append(v.at(start));
+                return out;
+            },
+            py::arg("index"))
         .def(
             "__iter__",
             [](const View &v) {
@@ -562,13 +566,15 @@ PYBIND11_MODULE(dexpp, m)
                                        return py::none();
                                    return py::cast(c.entry());
                                })
-        .def("block_at_offset",
-             [](const Cfg &c, uint32_t offset) -> py::object {
-                 const BasicBlock *b = c.block_at_offset(offset);
-                 if (!b)
-                     return py::none();
-                 return py::cast(*b);
-             })
+        .def(
+            "block_at_offset",
+            [](const Cfg &c, uint32_t offset) -> py::object {
+                const BasicBlock *b = c.block_at_offset(offset);
+                if (!b)
+                    return py::none();
+                return py::cast(*b);
+            },
+            py::arg("offset"))
         .def_property_readonly("empty", &Cfg::empty)
         .def("__len__", [](const Cfg &c) { return c.blocks().size(); });
 
@@ -821,57 +827,71 @@ PYBIND11_MODULE(dexpp, m)
         .def_property_readonly(
             "edges",
             [](py::object self) { return CallEdgeView{self, &self.cast<const CallGraph &>()}; })
-        .def("find",
-             [](py::object self, const MethodId &id) -> py::object {
-                 const auto &g = self.cast<const CallGraph &>();
-                 const CallNode *n = g.find(id);
-                 if (!n)
-                     return py::none();
-                 return py::cast(NodeRef{self, &g, n->index});
-             })
-        .def("method_for",
-             [](const CallGraph &g, const NodeRef &node) -> py::object {
-                 // A node from another context's graph is looked up by id.
-                 if (node.graph == &g)
-                     return method_or_none(g.method_for(node.get()));
-                 const CallNode *own = g.find(node.get().id);
-                 if (!own)
-                     return py::none();
-                 return method_or_none(g.method_for(*own));
-             })
+        .def(
+            "find",
+            [](py::object self, const MethodId &id) -> py::object {
+                const auto &g = self.cast<const CallGraph &>();
+                const CallNode *n = g.find(id);
+                if (!n)
+                    return py::none();
+                return py::cast(NodeRef{self, &g, n->index});
+            },
+            py::arg("id"))
+        .def(
+            "method_for",
+            [](const CallGraph &g, const NodeRef &node) -> py::object {
+                // A node from another context's graph is looked up by id.
+                if (node.graph == &g)
+                    return method_or_none(g.method_for(node.get()));
+                const CallNode *own = g.find(node.get().id);
+                if (!own)
+                    return py::none();
+                return method_or_none(g.method_for(*own));
+            },
+            py::arg("node"))
         .def_property_readonly("empty", &CallGraph::empty);
 
     // ===== class hierarchy =====
 
     py::class_<ClassHierarchy>(m, "ClassHierarchy")
-        .def("supertypes",
-             [](const ClassHierarchy &h, std::string_view d) {
-                 auto v = h.supertypes(d);
-                 return std::vector<std::string>(v.begin(), v.end());
-             })
-        .def("subclasses",
-             [](const ClassHierarchy &h, std::string_view d) {
-                 auto v = h.subclasses(d);
-                 return std::vector<std::string>(v.begin(), v.end());
-             })
-        .def("implementers",
-             [](const ClassHierarchy &h, std::string_view d) {
-                 auto v = h.implementers(d);
-                 return std::vector<std::string>(v.begin(), v.end());
-             })
-        .def("all_supertypes",
-             [](const ClassHierarchy &h, std::string_view d) {
-                 auto v = h.all_supertypes(d);
-                 return std::vector<std::string>(v.begin(), v.end());
-             })
-        .def("all_descendants",
-             [](const ClassHierarchy &h, std::string_view d) {
-                 auto v = h.all_descendants(d);
-                 return std::vector<std::string>(v.begin(), v.end());
-             })
+        .def(
+            "supertypes",
+            [](const ClassHierarchy &h, std::string_view d) {
+                auto v = h.supertypes(d);
+                return std::vector<std::string>(v.begin(), v.end());
+            },
+            py::arg("descriptor"))
+        .def(
+            "subclasses",
+            [](const ClassHierarchy &h, std::string_view d) {
+                auto v = h.subclasses(d);
+                return std::vector<std::string>(v.begin(), v.end());
+            },
+            py::arg("descriptor"))
+        .def(
+            "implementers",
+            [](const ClassHierarchy &h, std::string_view d) {
+                auto v = h.implementers(d);
+                return std::vector<std::string>(v.begin(), v.end());
+            },
+            py::arg("descriptor"))
+        .def(
+            "all_supertypes",
+            [](const ClassHierarchy &h, std::string_view d) {
+                auto v = h.all_supertypes(d);
+                return std::vector<std::string>(v.begin(), v.end());
+            },
+            py::arg("descriptor"))
+        .def(
+            "all_descendants",
+            [](const ClassHierarchy &h, std::string_view d) {
+                auto v = h.all_descendants(d);
+                return std::vector<std::string>(v.begin(), v.end());
+            },
+            py::arg("descriptor"))
         .def("is_subtype_of", &ClassHierarchy::is_subtype_of, py::arg("sub"), py::arg("super"))
-        .def("is_loaded", &ClassHierarchy::is_loaded)
-        .def("is_interface", &ClassHierarchy::is_interface)
+        .def("is_loaded", &ClassHierarchy::is_loaded, py::arg("descriptor"))
+        .def("is_interface", &ClassHierarchy::is_interface, py::arg("descriptor"))
         .def_property_readonly("empty", &ClassHierarchy::empty);
 
     // ===== xrefs =====
@@ -904,50 +924,64 @@ PYBIND11_MODULE(dexpp, m)
         .def_property_readonly(
             "referrers",
             [](py::object self) { return ReferrerView{self, &self.cast<const Xrefs &>()}; })
-        .def("referrer_id",
-             [](const Xrefs &x, uint32_t referrer) -> MethodId {
-                 if (referrer >= x.referrers().size())
-                     throw py::index_error("referrer index out of range");
-                 return x.referrer_id(referrer);
-             })
-        .def("referrer_method",
-             [](const Xrefs &x, uint32_t referrer) -> py::object {
-                 return method_or_none(x.referrer_method(referrer));
-             })
-        .def("method_refs",
-             [](const Xrefs &x, const MethodId &id) {
-                 auto v = x.method_refs(id);
-                 return std::vector<MethodXref>(v.begin(), v.end());
-             })
-        .def("method_refs_by_name",
-             [](const Xrefs &x, std::string_view name) {
-                 std::vector<std::pair<MethodId, std::vector<MethodXref>>> out;
-                 for (const auto &[id, sites] : x.method_refs_by_name(name))
-                     out.emplace_back(*id, std::vector<MethodXref>(sites.begin(), sites.end()));
-                 return out;
-             })
-        .def("field_refs",
-             [](const Xrefs &x, const FieldId &id) {
-                 auto v = x.field_refs(id);
-                 return std::vector<FieldXref>(v.begin(), v.end());
-             })
-        .def("field_reads", &Xrefs::field_reads)
-        .def("field_writes", &Xrefs::field_writes)
-        .def("string_refs",
-             [](const Xrefs &x, std::string_view value) {
-                 auto v = x.string_refs(value);
-                 return std::vector<StringXref>(v.begin(), v.end());
-             })
+        .def(
+            "referrer_id",
+            [](const Xrefs &x, uint32_t referrer) -> MethodId {
+                if (referrer >= x.referrers().size())
+                    throw py::index_error("referrer index out of range");
+                return x.referrer_id(referrer);
+            },
+            py::arg("referrer"))
+        .def(
+            "referrer_method",
+            [](const Xrefs &x, uint32_t referrer) -> py::object {
+                return method_or_none(x.referrer_method(referrer));
+            },
+            py::arg("referrer"))
+        .def(
+            "method_refs",
+            [](const Xrefs &x, const MethodId &id) {
+                auto v = x.method_refs(id);
+                return std::vector<MethodXref>(v.begin(), v.end());
+            },
+            py::arg("id"))
+        .def(
+            "method_refs_by_name",
+            [](const Xrefs &x, std::string_view name) {
+                std::vector<std::pair<MethodId, std::vector<MethodXref>>> out;
+                for (const auto &[id, sites] : x.method_refs_by_name(name))
+                    out.emplace_back(*id, std::vector<MethodXref>(sites.begin(), sites.end()));
+                return out;
+            },
+            py::arg("name"))
+        .def(
+            "field_refs",
+            [](const Xrefs &x, const FieldId &id) {
+                auto v = x.field_refs(id);
+                return std::vector<FieldXref>(v.begin(), v.end());
+            },
+            py::arg("id"))
+        .def("field_reads", &Xrefs::field_reads, py::arg("id"))
+        .def("field_writes", &Xrefs::field_writes, py::arg("id"))
+        .def(
+            "string_refs",
+            [](const Xrefs &x, std::string_view value) {
+                auto v = x.string_refs(value);
+                return std::vector<StringXref>(v.begin(), v.end());
+            },
+            py::arg("value"))
         .def_property_readonly("referenced_strings",
                                [](const Xrefs &x) {
                                    auto v = x.referenced_strings();
                                    return std::vector<std::string>(v.begin(), v.end());
                                })
-        .def("type_refs",
-             [](const Xrefs &x, std::string_view descriptor) {
-                 auto v = x.type_refs(descriptor);
-                 return std::vector<TypeXref>(v.begin(), v.end());
-             })
+        .def(
+            "type_refs",
+            [](const Xrefs &x, std::string_view descriptor) {
+                auto v = x.type_refs(descriptor);
+                return std::vector<TypeXref>(v.begin(), v.end());
+            },
+            py::arg("descriptor"))
         .def_property_readonly("empty", &Xrefs::empty);
 
     // ===== context =====
@@ -990,13 +1024,15 @@ PYBIND11_MODULE(dexpp, m)
                                    auto v = ctx.strings();
                                    return std::vector<std::string>(v.begin(), v.end());
                                })
-        .def("find_class",
-             [](const AnalysisContext &ctx, std::string_view descriptor) -> py::object {
-                 auto cls = ctx.find_class(descriptor);
-                 if (!cls.has_value())
-                     return py::none();
-                 return py::cast(std::move(*cls));
-             })
+        .def(
+            "find_class",
+            [](const AnalysisContext &ctx, std::string_view descriptor) -> py::object {
+                auto cls = ctx.find_class(descriptor);
+                if (!cls.has_value())
+                    return py::none();
+                return py::cast(std::move(*cls));
+            },
+            py::arg("descriptor"))
         .def_property_readonly("call_graph", &AnalysisContext::call_graph,
                                py::return_value_policy::reference_internal)
         .def_property_readonly("class_hierarchy", &AnalysisContext::class_hierarchy,
@@ -1042,13 +1078,15 @@ PYBIND11_MODULE(dexpp, m)
         .def("declared_permission_protection_level",
              &Manifest::declared_permission_protection_level, py::arg("name"))
         .def_property_readonly("components", &Manifest::components)
-        .def("components_of",
-             [](const Manifest &m_, Component::Kind kind) {
-                 std::vector<Component> out;
-                 for (const auto *c : m_.components_of(kind))
-                     out.push_back(*c);
-                 return out;
-             })
+        .def(
+            "components_of",
+            [](const Manifest &m_, Component::Kind kind) {
+                std::vector<Component> out;
+                for (const auto *c : m_.components_of(kind))
+                    out.push_back(*c);
+                return out;
+            },
+            py::arg("kind"))
         .def_property_readonly("launcher_activity",
                                [](const Manifest &m_) -> py::object {
                                    auto v = m_.launcher_activity();
@@ -1069,20 +1107,24 @@ PYBIND11_MODULE(dexpp, m)
         });
 
     py::class_<ResourceTable>(m, "ResourceTable")
-        .def("name_of",
-             [](const ResourceTable &rt, uint32_t id) -> py::object {
-                 auto n = rt.name_of(id);
-                 if (!n.has_value())
-                     return py::none();
-                 return py::cast(std::move(*n));
-             })
-        .def("resolve_string",
-             [](const ResourceTable &rt, uint32_t id) -> py::object {
-                 auto s = rt.resolve_string(id);
-                 if (!s.has_value())
-                     return py::none();
-                 return py::cast(std::string(*s));
-             })
+        .def(
+            "name_of",
+            [](const ResourceTable &rt, uint32_t id) -> py::object {
+                auto n = rt.name_of(id);
+                if (!n.has_value())
+                    return py::none();
+                return py::cast(std::move(*n));
+            },
+            py::arg("id"))
+        .def(
+            "resolve_string",
+            [](const ResourceTable &rt, uint32_t id) -> py::object {
+                auto s = rt.resolve_string(id);
+                if (!s.has_value())
+                    return py::none();
+                return py::cast(std::string(*s));
+            },
+            py::arg("id"))
         .def("id_of", &ResourceTable::id_of, py::arg("type"), py::arg("entry"))
         .def_property_readonly("empty", &ResourceTable::empty);
 
@@ -1120,13 +1162,15 @@ PYBIND11_MODULE(dexpp, m)
             },
             py::arg("path"), "Open an APK (ZIP) from disk.")
         .def_property_readonly("entries", &Apk::entries)
-        .def("read",
-             [](const Apk &apk, std::string_view name) -> py::object {
-                 auto data = apk.read(name);
-                 if (!data.has_value())
-                     return py::none();
-                 return py::bytes(reinterpret_cast<const char *>(data->data()), data->size());
-             })
+        .def(
+            "read",
+            [](const Apk &apk, std::string_view name) -> py::object {
+                auto data = apk.read(name);
+                if (!data.has_value())
+                    return py::none();
+                return py::bytes(reinterpret_cast<const char *>(data->data()), data->size());
+            },
+            py::arg("name"))
         .def_property_readonly("manifest",
                                [](const Apk &apk) -> py::object {
                                    const Manifest *m_ = apk.manifest();
@@ -1150,13 +1194,15 @@ PYBIND11_MODULE(dexpp, m)
                                    return py::cast(rt, py::return_value_policy::reference_internal,
                                                    py::cast(apk));
                                })
-        .def("resolve_string",
-             [](const Apk &apk, uint32_t ref) -> py::object {
-                 auto s = apk.resolve_string(ref);
-                 if (!s.has_value())
-                     return py::none();
-                 return py::cast(std::string(*s));
-             })
+        .def(
+            "resolve_string",
+            [](const Apk &apk, uint32_t ref) -> py::object {
+                auto s = apk.resolve_string(ref);
+                if (!s.has_value())
+                    return py::none();
+                return py::cast(std::string(*s));
+            },
+            py::arg("reference_id"))
         .def_property_readonly("signing", &Apk::signing,
                                py::return_value_policy::reference_internal);
 

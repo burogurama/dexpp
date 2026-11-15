@@ -4,6 +4,8 @@ from collections.abc import Iterator, Sequence
 from enum import Enum, IntFlag
 from typing import Optional, Union, overload
 
+from _typeshed import ReadableBuffer
+
 __version__: str
 
 # ===== free functions =====
@@ -1947,11 +1949,13 @@ class Model:
             version: The DEX format version: 35, 37, 38, 39 or 40.
         """
     @staticmethod
-    def read(data: bytes, debug_info: bool = ...) -> Model:
+    def read(data: ReadableBuffer, debug_info: bool = ...) -> Model:
         """Read DEX bytes into a model.
 
         Args:
-            data: The content of a DEX file.
+            data: The content of a DEX file: `bytes`, `bytearray`, `memoryview`,
+                or any other object that gives its bytes through the buffer
+                protocol.
             debug_info: Keep line numbers and local variable names. False leaves them
                 out, which makes the model smaller.
 
