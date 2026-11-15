@@ -10,7 +10,7 @@ type checker see.
 | [Context, classes, methods, fields](analysis.md) | `AnalysisContext`, `Class`, `ClassRef`, `Method`, `Field`, `MethodId` and more |
 | [Annotations and values](annotations.md) | `Annotation`, `AnnotationVisibility`, `AnnotationValue`, `TypeRef`, `EnumRef`, `FieldRef` and more |
 | [Instructions](instructions.md) | `opcode_name`, `to_string`, `Instruction`, `InstructionBase`, `OperandWidth`, `NopInstruction` and more |
-| [Control-flow graph](cfg.md) | `Cfg`, `BasicBlock`, `CfgEdge`, `EdgeKind`, `BasicBlockView` |
+| [Control-flow graph](cfg.md) | `Cfg`, `BasicBlock`, `CfgEdge`, `CfgEdgeKind`, `BasicBlockView` |
 | [Call graph](call-graph.md) | `CallGraph`, `CallNode`, `CallEdge`, `InvokeKind`, `EdgeOrigin`, `CallNodeView` and more |
 | [Class hierarchy and cross-references](hierarchy-xrefs.md) | `ClassHierarchy`, `Xrefs`, `MethodXref`, `FieldXref`, `StringXref`, `TypeXref` and more |
 | [Editable DEX model](model.md) | `Model`, `ClassInfo`, `PoolStats`, `Problem` |
@@ -27,7 +27,7 @@ type checker see.
   A file or a model that dexpp cannot use raises one of
   dexpp's own exceptions, which all derive from `dexpp.Error`. See
   [Errors](errors.md).
-- **Enums.** `InvokeKind`, `EdgeKind` and the other enums are `enum.Enum`
+- **Enums.** `InvokeKind`, `CfgEdgeKind` and the other enums are `enum.Enum`
   classes. Compare members with `is` or `==`, read `kind.name` and
   `kind.value`, and iterate the class to list its members. A member is not a
   number: `int(kind)` raises `TypeError`, and `kind.value` gives the number.

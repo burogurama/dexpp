@@ -1,10 +1,10 @@
 package io.github.burogurama.dexpp;
 
 /**
- * What an instruction does with the type it names. The values match {@code DexppTypeRefKind} of the
+ * What an instruction does with the type it names. The values match {@code DexppTypeUseKind} of the
  * C API.
  */
-public enum TypeRefKind {
+public enum TypeUseKind {
     /** {@code const-class}: loads the class object. */
     CONST_CLASS(0),
     /** {@code check-cast}: a cast to the type. */
@@ -20,7 +20,7 @@ public enum TypeRefKind {
 
     private final int value;
 
-    TypeRefKind(int value) {
+    TypeUseKind(int value) {
         this.value = value;
     }
 
@@ -40,10 +40,10 @@ public enum TypeRefKind {
      * @return the value
      * @throws IllegalArgumentException if no value has this number
      */
-    public static TypeRefKind of(int value) {
-        TypeRefKind[] all = values();
+    public static TypeUseKind of(int value) {
+        TypeUseKind[] all = values();
         if (value < 0 || value >= all.length || all[value].value != value) {
-            throw new IllegalArgumentException("no dexpp TypeRefKind " + value);
+            throw new IllegalArgumentException("no dexpp TypeUseKind " + value);
         }
         return all[value];
     }

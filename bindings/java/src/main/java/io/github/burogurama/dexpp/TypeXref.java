@@ -10,7 +10,7 @@ import java.util.Objects;
  * @param codeOffset the offset of the instruction, in code units
  * @param kind what the instruction does with the type
  */
-public record TypeXref(int referrer, int codeOffset, TypeRefKind kind) {
+public record TypeXref(int referrer, int codeOffset, TypeUseKind kind) {
     /** Checks that the kind is given. */
     public TypeXref {
         Objects.requireNonNull(kind, "kind");

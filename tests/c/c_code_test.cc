@@ -293,7 +293,7 @@ TEST(CApiCode, ListsCallsFieldAccessesStringsAndTypes)
     DexppTypeUse *uses = dexpp_method_type_uses(describe, &count);
     ASSERT_GE(count, 1u);
     EXPECT_STREQ(uses[0].descriptor, "Ljava/lang/StringBuilder;");
-    EXPECT_EQ(uses[0].kind, DEXPP_TYPE_REF_NEW_INSTANCE);
+    EXPECT_EQ(uses[0].kind, DEXPP_TYPE_USE_NEW_INSTANCE);
     dexpp_type_use_array_free(uses, count);
     dexpp_method_free(describe);
     dexpp_context_free(ctx);

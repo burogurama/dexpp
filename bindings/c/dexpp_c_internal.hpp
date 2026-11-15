@@ -208,44 +208,44 @@ inline DexppEdgeOrigin edge_origin(dex::EdgeOrigin o)
     return DEXPP_EDGE_DECLARED;
 }
 
-inline DexppCfgEdgeKind cfg_edge_kind(dex::EdgeKind k)
+inline DexppCfgEdgeKind cfg_edge_kind(dex::CfgEdgeKind k)
 {
     switch (k) {
-    case dex::EdgeKind::Fallthrough:
+    case dex::CfgEdgeKind::Fallthrough:
         return DEXPP_CFG_FALLTHROUGH;
-    case dex::EdgeKind::Goto:
+    case dex::CfgEdgeKind::Goto:
         return DEXPP_CFG_GOTO;
-    case dex::EdgeKind::BranchTaken:
+    case dex::CfgEdgeKind::BranchTaken:
         return DEXPP_CFG_BRANCH_TAKEN;
-    case dex::EdgeKind::BranchNotTaken:
+    case dex::CfgEdgeKind::BranchNotTaken:
         return DEXPP_CFG_BRANCH_NOT_TAKEN;
-    case dex::EdgeKind::SwitchCase:
+    case dex::CfgEdgeKind::SwitchCase:
         return DEXPP_CFG_SWITCH_CASE;
-    case dex::EdgeKind::SwitchDefault:
+    case dex::CfgEdgeKind::SwitchDefault:
         return DEXPP_CFG_SWITCH_DEFAULT;
-    case dex::EdgeKind::Exception:
+    case dex::CfgEdgeKind::Exception:
         return DEXPP_CFG_EXCEPTION;
     }
     return DEXPP_CFG_FALLTHROUGH;
 }
 
-inline DexppTypeRefKind type_ref_kind(dex::TypeRefKind k)
+inline DexppTypeUseKind type_use_kind(dex::TypeUseKind k)
 {
     switch (k) {
-    case dex::TypeRefKind::ConstClass:
-        return DEXPP_TYPE_REF_CONST_CLASS;
-    case dex::TypeRefKind::CheckCast:
-        return DEXPP_TYPE_REF_CHECK_CAST;
-    case dex::TypeRefKind::InstanceOf:
-        return DEXPP_TYPE_REF_INSTANCE_OF;
-    case dex::TypeRefKind::NewInstance:
-        return DEXPP_TYPE_REF_NEW_INSTANCE;
-    case dex::TypeRefKind::NewArray:
-        return DEXPP_TYPE_REF_NEW_ARRAY;
-    case dex::TypeRefKind::FilledNewArray:
-        return DEXPP_TYPE_REF_FILLED_NEW_ARRAY;
+    case dex::TypeUseKind::ConstClass:
+        return DEXPP_TYPE_USE_CONST_CLASS;
+    case dex::TypeUseKind::CheckCast:
+        return DEXPP_TYPE_USE_CHECK_CAST;
+    case dex::TypeUseKind::InstanceOf:
+        return DEXPP_TYPE_USE_INSTANCE_OF;
+    case dex::TypeUseKind::NewInstance:
+        return DEXPP_TYPE_USE_NEW_INSTANCE;
+    case dex::TypeUseKind::NewArray:
+        return DEXPP_TYPE_USE_NEW_ARRAY;
+    case dex::TypeUseKind::FilledNewArray:
+        return DEXPP_TYPE_USE_FILLED_NEW_ARRAY;
     }
-    return DEXPP_TYPE_REF_CONST_CLASS;
+    return DEXPP_TYPE_USE_CONST_CLASS;
 }
 
 inline DexppOperandWidth operand_width(dex::OperandWidth w)

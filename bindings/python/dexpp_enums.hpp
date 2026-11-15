@@ -56,7 +56,7 @@ class EdgeOrigin(_enum.Enum):
     INHERITED_RESOLUTION = 1
 
 
-class EdgeKind(_enum.Enum):
+class CfgEdgeKind(_enum.Enum):
     """The kind of edge between two basic blocks of a control-flow graph."""
 
     FALLTHROUGH = 0
@@ -68,7 +68,7 @@ class EdgeKind(_enum.Enum):
     EXCEPTION = 6
 
 
-class TypeRefKind(_enum.Enum):
+class TypeUseKind(_enum.Enum):
     """What an instruction does with the type it names."""
 
     CONST_CLASS = 0
@@ -120,19 +120,19 @@ static_assert(static_cast<int>(dex::InvokeKind::Virtual) == 0 &&
               static_cast<int>(dex::InvokeKind::Custom) == 6);
 static_assert(static_cast<int>(dex::EdgeOrigin::Declared) == 0 &&
               static_cast<int>(dex::EdgeOrigin::InheritedResolution) == 1);
-static_assert(static_cast<int>(dex::EdgeKind::Fallthrough) == 0 &&
-              static_cast<int>(dex::EdgeKind::Goto) == 1 &&
-              static_cast<int>(dex::EdgeKind::BranchTaken) == 2 &&
-              static_cast<int>(dex::EdgeKind::BranchNotTaken) == 3 &&
-              static_cast<int>(dex::EdgeKind::SwitchCase) == 4 &&
-              static_cast<int>(dex::EdgeKind::SwitchDefault) == 5 &&
-              static_cast<int>(dex::EdgeKind::Exception) == 6);
-static_assert(static_cast<int>(dex::TypeRefKind::ConstClass) == 0 &&
-              static_cast<int>(dex::TypeRefKind::CheckCast) == 1 &&
-              static_cast<int>(dex::TypeRefKind::InstanceOf) == 2 &&
-              static_cast<int>(dex::TypeRefKind::NewInstance) == 3 &&
-              static_cast<int>(dex::TypeRefKind::NewArray) == 4 &&
-              static_cast<int>(dex::TypeRefKind::FilledNewArray) == 5);
+static_assert(static_cast<int>(dex::CfgEdgeKind::Fallthrough) == 0 &&
+              static_cast<int>(dex::CfgEdgeKind::Goto) == 1 &&
+              static_cast<int>(dex::CfgEdgeKind::BranchTaken) == 2 &&
+              static_cast<int>(dex::CfgEdgeKind::BranchNotTaken) == 3 &&
+              static_cast<int>(dex::CfgEdgeKind::SwitchCase) == 4 &&
+              static_cast<int>(dex::CfgEdgeKind::SwitchDefault) == 5 &&
+              static_cast<int>(dex::CfgEdgeKind::Exception) == 6);
+static_assert(static_cast<int>(dex::TypeUseKind::ConstClass) == 0 &&
+              static_cast<int>(dex::TypeUseKind::CheckCast) == 1 &&
+              static_cast<int>(dex::TypeUseKind::InstanceOf) == 2 &&
+              static_cast<int>(dex::TypeUseKind::NewInstance) == 3 &&
+              static_cast<int>(dex::TypeUseKind::NewArray) == 4 &&
+              static_cast<int>(dex::TypeUseKind::FilledNewArray) == 5);
 static_assert(static_cast<int>(dex::OperandWidth::Single) == 0 &&
               static_cast<int>(dex::OperandWidth::Pair) == 1);
 static_assert(static_cast<int>(dex::AnnotationVisibility::Build) == 0 &&
@@ -156,8 +156,8 @@ template <typename E> struct EnumTraits;
 
 DEXPP_PY_ENUM(dex::InvokeKind, "InvokeKind");
 DEXPP_PY_ENUM(dex::EdgeOrigin, "EdgeOrigin");
-DEXPP_PY_ENUM(dex::EdgeKind, "EdgeKind");
-DEXPP_PY_ENUM(dex::TypeRefKind, "TypeRefKind");
+DEXPP_PY_ENUM(dex::CfgEdgeKind, "CfgEdgeKind");
+DEXPP_PY_ENUM(dex::TypeUseKind, "TypeUseKind");
 DEXPP_PY_ENUM(dex::OperandWidth, "OperandWidth");
 DEXPP_PY_ENUM(dex::AnnotationVisibility, "AnnotationVisibility");
 DEXPP_PY_ENUM(dex::apk::Component::Kind, "ComponentKind");
@@ -230,10 +230,10 @@ template <> class type_caster<dex::InvokeKind> : public dexpp_py::EnumCaster<dex
 template <> class type_caster<dex::EdgeOrigin> : public dexpp_py::EnumCaster<dex::EdgeOrigin>
 {
 };
-template <> class type_caster<dex::EdgeKind> : public dexpp_py::EnumCaster<dex::EdgeKind>
+template <> class type_caster<dex::CfgEdgeKind> : public dexpp_py::EnumCaster<dex::CfgEdgeKind>
 {
 };
-template <> class type_caster<dex::TypeRefKind> : public dexpp_py::EnumCaster<dex::TypeRefKind>
+template <> class type_caster<dex::TypeUseKind> : public dexpp_py::EnumCaster<dex::TypeUseKind>
 {
 };
 template <> class type_caster<dex::OperandWidth> : public dexpp_py::EnumCaster<dex::OperandWidth>

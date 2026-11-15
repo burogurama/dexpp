@@ -311,7 +311,7 @@ class GraphTest {
                 Xrefs px = pets.xrefs()) {
             List<TypeXref> types = px.typeRefs("Ljava/lang/StringBuilder;");
             assertFalse(types.isEmpty());
-            assertEquals(TypeRefKind.NEW_INSTANCE, types.get(0).kind());
+            assertEquals(TypeUseKind.NEW_INSTANCE, types.get(0).kind());
         }
         try (AnalysisContext multi = dex("multistring.dex");
                 Xrefs mx = multi.xrefs()) {

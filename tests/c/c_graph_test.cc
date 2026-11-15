@@ -308,7 +308,7 @@ TEST(CApiXrefs, AnswersEveryQuery)
     ASSERT_NE(x, nullptr);
     DexppTypeXref *types = dexpp_xrefs_type_refs(x, "Ljava/lang/StringBuilder;", &count);
     ASSERT_GE(count, 1u);
-    EXPECT_EQ(types[0].kind, DEXPP_TYPE_REF_NEW_INSTANCE);
+    EXPECT_EQ(types[0].kind, DEXPP_TYPE_USE_NEW_INSTANCE);
     dexpp_type_xref_array_free(types, count);
     dexpp_xrefs_free(x);
     dexpp_context_free(ctx);

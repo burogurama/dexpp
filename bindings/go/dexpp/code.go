@@ -819,7 +819,7 @@ func (m *Method) StringLoads() []StringLoad {
 type TypeUse struct {
 	CodeOffset uint32      // offset of the instruction, in code units
 	Descriptor string      // the type the instruction names
-	Kind       TypeRefKind // what the instruction does with the type
+	Kind       TypeUseKind // what the instruction does with the type
 }
 
 // TypeUses returns every instruction in the method's code that names a type,
@@ -835,7 +835,7 @@ func (m *Method) TypeUses() []TypeUse {
 	raw := unsafe.Slice(arr, int(n))
 	out := make([]TypeUse, len(raw))
 	for i, u := range raw {
-		out[i] = TypeUse{uint32(u.code_offset), C.GoString(u.descriptor), TypeRefKind(u.kind)}
+		out[i] = TypeUse{uint32(u.code_offset), C.GoString(u.descriptor), TypeUseKind(u.kind)}
 	}
 	return out
 }

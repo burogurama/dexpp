@@ -178,7 +178,7 @@ class EdgeOrigin(Enum):
     method Android finds at runtime. A call site has at most one edge of this kind.
     """
 
-class EdgeKind(Enum):
+class CfgEdgeKind(Enum):
     """The kind of edge between two basic blocks of a control-flow graph."""
 
     FALLTHROUGH = 0
@@ -203,7 +203,7 @@ class EdgeKind(Enum):
     (`0xFFFFFFFF`) for a handler that catches everything.
     """
 
-class TypeRefKind(Enum):
+class TypeUseKind(Enum):
     """What an instruction does with the type it names."""
 
     CONST_CLASS = 0
@@ -835,7 +835,7 @@ class CfgEdge:
     def target_block(self) -> int:
         """Index in `Cfg.blocks` of the block the edge leads to."""
     @property
-    def kind(self) -> EdgeKind:
+    def kind(self) -> CfgEdgeKind:
         """Why execution can go along this edge."""
     @property
     def label(self) -> Optional[int]:
@@ -961,7 +961,7 @@ class TypeUse:
     def descriptor(self) -> str:
         """Descriptor of the type the instruction names."""
     @property
-    def kind(self) -> TypeRefKind:
+    def kind(self) -> TypeUseKind:
         """What the instruction does with the type."""
 
 class CatchHandler:
@@ -1505,7 +1505,7 @@ class TypeXref:
     def code_offset(self) -> int:
         """Offset of the instruction in the method's code, in code units."""
     @property
-    def kind(self) -> TypeRefKind:
+    def kind(self) -> TypeUseKind:
         """What the instruction does with the type."""
 
 class MethodXref:

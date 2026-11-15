@@ -176,28 +176,28 @@ Cfg build_cfg(const raw::CodeItem &code, std::span<const Instruction> insns)
                 using T = std::decay_t<decltype(v)>;
                 if constexpr (std::is_same_v<T, GotoInstruction>) {
                     if (auto t = leaders.block_of(lb.offset + v.branch_offset))
-                        blk.successors.push_back({*t, EdgeKind::Goto, std::nullopt});
+                        blk.successors.push_back({*t, CfgEdgeKind::Goto, std::nullopt});
                 }
                 else if constexpr (std::is_same_v<T, IfInstruction>) {
                     if (auto t = leaders.block_of(lb.offset + v.branch_offset))
-                        blk.successors.push_back({*t, EdgeKind::BranchTaken, std::nullopt});
+                        blk.successors.push_back({*t, CfgEdgeKind::BranchTaken, std::nullopt});
                     if (auto t = leaders.block_of(next))
-                        blk.successors.push_back({*t, EdgeKind::BranchNotTaken, std::nullopt});
+                        blk.successors.push_back({*t, CfgEdgeKind::BranchNotTaken, std::nullopt});
                 }
                 else if constexpr (std::is_same_v<T, IfZeroInstruction>) {
                     if (auto t = leaders.block_of(lb.offset + v.branch_offset))
-                        blk.successors.push_back({*t, EdgeKind::BranchTaken, std::nullopt});
+                        blk.successors.push_back({*t, CfgEdgeKind::BranchTaken, std::nullopt});
                     if (auto t = leaders.block_of(next))
-                        blk.successors.push_back({*t, EdgeKind::BranchNotTaken, std::nullopt});
+                        blk.successors.push_back({*t, CfgEdgeKind::BranchNotTaken, std::nullopt});
                 }
                 else if constexpr (std::is_same_v<T, SwitchInstruction>) {
                     for (const auto &c : v.cases) {
                         if (auto t = leaders.block_of(lb.offset + c.target))
                             blk.successors.push_back(
-                                {*t, EdgeKind::SwitchCase, static_cast<int64_t>(c.key)});
+                                {*t, CfgEdgeKind::SwitchCase, static_cast<int64_t>(c.key)});
                     }
                     if (auto t = leaders.block_of(next))
-                        blk.successors.push_back({*t, EdgeKind::SwitchDefault, std::nullopt});
+                        blk.successors.push_back({*t, CfgEdgeKind::SwitchDefault, std::nullopt});
                 }
                 else if constexpr (std::is_same_v<T, ReturnInstruction> ||
                                    std::is_same_v<T, ThrowInstruction>) {
@@ -206,7 +206,7 @@ Cfg build_cfg(const raw::CodeItem &code, std::span<const Instruction> insns)
                 else {
                     // Non-terminator block ender → fallthrough.
                     if (auto t = leaders.block_of(next))
-                        blk.successors.push_back({*t, EdgeKind::Fallthrough, std::nullopt});
+                        blk.successors.push_back({*t, CfgEdgeKind::Fallthrough, std::nullopt});
                 }
             },
             last);
@@ -235,14 +235,14 @@ Cfg build_cfg(const raw::CodeItem &code, std::span<const Instruction> insns)
             for (const auto &p : handler.handlers) {
                 if (auto target = leaders.block_of(p.addr)) {
                     blk.successors.push_back(
-                        {*target, EdgeKind::Exception, static_cast<int64_t>(p.type_idx)});
+                        {*target, CfgEdgeKind::Exception, static_cast<int64_t>(p.type_idx)});
                     blocks[*target].is_handler_entry = true;
                 }
             }
             if (handler.catch_all_addr.has_value()) {
                 if (auto target = leaders.block_of(*handler.catch_all_addr)) {
                     blk.successors.push_back(
-                        {*target, EdgeKind::Exception, static_cast<int64_t>(kCatchAllLabel)});
+                        {*target, CfgEdgeKind::Exception, static_cast<int64_t>(kCatchAllLabel)});
                     blocks[*target].is_handler_entry = true;
                 }
             }

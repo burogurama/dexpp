@@ -393,7 +393,7 @@ func TestXrefs(t *testing.T) {
 		t.Fatal(err)
 	}
 	types := px.TypeRefs("Ljava/lang/StringBuilder;")
-	if len(types) == 0 || types[0].Kind != TypeRefNewInstance {
+	if len(types) == 0 || types[0].Kind != TypeUseNewInstance {
 		t.Errorf("TypeRefs = %+v", types)
 	}
 	multi := mustDEX(t, "multistring.dex")

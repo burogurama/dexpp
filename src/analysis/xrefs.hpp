@@ -21,7 +21,7 @@ struct AnalysisContextImpl;
 } // namespace detail
 
 /** What a type-referencing instruction does with its type operand. */
-enum class TypeRefKind : uint8_t {
+enum class TypeUseKind : uint8_t {
     ConstClass,     ///< const-class                          (0x1c)
     CheckCast,      ///< check-cast                           (0x1f)
     InstanceOf,     ///< instance-of                          (0x20)
@@ -30,9 +30,9 @@ enum class TypeRefKind : uint8_t {
     FilledNewArray, ///< filled-new-array / filled-new-array/range  (0x24, 0x25)
 };
 
-/** Map a type-referencing opcode to its TypeRefKind.  Returns std::nullopt for
+/** Map a type-referencing opcode to its TypeUseKind.  Returns std::nullopt for
  *  any opcode that does not carry a type operand (e.g. array-length). */
-std::optional<TypeRefKind> type_ref_kind_from_opcode(uint8_t opcode);
+std::optional<TypeUseKind> type_use_kind_from_opcode(uint8_t opcode);
 
 /** One string-loading instruction (const-string / const-string/jumbo). */
 struct StringXref
@@ -50,12 +50,12 @@ struct FieldXref
     bool is_static; ///< true for sget*/sput*.
 };
 
-/** One type-referencing instruction (see TypeRefKind). */
+/** One type-referencing instruction (see TypeUseKind). */
 struct TypeXref
 {
     uint32_t referrer;
     uint32_t code_offset;
-    TypeRefKind kind;
+    TypeUseKind kind;
 };
 
 /** One invoke instruction referencing a method (by its declared target). */

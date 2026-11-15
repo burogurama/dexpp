@@ -166,7 +166,7 @@ TEST(XrefsTest, TypeRefsNewInstance)
 
     std::vector<std::string> referrer_classes;
     for (const auto &s : sites) {
-        EXPECT_EQ(s.kind, TypeRefKind::NewInstance);
+        EXPECT_EQ(s.kind, TypeUseKind::NewInstance);
         EXPECT_EQ(x.referrer_id(s.referrer).name, "describe");
         referrer_classes.push_back(x.referrer_id(s.referrer).class_descriptor);
     }

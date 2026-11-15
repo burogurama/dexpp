@@ -10,7 +10,7 @@ import java.util.Objects;
  * @param descriptor the type the instruction names
  * @param kind what the instruction does with the type
  */
-public record TypeUse(int codeOffset, String descriptor, TypeRefKind kind) {
+public record TypeUse(int codeOffset, String descriptor, TypeUseKind kind) {
     /** Checks the parts. */
     public TypeUse {
         Objects.requireNonNull(descriptor, "descriptor");

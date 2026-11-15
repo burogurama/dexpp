@@ -451,7 +451,7 @@ type StringXref struct {
 type TypeXref struct {
 	Referrer   uint32      // number of the method that holds the instruction
 	CodeOffset uint32      // offset of the instruction, in code units
-	Kind       TypeRefKind // what the instruction does with the type
+	Kind       TypeUseKind // what the instruction does with the type
 }
 
 // MethodRefGroup is the call sites of one called method, as
@@ -671,7 +671,7 @@ func (x *Xrefs) TypeRefs(descriptor string) []TypeXref {
 	raw := unsafe.Slice(arr, int(n))
 	out := make([]TypeXref, len(raw))
 	for i, s := range raw {
-		out[i] = TypeXref{uint32(s.referrer), uint32(s.code_offset), TypeRefKind(s.kind)}
+		out[i] = TypeXref{uint32(s.referrer), uint32(s.code_offset), TypeUseKind(s.kind)}
 	}
 	return out
 }

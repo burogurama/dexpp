@@ -9,22 +9,22 @@
 
 namespace dex {
 
-std::optional<TypeRefKind> type_ref_kind_from_opcode(uint8_t opcode)
+std::optional<TypeUseKind> type_use_kind_from_opcode(uint8_t opcode)
 {
     switch (opcode) {
     case 0x1c:
-        return TypeRefKind::ConstClass;
+        return TypeUseKind::ConstClass;
     case 0x1f:
-        return TypeRefKind::CheckCast;
+        return TypeUseKind::CheckCast;
     case 0x20:
-        return TypeRefKind::InstanceOf;
+        return TypeUseKind::InstanceOf;
     case 0x22:
-        return TypeRefKind::NewInstance;
+        return TypeUseKind::NewInstance;
     case 0x23:
-        return TypeRefKind::NewArray;
+        return TypeUseKind::NewArray;
     case 0x24:
     case 0x25:
-        return TypeRefKind::FilledNewArray;
+        return TypeUseKind::FilledNewArray;
     default:
         return std::nullopt;
     }
@@ -162,10 +162,10 @@ Xrefs build_xrefs(std::shared_ptr<const detail::AnalysisContextImpl> impl)
                             else if constexpr (std::is_same_v<T, ConstClassInstruction>) {
                                 std::string desc(impl->type_descriptor_of(i, v.type_index));
                                 x.type_map_[std::move(desc)].push_back(TypeXref{
-                                    referrer_idx(), v.base.offset, TypeRefKind::ConstClass});
+                                    referrer_idx(), v.base.offset, TypeUseKind::ConstClass});
                             }
                             else if constexpr (std::is_same_v<T, TypeInstruction>) {
-                                auto kind = type_ref_kind_from_opcode(v.base.opcode);
+                                auto kind = type_use_kind_from_opcode(v.base.opcode);
                                 if (!kind.has_value())
                                     return;
                                 std::string desc(impl->type_descriptor_of(i, v.type_index));
@@ -175,7 +175,7 @@ Xrefs build_xrefs(std::shared_ptr<const detail::AnalysisContextImpl> impl)
                             else if constexpr (std::is_same_v<T, FilledNewArrayInstruction>) {
                                 std::string desc(impl->type_descriptor_of(i, v.type_index));
                                 x.type_map_[std::move(desc)].push_back(TypeXref{
-                                    referrer_idx(), v.base.offset, TypeRefKind::FilledNewArray});
+                                    referrer_idx(), v.base.offset, TypeUseKind::FilledNewArray});
                             }
                             else if constexpr (std::is_same_v<T, FieldInstruction>) {
                                 x.field_map_[impl->field_id_of(i, v.field_index)].push_back(

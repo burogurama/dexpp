@@ -312,7 +312,7 @@ public final class DexMethod implements AutoCloseable {
                                 new TypeUse(
                                         Mem.i32(m, b + Layouts.TypeUse.CODE_OFFSET),
                                         Mem.string(m, b + Layouts.TypeUse.DESCRIPTOR),
-                                        TypeRefKind.of(Mem.i32(m, b + Layouts.TypeUse.KIND))),
+                                        TypeUseKind.of(Mem.i32(m, b + Layouts.TypeUse.KIND))),
                         Native::dexpp_type_use_array_free));
     }
 

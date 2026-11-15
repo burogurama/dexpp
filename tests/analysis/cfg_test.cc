@@ -92,12 +92,12 @@ TEST(CfgTest, SwitchCasesAndDefault)
     int n_case = 0, n_default = 0;
     std::vector<int64_t> case_keys;
     for (const auto &e : entry.successors) {
-        if (e.kind == EdgeKind::SwitchCase) {
+        if (e.kind == CfgEdgeKind::SwitchCase) {
             ++n_case;
             ASSERT_TRUE(e.label.has_value());
             case_keys.push_back(*e.label);
         }
-        else if (e.kind == EdgeKind::SwitchDefault) {
+        else if (e.kind == CfgEdgeKind::SwitchDefault) {
             ++n_default;
         }
     }
@@ -136,7 +136,7 @@ TEST(CfgTest, GotoEndsBlockEvenWhenFollowedByDeadCode)
     // outgoing edge must be the Goto edge to offset 3.
     EXPECT_EQ(entry->insn_count, 1u);
     ASSERT_EQ(entry->successors.size(), 1u);
-    EXPECT_EQ(entry->successors[0].kind, EdgeKind::Goto);
+    EXPECT_EQ(entry->successors[0].kind, CfgEdgeKind::Goto);
 
     const BasicBlock *target = cfg.block_at_offset(3);
     ASSERT_NE(target, nullptr);
@@ -171,7 +171,7 @@ TEST(CfgTest, ThrowInTryNoFallthrough)
 
     // Throw block has no normal successors — only the Exception edge.
     ASSERT_EQ(throw_blk->successors.size(), 1u);
-    EXPECT_EQ(throw_blk->successors[0].kind, EdgeKind::Exception);
+    EXPECT_EQ(throw_blk->successors[0].kind, CfgEdgeKind::Exception);
 
     const BasicBlock *handler_blk = cfg.block_at_offset(1);
     ASSERT_NE(handler_blk, nullptr);
@@ -225,9 +225,9 @@ TEST(CfgTest, IfHasTakenAndNotTaken)
 
     int taken = 0, not_taken = 0;
     for (const auto &e : entry->successors) {
-        if (e.kind == EdgeKind::BranchTaken)
+        if (e.kind == CfgEdgeKind::BranchTaken)
             ++taken;
-        else if (e.kind == EdgeKind::BranchNotTaken)
+        else if (e.kind == CfgEdgeKind::BranchNotTaken)
             ++not_taken;
     }
     EXPECT_EQ(taken, 1);
@@ -251,9 +251,9 @@ TEST(CfgTest, GotoSingleSuccessor)
         int normal_edges = 0;
         int goto_edges = 0;
         for (const auto &e : blk.successors) {
-            if (e.kind == EdgeKind::Goto)
+            if (e.kind == CfgEdgeKind::Goto)
                 ++goto_edges;
-            if (e.kind != EdgeKind::Exception)
+            if (e.kind != CfgEdgeKind::Exception)
                 ++normal_edges;
         }
         if (goto_edges == 1) {
@@ -284,7 +284,7 @@ TEST(CfgTest, DivideHasExceptionEdgeToHandler)
     int handler_blocks = 0;
     for (const auto &blk : bundle.cfg.blocks()) {
         for (const auto &e : blk.successors) {
-            if (e.kind == EdgeKind::Exception)
+            if (e.kind == CfgEdgeKind::Exception)
                 ++exception_edges;
         }
         if (blk.is_handler_entry)

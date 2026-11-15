@@ -15,7 +15,7 @@ struct CfgAccess;
 } // namespace detail
 
 /** Kind of edge between two basic blocks. */
-enum class EdgeKind : uint8_t {
+enum class CfgEdgeKind : uint8_t {
     Fallthrough,    ///< Straight-line continuation; only when the predecessor's last instruction
                     ///< is not a terminator.
     Goto,           ///< Unconditional goto / goto/16 / goto/32.
@@ -31,7 +31,7 @@ enum class EdgeKind : uint8_t {
 struct CfgEdge
 {
     uint32_t target_block;
-    EdgeKind kind;
+    CfgEdgeKind kind;
     /** Optional context for the edge.  SwitchCase: the case key.
      *  Exception: the caught `type_idx`, or UINT32_MAX for a catch-all
      *  handler.  Recover with `static_cast<uint32_t>(*label)` — the

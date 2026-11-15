@@ -14,6 +14,6 @@ Inheritance queries and the index of who uses what. See the [hierarchy and cross
 
 ::: dexpp.TypeXref
 
-::: dexpp.TypeRefKind
+::: dexpp.TypeUseKind
 
 ::: dexpp.ReferrerView

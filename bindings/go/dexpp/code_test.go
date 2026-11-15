@@ -303,7 +303,7 @@ func TestCallsAndOtherReferences(t *testing.T) {
 
 	pets := mustDEX(t, "polymorphic.dex")
 	uses := mustMethod(t, mustClass(t, pets, "LDog;"), "describe").TypeUses()
-	if len(uses) == 0 || uses[0].Descriptor != "Ljava/lang/StringBuilder;" || uses[0].Kind != TypeRefNewInstance {
+	if len(uses) == 0 || uses[0].Descriptor != "Ljava/lang/StringBuilder;" || uses[0].Kind != TypeUseNewInstance {
 		t.Errorf("TypeUses = %+v", uses)
 	}
 }
@@ -314,7 +314,7 @@ func TestEnumNames(t *testing.T) {
 	}{
 		{InvokeInterface.String(), "interface"}, {AnyInvokeKind.String(), "any"},
 		{EdgeInheritedResolution.String(), "inherited-resolution"}, {AnyEdgeOrigin.String(), "any"},
-		{CfgSwitchDefault.String(), "switch-default"}, {TypeRefFilledNewArray.String(), "filled-new-array"},
+		{CfgSwitchDefault.String(), "switch-default"}, {TypeUseFilledNewArray.String(), "filled-new-array"},
 		{WidthPair.String(), "pair"}, {VisibilitySystem.String(), "system"},
 		{ComponentProvider.String(), "provider"}, {ComponentKind(9).String(), "unknown(9)"},
 	} {

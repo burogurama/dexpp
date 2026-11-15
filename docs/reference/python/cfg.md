@@ -8,6 +8,6 @@ The basic blocks of one method and the edges between them. See [control-flow gra
 
 ::: dexpp.CfgEdge
 
-::: dexpp.EdgeKind
+::: dexpp.CfgEdgeKind
 
 ::: dexpp.BasicBlockView

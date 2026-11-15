@@ -170,7 +170,7 @@ def test_cfg():
     assert all(cfg.blocks[e.target_block].index == e.target_block
                for b in cfg.blocks for e in b.successors)
     kinds = {e.kind for b in cfg.blocks for e in b.successors}
-    assert dexpp.EdgeKind.BRANCH_TAKEN in kinds or dexpp.EdgeKind.GOTO in kinds
+    assert dexpp.CfgEdgeKind.BRANCH_TAKEN in kinds or dexpp.CfgEdgeKind.GOTO in kinds
 
 
 def test_call_graph():
@@ -414,7 +414,7 @@ def test_forward_refs():
     pets = dexpp.AnalysisContext.from_dex("tests/data/polymorphic.dex")
     describe = next(m for m in pets.find_class("LDog;").methods if m.name == "describe")
     uses = describe.type_uses()
-    assert ("Ljava/lang/StringBuilder;", dexpp.TypeRefKind.NEW_INSTANCE) in [
+    assert ("Ljava/lang/StringBuilder;", dexpp.TypeUseKind.NEW_INSTANCE) in [
         (u.descriptor, u.kind) for u in uses
     ]
 
@@ -1417,11 +1417,11 @@ ENUMS = {
         "VIRTUAL", "SUPER", "DIRECT", "STATIC", "INTERFACE", "POLYMORPHIC", "CUSTOM",
     ],
     dexpp.EdgeOrigin: ["DECLARED", "INHERITED_RESOLUTION"],
-    dexpp.EdgeKind: [
+    dexpp.CfgEdgeKind: [
         "FALLTHROUGH", "GOTO", "BRANCH_TAKEN", "BRANCH_NOT_TAKEN", "SWITCH_CASE",
         "SWITCH_DEFAULT", "EXCEPTION",
     ],
-    dexpp.TypeRefKind: [
+    dexpp.TypeUseKind: [
         "CONST_CLASS", "CHECK_CAST", "INSTANCE_OF", "NEW_INSTANCE", "NEW_ARRAY",
         "FILLED_NEW_ARRAY",
     ],
@@ -1465,15 +1465,15 @@ def test_enums_cross_the_boundary_as_members():
     assert {type(e.origin) for e in edges} == {dexpp.EdgeOrigin}
     assert dexpp.InvokeKind.INTERFACE in {e.kind for e in edges}
     builder = pets.xrefs.type_refs("Ljava/lang/StringBuilder;")
-    assert builder[0].kind is dexpp.TypeRefKind.NEW_INSTANCE
+    assert builder[0].kind is dexpp.TypeUseKind.NEW_INSTANCE
     noise = next(m for m in pets.find_class("LKennel;").methods if m.name == "noise")
     assert noise.calls()[0].kind is dexpp.InvokeKind.INTERFACE
 
     fibonacci = dexpp.AnalysisContext.from_dex("tests/data/fibonacci.dex")
     methods = {m.name: m for m in fibonacci.find_class("LFibonacci;").methods}
     kinds = {e.kind for b in methods["compute"].cfg.blocks for e in b.successors}
-    assert {type(k) for k in kinds} == {dexpp.EdgeKind}
-    assert dexpp.EdgeKind.BRANCH_TAKEN in kinds
+    assert {type(k) for k in kinds} == {dexpp.CfgEdgeKind}
+    assert dexpp.CfgEdgeKind.BRANCH_TAKEN in kinds
     widths = {getattr(i, "width", None) for i in methods["classify"].instructions}
     assert dexpp.OperandWidth.PAIR in widths
 
@@ -1495,7 +1495,7 @@ def test_enums_cross_the_boundary_as_members():
         lambda: edges.where(kind="VIRTUAL"),
         lambda: edges.where(origin=dexpp.InvokeKind.VIRTUAL),
         lambda: manifest.components_of(0),
-        lambda: manifest.components_of(dexpp.EdgeKind.GOTO),
+        lambda: manifest.components_of(dexpp.CfgEdgeKind.GOTO),
         lambda: manifest.components_of(None),
     ):
         assert _raises_type_error(action)

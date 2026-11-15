@@ -306,7 +306,7 @@ class CodeTest {
             List<TypeUse> uses = method(cls(pets, "LDog;"), "describe").typeUses();
             assertFalse(uses.isEmpty());
             assertEquals("Ljava/lang/StringBuilder;", uses.get(0).descriptor());
-            assertEquals(TypeRefKind.NEW_INSTANCE, uses.get(0).kind());
+            assertEquals(TypeUseKind.NEW_INSTANCE, uses.get(0).kind());
         }
     }
 
@@ -316,7 +316,7 @@ class CodeTest {
         assertEquals(6, InvokeKind.CUSTOM.value());
         assertEquals(EdgeOrigin.INHERITED_RESOLUTION, EdgeOrigin.of(1));
         assertEquals(CfgEdgeKind.SWITCH_DEFAULT, CfgEdgeKind.of(5));
-        assertEquals(TypeRefKind.FILLED_NEW_ARRAY, TypeRefKind.of(5));
+        assertEquals(TypeUseKind.FILLED_NEW_ARRAY, TypeUseKind.of(5));
         assertEquals(OperandWidth.PAIR, OperandWidth.of(1));
         assertEquals(AnnotationVisibility.SYSTEM, AnnotationVisibility.of(2));
         assertEquals(ComponentKind.PROVIDER, ComponentKind.of(3));

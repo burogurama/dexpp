@@ -15,7 +15,7 @@
 #include "class_ref.hpp"
 #include "instruction.hpp"
 #include "type_descriptor.hpp"
-#include "xrefs.hpp" // MethodId, FieldId, InvokeKind, TypeRefKind
+#include "xrefs.hpp" // MethodId, FieldId, InvokeKind, TypeUseKind
 
 namespace dex {
 
@@ -53,7 +53,7 @@ struct TypeUse
 {
     uint32_t code_offset;
     std::string_view descriptor; ///< Referenced type descriptor; context-lifetime.
-    TypeRefKind kind;
+    TypeUseKind kind;
 };
 
 /** One typed catch clause within a TryBlock. */

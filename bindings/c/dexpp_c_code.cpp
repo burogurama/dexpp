@@ -605,7 +605,7 @@ DexppTypeUse *dexpp_method_type_uses(const DexppMethod *m, size_t *count)
     DexppTypeUse *out = alloc_array<DexppTypeUse>(uses.size());
     for (size_t i = 0; i < uses.size(); ++i)
         out[i] = DexppTypeUse{uses[i].code_offset, cstr(uses[i].descriptor),
-                              type_ref_kind(uses[i].kind)};
+                              type_use_kind(uses[i].kind)};
     return out;
 }
 

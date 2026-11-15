@@ -209,14 +209,14 @@ typedef enum DexppCfgEdgeKind {
 } DexppCfgEdgeKind;
 
 /** What an instruction does with the type it names. */
-typedef enum DexppTypeRefKind {
-    DEXPP_TYPE_REF_CONST_CLASS = 0,
-    DEXPP_TYPE_REF_CHECK_CAST = 1,
-    DEXPP_TYPE_REF_INSTANCE_OF = 2,
-    DEXPP_TYPE_REF_NEW_INSTANCE = 3,
-    DEXPP_TYPE_REF_NEW_ARRAY = 4,       /**< The descriptor is the array type. */
-    DEXPP_TYPE_REF_FILLED_NEW_ARRAY = 5 /**< The descriptor is the array type. */
-} DexppTypeRefKind;
+typedef enum DexppTypeUseKind {
+    DEXPP_TYPE_USE_CONST_CLASS = 0,
+    DEXPP_TYPE_USE_CHECK_CAST = 1,
+    DEXPP_TYPE_USE_INSTANCE_OF = 2,
+    DEXPP_TYPE_USE_NEW_INSTANCE = 3,
+    DEXPP_TYPE_USE_NEW_ARRAY = 4,       /**< The descriptor is the array type. */
+    DEXPP_TYPE_USE_FILLED_NEW_ARRAY = 5 /**< The descriptor is the array type. */
+} DexppTypeUseKind;
 
 /** How many registers a value takes. */
 typedef enum DexppOperandWidth {
@@ -529,7 +529,7 @@ typedef struct DexppTypeUse
 {
     uint32_t code_offset;  /**< Offset of the instruction, in code units. */
     char *descriptor;      /**< The type. */
-    DexppTypeRefKind kind; /**< What the instruction does with it. */
+    DexppTypeUseKind kind; /**< What the instruction does with it. */
 } DexppTypeUse;
 
 /** One typed catch clause of a try block. */
@@ -1016,7 +1016,7 @@ typedef struct DexppTypeXref
 {
     uint32_t referrer;     /**< The method that contains the instruction. */
     uint32_t code_offset;  /**< Offset of the instruction, in code units. */
-    DexppTypeRefKind kind; /**< What the instruction does with the type. */
+    DexppTypeUseKind kind; /**< What the instruction does with the type. */
 } DexppTypeXref;
 
 /** The call sites of one method, as found by name. */

@@ -507,21 +507,21 @@ func (k CfgEdgeKind) String() string {
 		"switch-case", "switch-default", "exception")
 }
 
-// TypeRefKind is what an instruction does with the type it names.
-type TypeRefKind int
+// TypeUseKind is what an instruction does with the type it names.
+type TypeUseKind int
 
 // The type reference kinds.
 const (
-	TypeRefConstClass     TypeRefKind = C.DEXPP_TYPE_REF_CONST_CLASS      // const-class: loads the class object
-	TypeRefCheckCast      TypeRefKind = C.DEXPP_TYPE_REF_CHECK_CAST       // check-cast: a cast to the type
-	TypeRefInstanceOf     TypeRefKind = C.DEXPP_TYPE_REF_INSTANCE_OF      // instance-of: an instanceof test
-	TypeRefNewInstance    TypeRefKind = C.DEXPP_TYPE_REF_NEW_INSTANCE     // new-instance: creates an object
-	TypeRefNewArray       TypeRefKind = C.DEXPP_TYPE_REF_NEW_ARRAY        // new-array; the type is the array type
-	TypeRefFilledNewArray TypeRefKind = C.DEXPP_TYPE_REF_FILLED_NEW_ARRAY // filled-new-array; the type is the array type
+	TypeUseConstClass     TypeUseKind = C.DEXPP_TYPE_USE_CONST_CLASS      // const-class: loads the class object
+	TypeUseCheckCast      TypeUseKind = C.DEXPP_TYPE_USE_CHECK_CAST       // check-cast: a cast to the type
+	TypeUseInstanceOf     TypeUseKind = C.DEXPP_TYPE_USE_INSTANCE_OF      // instance-of: an instanceof test
+	TypeUseNewInstance    TypeUseKind = C.DEXPP_TYPE_USE_NEW_INSTANCE     // new-instance: creates an object
+	TypeUseNewArray       TypeUseKind = C.DEXPP_TYPE_USE_NEW_ARRAY        // new-array; the type is the array type
+	TypeUseFilledNewArray TypeUseKind = C.DEXPP_TYPE_USE_FILLED_NEW_ARRAY // filled-new-array; the type is the array type
 )
 
 // String names the kind, such as "new-instance".
-func (k TypeRefKind) String() string {
+func (k TypeUseKind) String() string {
 	return enumName(int(k), "const-class", "check-cast", "instance-of", "new-instance",
 		"new-array", "filled-new-array")
 }

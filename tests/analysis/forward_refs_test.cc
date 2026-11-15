@@ -79,7 +79,7 @@ TEST(ForwardRefsTest, TypeUses)
 
     auto uses = method_named(*cls, "describe").type_uses();
     bool builds_sb = std::any_of(uses.begin(), uses.end(), [](const TypeUse &u) {
-        return u.descriptor == "Ljava/lang/StringBuilder;" && u.kind == TypeRefKind::NewInstance;
+        return u.descriptor == "Ljava/lang/StringBuilder;" && u.kind == TypeUseKind::NewInstance;
     });
     EXPECT_TRUE(builds_sb);
 }

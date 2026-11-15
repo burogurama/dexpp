@@ -260,7 +260,7 @@ public final class Xrefs implements AutoCloseable {
                                 new TypeXref(
                                         Mem.i32(m, b + Layouts.TypeXref.REFERRER),
                                         Mem.i32(m, b + Layouts.TypeXref.CODE_OFFSET),
-                                        TypeRefKind.of(Mem.i32(m, b + Layouts.TypeXref.KIND))),
+                                        TypeUseKind.of(Mem.i32(m, b + Layouts.TypeXref.KIND))),
                         Native::dexpp_type_xref_array_free));
     }
 

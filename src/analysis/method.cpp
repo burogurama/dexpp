@@ -154,16 +154,16 @@ std::vector<TypeUse> Method::type_uses() const
                 using T = std::decay_t<decltype(v)>;
                 if constexpr (std::is_same_v<T, ConstClassInstruction>) {
                     out.push_back({v.base.offset, impl_->type_descriptor_of(dex_idx_, v.type_index),
-                                   TypeRefKind::ConstClass});
+                                   TypeUseKind::ConstClass});
                 }
                 else if constexpr (std::is_same_v<T, TypeInstruction>) {
-                    if (auto kind = type_ref_kind_from_opcode(v.base.opcode))
+                    if (auto kind = type_use_kind_from_opcode(v.base.opcode))
                         out.push_back({v.base.offset,
                                        impl_->type_descriptor_of(dex_idx_, v.type_index), *kind});
                 }
                 else if constexpr (std::is_same_v<T, FilledNewArrayInstruction>) {
                     out.push_back({v.base.offset, impl_->type_descriptor_of(dex_idx_, v.type_index),
-                                   TypeRefKind::FilledNewArray});
+                                   TypeUseKind::FilledNewArray});
                 }
             },
             insn);

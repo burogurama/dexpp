@@ -58,6 +58,17 @@ thing. The old names are gone; there are no aliases.
   (`Class::package()`, which now returns a `std::string` instead of a
   `std::string_view`), Python, C (`dexpp_class_package`), Go
   (`Class.Package()`) and Java (`DexClass.packageName()`).
+- Two enums are renamed, so that each name says what it is about:
+    - `EdgeKind`, the kind of a control-flow-graph edge, is now
+      `CfgEdgeKind` in C++ and Python. C, Go and Java already called it
+      `DexppCfgEdgeKind` and `CfgEdgeKind`.
+    - `TypeRefKind`, what an instruction does with the type it names, is now
+      `TypeUseKind`: `dex::TypeUseKind` in C++, `dexpp.TypeUseKind` in
+      Python, `DexppTypeUseKind` with the values `DEXPP_TYPE_USE_CONST_CLASS`
+      and so on in C, `TypeUseKind` with the constants `TypeUseConstClass`
+      and so on in Go, and `TypeUseKind` in Java. The C++ helper
+      `type_ref_kind_from_opcode` is now `type_use_kind_from_opcode`. The
+      member names and numbers do not change.
 
 ### Python bindings
 

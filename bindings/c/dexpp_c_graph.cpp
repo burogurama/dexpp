@@ -375,7 +375,7 @@ DexppTypeXref *dexpp_xrefs_type_refs(const DexppXrefs *x, const char *descriptor
     DexppTypeXref *out = alloc_array<DexppTypeXref>(sites.size());
     for (size_t i = 0; i < sites.size(); ++i)
         out[i] =
-            DexppTypeXref{sites[i].referrer, sites[i].code_offset, type_ref_kind(sites[i].kind)};
+            DexppTypeXref{sites[i].referrer, sites[i].code_offset, type_use_kind(sites[i].kind)};
     return out;
 }
 
