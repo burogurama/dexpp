@@ -5,7 +5,8 @@ import dexpp
 # --8<-- [start:classes]
 ctx: dexpp.AnalysisContext = dexpp.AnalysisContext.from_dex("tests/data/shapes.dex")
 
-for cls in ctx.classes:
+classes: list[dexpp.Class] = ctx.classes()
+for cls in classes:
     kind: str = "interface" if cls.is_interface is True else "class"
     superclass: dexpp.ClassRef | None = cls.superclass
     parent: str | None = superclass.descriptor if superclass is not None else None

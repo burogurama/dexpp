@@ -23,7 +23,10 @@ order: `classes.dex`, `classes2.dex`, `classes3.dex`, and so on.
 --8<-- "output/code.classes.txt"
 ```
 
-- `ctx.classes` lists every class of every loaded file, in file order.
+- `ctx.classes()` returns every class of every loaded file, in file order.
+  Each call makes a new list with a new `Class` object for every class. On a
+  large app that is a lot of objects, so keep the list when you need it more
+  than once.
 - `ctx.find_class(descriptor)` returns one class, or `None`. `dexpp.Class | None`
   is its type, so the example checks the result before it uses it.
 - `cls.superclass` and `cls.interfaces` are `ClassRef` values, not classes.

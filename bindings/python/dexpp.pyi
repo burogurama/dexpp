@@ -1323,15 +1323,21 @@ class CallNode:
         """The reverse of `dispatch_targets`: the declared methods through which a
         virtual or interface call can reach this method.
         """
-    @property
     def callees(self) -> CallNodeView:
         """Every method this method may call: the callee of each outgoing edge, plus the
-        dispatch targets of each virtual and interface call. No duplicates.
+        dispatch targets of each virtual and interface call. No duplicates, in index
+        order.
+
+        Each call collects and sorts the list again, so keep the result when you need
+        it more than once.
         """
-    @property
     def callers(self) -> CallNodeView:
         """Every method that may call this method, directly or through virtual dispatch.
-        No duplicates.
+        No duplicates, in index order.
+
+        Each call collects and sorts the list again. For a method that is called from
+        many places, that means going through every one of those call sites, so keep
+        the result when you need it more than once.
         """
     @property
     def method(self) -> Optional[Method]:
@@ -1341,7 +1347,8 @@ class CallNode:
 
 class CallNodeView(Sequence[CallNode]):
     """A read-only sequence of call-graph nodes that copies nothing: all nodes of a
-    graph, or a subset such as the callers of a node.
+    graph, or a subset such as the dispatch targets of a node or the result of
+    `CallNode.callers()`.
 
     It supports `len()`, indexing, slicing and iteration.
     """
@@ -1625,9 +1632,13 @@ class AnalysisContext:
             InvalidApkError: The file is not a ZIP archive, or it has no `classes.dex`.
             InvalidDexError: One of its DEX files is not valid.
         """
-    @property
     def classes(self) -> list[Class]:
-        """Every class of every loaded DEX file, in file order."""
+        """Every class of every loaded DEX file, in file order.
+
+        Each call makes a new list with a new `Class` object for every class, so keep
+        the result when you need it more than once. To get one class by its
+        descriptor, use `find_class`.
+        """
     def strings(self) -> list[str]:
         """Every string of every loaded DEX file's string table.
 
@@ -1896,9 +1907,13 @@ class Apk:
             OSError: The path exists but cannot be read, for example a directory.
             InvalidApkError: The file is not a ZIP archive.
         """
-    @property
     def entries(self) -> list[str]:
-        """The name of every entry in the archive."""
+        """The name of every entry in the archive, in the order of the archive's table
+        of contents (the ZIP central directory).
+
+        Each call reads the whole table of contents again and makes a new list, so
+        keep the result when you need it more than once.
+        """
     def read(self, name: str) -> Optional[bytes]:
         """The uncompressed bytes of one archive entry, or `None` when there is no entry
         with this name.
@@ -2078,9 +2093,13 @@ class Model:
     @property
     def class_count(self) -> int:
         """Number of classes in the model. Same as `len(model)`."""
-    @property
     def class_descriptors(self) -> list[str]:
-        """The descriptor of every class, in model order."""
+        """The descriptor of every class, in model order.
+
+        Each call copies every descriptor into a new list. The list does not change
+        when the model changes, so it is safe to loop over it while you move or
+        remove classes.
+        """
     def has_class(self, descriptor: str) -> bool:
         """True when the model has a class with this descriptor. Same as `descriptor in
         model`.

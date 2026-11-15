@@ -67,7 +67,7 @@ for certificate in signing.certificates:
 # --8<-- [end:signing]
 
 # --8<-- [start:entries]
-entries: list[str] = apk.entries
+entries: list[str] = apk.entries()
 print(entries)
 
 classes_dex: bytes | None = apk.read("classes.dex")

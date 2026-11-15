@@ -19,7 +19,10 @@
  *    zero-copy sequence views instead, and call-graph nodes/edges are handles
  *    with direct navigation (edge.callee, node.out_edges) — see bind_view.
  *  - Lazily-built singletons (call_graph / class_hierarchy / xrefs / cfg) are
- *    returned by reference with keep_alive so the owning context outlives them. */
+ *    returned by reference with keep_alive so the owning context outlives them.
+ *  - A property is cheap or cached.  Anything that does work in proportion to
+ *    the whole program (or archive, or graph neighbourhood) on every read is a
+ *    method instead: classes(), strings(), entries(), callers(), callees(). */
 
 #include <pybind11/operators.h>
 #include <pybind11/pybind11.h>
@@ -813,20 +816,21 @@ PYBIND11_MODULE(dexpp, m)
             },
             "The reverse of dispatch_targets: methods through which a virtual / "
             "interface call can dispatch to this one.")
-        .def_property_readonly(
+        .def(
             "callees",
             [](const NodeRef &n) {
                 return CallNodeView::owning(n.owner, n.graph, n.graph->callees(n.index));
             },
             "Every node this method's call sites may reach, dispatch targets included; "
-            "deduplicated, in index order.")
-        .def_property_readonly(
+            "deduplicated, in index order.  Computed and sorted again on each call.")
+        .def(
             "callers",
             [](const NodeRef &n) {
                 return CallNodeView::owning(n.owner, n.graph, n.graph->callers(n.index));
             },
             "Every node with a call site that may reach this method, through virtual "
-            "dispatch included; deduplicated, in index order.")
+            "dispatch included; deduplicated, in index order.  Computed and sorted again "
+            "on each call.")
         .def_property_readonly(
             "method", [](const NodeRef &n) { return method_or_none(n.graph->method_for(n.get())); },
             "The Method for a resolved node; None for external methods.")
@@ -1045,7 +1049,7 @@ PYBIND11_MODULE(dexpp, m)
             "threads: 0 = automatic, 1 = the calling thread only.  Used to load "
             "(extra threads only when at least 3 DEX entries are deflated) and "
             "later to build the call graph (one thread per DEX file).")
-        .def_property_readonly("classes", &AnalysisContext::classes)
+        .def("classes", &AnalysisContext::classes)
         .def("strings",
              [](const AnalysisContext &ctx) {
                  auto v = ctx.strings();
@@ -1192,7 +1196,7 @@ PYBIND11_MODULE(dexpp, m)
                 return std::move(result.value());
             },
             py::arg("path"), "Open an APK (ZIP) from disk.")
-        .def_property_readonly("entries", &Apk::entries)
+        .def("entries", &Apk::entries)
         .def(
             "read",
             [](const Apk &apk, std::string_view name) -> py::object {
