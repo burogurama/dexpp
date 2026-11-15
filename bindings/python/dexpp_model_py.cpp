@@ -6,7 +6,7 @@
  *    model error; a file that cannot be read or written raises
  *    FileNotFoundError or OSError.
  *  - a not-found class is None (class_info) or False (has_class).
- *  - access flags are a plain int bitmask; DEX bytes are Python `bytes`.
+ *  - access flags are a dexpp.AccessFlags (an enum.IntFlag); DEX bytes are Python `bytes`.
  *
  *  Scope matches the C / Go model binding: whole classes cross the boundary
  *  (read, inspect, move/copy/remove, rename, validate, write).  Building a
@@ -23,6 +23,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "dexpp_access_flags.hpp"
 #include "dexpp_errors.hpp"
 #include "model/model.hpp"
 
@@ -53,8 +54,11 @@ using dex::model::Dex;
         PyErr_SetObject(type.ptr(), exception.ptr());
         throw py::error_already_set();
     }
-    case Kind::Io:
-        break; // the callers that touch files handle it before they get here
+    case Kind::FileNotFound:
+        dexpp_py::raise_file_not_found(error.message);
+    case Kind::CannotRead:
+    case Kind::CannotWrite:
+        dexpp_py::raise_os_error(error.message);
     }
     dexpp_py::raise_error("ModelError", error.message);
 }
@@ -117,7 +121,10 @@ void register_model(py::module_ &m)
 
     py::class_<ClassInfo>(m, "ClassInfo", "Facts about one class in a Model.")
         .def_readonly("descriptor", &ClassInfo::descriptor)
-        .def_readonly("access_flags", &ClassInfo::access_flags, "DEX access-flag bitmask.")
+        .def_property_readonly(
+            "access_flags",
+            [](const ClassInfo &c) { return dexpp_py::access_flags_to_py(c.access_flags); },
+            "The class's access flags, as a dexpp.AccessFlags.")
         .def_readonly("superclass", &ClassInfo::superclass,
                       "Superclass descriptor, or None for java.lang.Object.")
         .def_readonly("source_file", &ClassInfo::source_file, "Source file name, or None.")
@@ -161,8 +168,6 @@ void register_model(py::module_ &m)
                 dex::model::ReadOptions options;
                 options.debug_info = debug_info;
                 auto result = dex::model::read_file(path, options);
-                if (!result && result.error().kind == dex::model::Error::Kind::Io)
-                    dexpp_py::raise_read_failure(path, result.error().message);
                 if (!result)
                     raise(result.error());
                 return std::move(*result);
@@ -315,8 +320,6 @@ void register_model(py::module_ &m)
                 dex::model::WriteOptions options;
                 options.debug_info = debug_info;
                 auto result = dex::model::write_file(dex, path, options);
-                if (!result && result.error().kind == dex::model::Error::Kind::Io)
-                    dexpp_py::raise_os_error(result.error().message);
                 if (!result)
                     raise(result.error());
             },

@@ -1,6 +1,5 @@
 #include <algorithm>
 #include <format>
-#include <fstream>
 #include <functional>
 #include <map>
 #include <unordered_map>
@@ -12,6 +11,7 @@
 #include "raw/constants.hpp"
 #include "raw/descriptors.hpp"
 #include "raw/digest.hpp"
+#include "raw/file_io.hpp"
 #include "raw/mutf8.hpp"
 #include "raw/opcodes.hpp"
 #include "raw/parser.hpp"
@@ -2286,13 +2286,9 @@ std::expected<void, Error> write_file(const Dex &dex, const std::string &path,
     auto bytes = write(dex, options);
     if (!bytes)
         return std::unexpected(std::move(bytes.error()));
-    std::ofstream out(path, std::ios::binary | std::ios::trunc);
-    if (!out)
-        return std::unexpected(Error{Error::Kind::Io, std::format("cannot create {}", path), {}});
-    out.write(reinterpret_cast<const char *>(bytes->data()),
-              static_cast<std::streamsize>(bytes->size()));
-    if (!out)
-        return std::unexpected(Error{Error::Kind::Io, std::format("cannot write {}", path), {}});
+    auto written = raw::write_whole_file(path, *bytes);
+    if (!written)
+        return std::unexpected(Error{Error::Kind::CannotWrite, written.error().message, {}});
     return {};
 }
 

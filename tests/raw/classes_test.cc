@@ -367,5 +367,5 @@ TEST(ClassesDex, ParseFileReturnsErrorForMissingFile)
 {
     auto result = parser::parse_file("tests/data/nonexistent.dex");
     ASSERT_FALSE(result.has_value());
-    EXPECT_EQ(result.error().code, ParseError::Code::NullPointer);
+    EXPECT_EQ(result.error().code, ParseError::Code::FileNotFound);
 }

@@ -46,15 +46,19 @@ methods), then the virtual ones. Constructors are named `<init>`, and the
 static initializer is named `<clinit>`.
 
 `method.has_code` is false for abstract and native methods. For those,
-`instructions` is an empty list and `cfg` is an empty graph.
+`instructions` is empty and `cfg` is an empty graph.
 
-`access_flags` is the raw DEX flag value as an `int`. The `is_public`,
-`is_static`, `is_final` and similar properties read single bits of it.
+`access_flags` is a `dexpp.AccessFlags`, an `enum.IntFlag` with one member per
+DEX flag. Test a flag with `in`, as the example does. It is also an `int`, so
+code that compares bits by value keeps working. The `is_public`, `is_static`,
+`is_final` and similar properties are shortcuts for single flags.
 
 ## Bytecode
 
-`method.instructions` is the decoded bytecode. `dexpp.to_string` renders one
-instruction as text.
+`method.instructions` is the decoded bytecode. It is a `dexpp.InstructionView`:
+a read-only sequence that copies nothing up front and builds each instruction
+when you read it. It supports `len()`, indexing, slicing and iteration, like a
+list. `dexpp.to_string` renders one instruction as text.
 
 ```python
 --8<-- "code.py:instructions"

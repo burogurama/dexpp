@@ -25,7 +25,11 @@ struct Problem
 struct Error
 {
     enum class Kind : uint8_t {
-        Io,            ///< The file could not be read or written.
+        FileNotFound,  ///< read_file(): the path does not exist.
+        CannotRead,    ///< read_file(): the path exists but cannot be read (a directory, no
+                       ///< permission).
+        CannotWrite,   ///< write_file(): the file cannot be created or written (a missing
+                       ///< folder, no permission, a full disk).
         Malformed,     ///< read(): the input is not a valid DEX file.
         Unsupported,   ///< read(): a DEX feature the model does not support (DEX 041 containers).
         Invalid,       ///< write(): the model breaks a rule of the format; see `problems`.

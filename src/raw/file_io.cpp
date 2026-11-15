@@ -16,6 +16,12 @@ struct FileCloser
     void operator()(std::FILE *file) const noexcept { std::fclose(file); }
 };
 
+std::unexpected<FileError> cannot_write(const std::string &path, const char *reason)
+{
+    return std::unexpected(
+        FileError{FileError::Kind::CannotWrite, "Cannot write file: " + path + ": " + reason});
+}
+
 std::unexpected<FileError> cannot_read(const std::string &path, const char *reason)
 {
     return std::unexpected(
@@ -63,6 +69,28 @@ std::expected<std::vector<uint8_t>, FileError> read_whole_file(const std::string
         return cannot_read(path, "read error");
     bytes.resize(used);
     return bytes;
+}
+
+std::expected<void, FileError> write_whole_file(const std::string &path,
+                                                std::span<const uint8_t> bytes)
+{
+    errno = 0;
+    std::FILE *file = std::fopen(path.c_str(), "wb");
+    if (file == nullptr)
+        return cannot_write(path, std::strerror(errno));
+
+    const bool written =
+        bytes.empty() || std::fwrite(bytes.data(), 1, bytes.size(), file) == bytes.size();
+    const int write_errno = errno;
+    // fclose flushes the last buffer, and that is where a full disk usually
+    // shows up, so its result is checked too.
+    errno = 0;
+    const bool closed = std::fclose(file) == 0;
+    if (!written)
+        return cannot_write(path, std::strerror(write_errno != 0 ? write_errno : EIO));
+    if (!closed)
+        return cannot_write(path, std::strerror(errno != 0 ? errno : EIO));
+    return {};
 }
 
 } // namespace dex::raw

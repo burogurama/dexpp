@@ -12,6 +12,8 @@ The code side: loading DEX files and walking classes and their members. See the 
 
 ::: dexpp.Field
 
+::: dexpp.AccessFlags
+
 ::: dexpp.MethodId
 
 ::: dexpp.FieldId

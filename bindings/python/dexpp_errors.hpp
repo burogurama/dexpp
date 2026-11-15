@@ -22,9 +22,7 @@
 #include <pybind11/eval.h>
 #include <pybind11/pybind11.h>
 
-#include <filesystem>
 #include <string>
-#include <system_error>
 
 namespace dexpp_py {
 
@@ -102,18 +100,6 @@ class VersionTooLowError(ModelError):
 {
     PyErr_SetString(PyExc_OSError, message.c_str());
     throw py::error_already_set();
-}
-
-/** Raise for a failed read of @p path: FileNotFoundError when the path does
- *  not exist, OSError when it exists but cannot be read (no permission, a
- *  directory, a failing disk).  The library reports both as one kind of
- *  error, so the difference is found here. */
-[[noreturn]] inline void raise_read_failure(const std::string &path, const std::string &message)
-{
-    std::error_code ignored;
-    if (!std::filesystem::exists(path, ignored))
-        raise_file_not_found(message);
-    raise_os_error(message);
 }
 
 } // namespace dexpp_py

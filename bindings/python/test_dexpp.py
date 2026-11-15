@@ -99,6 +99,46 @@ def test_methods_and_instructions():
     assert "InvokeInstruction" in kinds
 
 
+def test_instruction_view():
+    import collections.abc
+    import gc
+
+    ctx = dexpp.AnalysisContext.from_dex("tests/data/fibonacci.dex")
+    compute = next(m for m in ctx.find_class("LFibonacci;").methods if m.name == "compute")
+    view = compute.instructions
+    assert isinstance(view, dexpp.InstructionView)
+    assert isinstance(view, collections.abc.Sequence)
+    assert len(view) > 3
+    assert view[0].base.offset == 0
+    assert view[-1].base.offset == view[len(view) - 1].base.offset
+    offsets = [i.base.offset for i in view]
+    assert offsets == sorted(offsets)
+    assert [i.base.offset for i in view[1:3]] == offsets[1:3]
+    assert isinstance(view[1:3], list)
+    for bad in (len(view), -len(view) - 1):
+        try:
+            view[bad]
+            raise AssertionError("expected IndexError")
+        except IndexError:
+            pass
+    # Every read gives the same instructions.
+    assert [dexpp.to_string(i) for i in view] == [
+        dexpp.to_string(i) for i in compute.instructions
+    ]
+
+    # A method without code has an empty sequence.
+    pets = dexpp.AnalysisContext.from_dex("tests/data/polymorphic.dex")
+    abstract = next(m for m in pets.find_class("LAnimal;").methods if m.name == "sound")
+    assert not abstract.has_code and len(abstract.instructions) == 0
+
+    # The view keeps the analysis alive on its own.
+    alone = dexpp.AnalysisContext.from_dex("tests/data/classes.dex").find_class(
+        "LTestDex;"
+    ).methods[1].instructions
+    gc.collect()
+    assert len(alone) > 0 and dexpp.to_string(alone[0])
+
+
 def test_cfg():
     ctx = dexpp.AnalysisContext.from_dex("tests/data/fibonacci.dex")
     cls = ctx.find_class("LFibonacci;")
@@ -840,6 +880,10 @@ def test_file_errors_are_not_dexpp_errors():
         unwritable = os.path.join(directory, "no", "such", "folder", "out.dex")
         assert type(_error_from(lambda: model.write_file(unwritable))) is OSError
         assert type(_error_from(lambda: model.write_file(directory))) is OSError
+        # A full disk: on Linux every write to /dev/full fails, but only when
+        # the file is closed, because the bytes fit in one buffer.
+        if os.path.exists("/dev/full"):
+            assert type(_error_from(lambda: model.write_file("/dev/full"))) is OSError
 
 
 # ===== the type stubs =====
@@ -890,7 +934,7 @@ def _stub_class_problems(class_node):
         else:
             continue
         stub_members.add(member)
-        if member not in dir(runtime_class):
+        if not hasattr(runtime_class, member):
             problems.append(f"the module has no {name}.{member}")
         if documented is False:
             problems.append(f"{name}.{member} has no docstring")
@@ -940,6 +984,38 @@ def test_stub_matches_module_and_is_documented():
         problems.append(f"the stub has no {name}")
 
     assert problems == [], "\n".join(problems)
+
+
+def test_access_flags():
+    import enum
+
+    ctx = dexpp.AnalysisContext.from_dex("tests/data/classes.dex")
+    cls = ctx.find_class("LTestDex;")
+    flags = cls.access_flags
+    assert isinstance(flags, dexpp.AccessFlags)
+    assert isinstance(flags, enum.IntFlag) and isinstance(flags, int)
+    # Still the number it was, so code that tests bits by value keeps working.
+    assert flags == 0x1 and flags & 0x1
+    assert dexpp.AccessFlags.PUBLIC in flags
+    assert dexpp.AccessFlags.FINAL not in flags
+
+    methods = {m.name: m for m in cls.methods}
+    assert dexpp.AccessFlags.CONSTRUCTOR in methods["<init>"].access_flags
+    hello = methods["helloDex"].access_flags
+    assert hello == dexpp.AccessFlags.PUBLIC | dexpp.AccessFlags.STATIC
+    assert methods["helloDex"].is_static and dexpp.AccessFlags.STATIC in hello
+
+    field = next(iter(cls.fields), None)
+    if field is not None:
+        assert isinstance(field.access_flags, dexpp.AccessFlags)
+
+    info = dexpp.Model.read_file("tests/data/shapes.dex").class_info("LShape;")
+    assert isinstance(info.access_flags, dexpp.AccessFlags)
+    assert dexpp.AccessFlags.INTERFACE in info.access_flags
+
+    # The DEX format gives two pairs of flags the same bit.
+    assert dexpp.AccessFlags.BRIDGE is dexpp.AccessFlags.VOLATILE
+    assert dexpp.AccessFlags.VARARGS is dexpp.AccessFlags.TRANSIENT
 
 
 def test_type_aliases_exist_at_runtime():

@@ -1,7 +1,7 @@
 """Type stubs for dexpp — static analysis of Android APK / DEX files."""
 
 from collections.abc import Iterator, Sequence
-from enum import Enum
+from enum import Enum, IntFlag
 from typing import Optional, Union, overload
 
 __version__: str
@@ -85,6 +85,59 @@ class VersionTooLowError(ModelError):
     """
 
 # ===== enums =====
+
+class AccessFlags(IntFlag):
+    """The access flags of a class, a method or a field, as the DEX format stores them.
+
+    It is an `enum.IntFlag`, so it is also an `int`: code that tests bits by value
+    keeps working. Test a flag with `in`:
+    `AccessFlags.PUBLIC in cls.access_flags`.
+
+    Two pairs of flags share a bit, because the DEX format gives them the same
+    value: `VOLATILE` and `BRIDGE` (0x40), and `TRANSIENT` and `VARARGS` (0x80).
+    The first of each pair is for fields, the second for methods. In Python the
+    second name is an alias of the first, so `AccessFlags.BRIDGE is
+    AccessFlags.VOLATILE`.
+    """
+
+    PUBLIC = 0x0001
+    """`public`."""
+    PRIVATE = 0x0002
+    """`private`."""
+    PROTECTED = 0x0004
+    """`protected`."""
+    STATIC = 0x0008
+    """`static`."""
+    FINAL = 0x0010
+    """`final`."""
+    SYNCHRONIZED = 0x0020
+    """`synchronized`, on a method."""
+    VOLATILE = 0x0040
+    """`volatile`, on a field. The same bit as `BRIDGE`."""
+    BRIDGE = 0x0040
+    """A bridge method the compiler made. The same bit as `VOLATILE`."""
+    TRANSIENT = 0x0080
+    """`transient`, on a field. The same bit as `VARARGS`."""
+    VARARGS = 0x0080
+    """A method whose last parameter is `...`. The same bit as `TRANSIENT`."""
+    NATIVE = 0x0100
+    """`native`, on a method: its code is not in the DEX file."""
+    INTERFACE = 0x0200
+    """The class is an interface."""
+    ABSTRACT = 0x0400
+    """`abstract`."""
+    STRICT = 0x0800
+    """`strictfp`, on a method."""
+    SYNTHETIC = 0x1000
+    """Made by the compiler; not in the source code."""
+    ANNOTATION = 0x2000
+    """The class is an annotation type."""
+    ENUM = 0x4000
+    """The class is an enum, or the field is one of its constants."""
+    CONSTRUCTOR = 0x10000
+    """A constructor, `<init>`, or the static initializer, `<clinit>`."""
+    DECLARED_SYNCHRONIZED = 0x20000
+    """A method declared `synchronized`."""
 
 class InvokeKind(Enum):
     """The kind of invoke instruction at a call site."""
@@ -722,6 +775,21 @@ Use `isinstance` to find out which one. Every class has a `base` with the offset
 opcode and the size.
 """
 
+class InstructionView(Sequence[Instruction]):
+    """The decoded instructions of one method, as a read-only sequence.
+
+    It copies nothing up front: reading `view[i]` builds that one instruction.
+    It supports `len()`, indexing, slicing (which returns a `list`) and
+    iteration. The view keeps the analysis alive.
+    """
+
+    def __len__(self) -> int: ...
+    @overload
+    def __getitem__(self, index: int) -> Instruction: ...
+    @overload
+    def __getitem__(self, index: slice) -> list[Instruction]: ...
+    def __iter__(self) -> Iterator[Instruction]: ...
+
 # ===== CFG =====
 
 class CfgEdge:
@@ -943,10 +1011,8 @@ class Field:
     def type(self) -> str:
         """Descriptor of the field's type."""
     @property
-    def access_flags(self) -> int:
-        """The raw DEX access flags as an integer. The `is_...` properties read single
-        bits of it.
-        """
+    def access_flags(self) -> AccessFlags:
+        """The access flags. The `is_...` properties read single flags of it."""
     @property
     def is_public(self) -> bool:
         """True when the field is `public`."""
@@ -987,10 +1053,8 @@ class Method:
         included.
         """
     @property
-    def access_flags(self) -> int:
-        """The raw DEX access flags as an integer. The `is_...` properties read single
-        bits of it.
-        """
+    def access_flags(self) -> AccessFlags:
+        """The access flags. The `is_...` properties read single flags of it."""
     @property
     def has_code(self) -> bool:
         """True when the method has bytecode. False for abstract and native methods."""
@@ -1013,11 +1077,12 @@ class Method:
     def is_native(self) -> bool:
         """True when the method is `native`."""
     @property
-    def instructions(self) -> list[Instruction]:
-        """The decoded bytecode, in order. The list is empty for a method without code.
+    def instructions(self) -> InstructionView:
+        """The decoded bytecode, in order, as a read-only sequence. It is empty for a
+        method without code.
 
-        The bytecode is decoded once and kept, but each read of this property builds
-        a new Python list. Read it once and keep the list when you loop over it.
+        The bytecode is decoded once and kept. The sequence copies nothing up front:
+        each instruction is built when it is read.
         """
     @property
     def cfg(self) -> Cfg:
@@ -1085,10 +1150,8 @@ class Class:
     def annotations(self) -> list[Annotation]:
         """The annotations on the class."""
     @property
-    def access_flags(self) -> int:
-        """The raw DEX access flags as an integer. The `is_...` properties read single
-        bits of it.
-        """
+    def access_flags(self) -> AccessFlags:
+        """The access flags. The `is_...` properties read single flags of it."""
     @property
     def source_file(self) -> Optional[str]:
         """The source file name recorded for the class, such as `Foo.java`, or `None`.
@@ -1846,8 +1909,8 @@ class ClassInfo:
     def descriptor(self) -> str:
         """The class descriptor."""
     @property
-    def access_flags(self) -> int:
-        """The raw DEX access flags as an integer."""
+    def access_flags(self) -> AccessFlags:
+        """The class's access flags."""
     @property
     def superclass(self) -> Optional[str]:
         """Descriptor of the superclass, or `None` for `java.lang.Object`."""

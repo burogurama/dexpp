@@ -26,6 +26,16 @@
 
 ### Python bindings
 
+- `Method.instructions` is now a `dexpp.InstructionView`, a read-only
+  sequence over the decoded bytecode, like `Cfg.blocks`. It copies nothing up
+  front; before, every read of the property built a new list of every
+  instruction. Indexing, slicing (which returns a `list`), `len()` and
+  iteration work as before. Code that changed the list in place, or compared it
+  with a list, must call `list(method.instructions)` first.
+- `access_flags` (on `Class`, `Method`, `Field` and `ClassInfo`) is now a
+  `dexpp.AccessFlags`, an `enum.IntFlag` with one member per DEX flag:
+  `dexpp.AccessFlags.STATIC in method.access_flags`. It is still an `int`, so
+  code that compared it with numbers keeps working.
 - dexpp now raises its own exceptions, one per kind of error, where it raised
   a plain `ValueError` before:
 
@@ -67,6 +77,11 @@
   an `Io` error.
 - Every loader now reads its file through one function,
   `raw::read_whole_file`, which does not trust a file size it did not read.
+- `model::write_file` (and `Model.write_file` in Python,
+  `dexpp_model_write_file` in C, `Model.WriteFile` in Go) could report success
+  when the file was not written, for example on a full disk: the error showed
+  up only when the file was closed, and that result was not checked. It is now
+  reported as `CannotWrite` (an `OSError` in Python).
 - C API: a function that returns an empty string no longer passes a null
   pointer to `memcpy`, which is undefined behaviour. `dexpp_class_package` did
   this for every class in the default package. The comment on
@@ -80,6 +95,19 @@
   `InvalidDescriptor`. The remaining values are `FileNotFound`, `CannotRead`,
   `InvalidDexFile` and `InvalidApk`. Code that named one of the removed values
   no longer compiles; it could never have received one.
+- `dex::build_cfg` is no longer public. It took a `raw::CodeItem`, a type of
+  the internal parser layer, so it was the one public function that tied users
+  to that layer. `Method::cfg()` is the way to get a control-flow graph. The
+  public headers no longer include any `raw/` header.
+- `model::Error::Kind::Io` is replaced by three kinds, so a caller can tell the
+  cases apart without reading the message: `FileNotFound` (`read_file`: the
+  path does not exist), `CannotRead` (`read_file`: the path exists but cannot
+  be read, for example a directory) and `CannotWrite` (`write_file`: the file
+  cannot be created or written). These match the analysis side's
+  `AnalysisError::Code::FileNotFound` and `CannotRead`.
+- In the parser layer, `raw::ParseError::Code::NullPointer`, which
+  `raw::parser::parse_file` used for a file it could not open, is replaced by
+  `FileNotFound` and `CannotRead`.
 
 ### Build
 

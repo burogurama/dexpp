@@ -8,6 +8,8 @@ Decoded Dalvik bytecode. `Method.instructions` returns a list of these objects. 
 
 ::: dexpp.Instruction
 
+::: dexpp.InstructionView
+
 ::: dexpp.InstructionBase
 
 ::: dexpp.OperandWidth

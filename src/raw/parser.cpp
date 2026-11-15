@@ -1128,8 +1128,8 @@ std::expected<DexFile, ParseError> parse_file(const std::string &path, ParseOpti
     auto buffer = read_whole_file(path);
     if (!buffer) {
         const ParseError::Code code = buffer.error().kind == FileError::Kind::NotFound
-                                          ? ParseError::Code::NullPointer
-                                          : ParseError::Code::TruncatedFile;
+                                          ? ParseError::Code::FileNotFound
+                                          : ParseError::Code::CannotRead;
         return std::unexpected(ParseError{code, buffer.error().message, 0});
     }
     return parse_buffer(std::span<const uint8_t>(*buffer), options);

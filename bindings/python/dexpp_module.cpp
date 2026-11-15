@@ -28,6 +28,7 @@
 #include <vector>
 
 #include "dex.hpp"
+#include "dexpp_access_flags.hpp"
 #include "dexpp_errors.hpp"
 
 namespace py = pybind11;
@@ -271,6 +272,19 @@ struct BasicBlockView
     py::object at(std::size_t i) const { return py::cast(cfg->blocks()[i]); }
 };
 
+/** Method.instructions: one method's decoded bytecode, straight from the
+ *  context's instruction cache.  The span stays valid while the Method lives
+ *  (a Method keeps its context alive), and the view holds the Method object.
+ *  Each element is copied into a new Python object when it is read. */
+struct InstructionView
+{
+    py::object owner;
+    std::span<const Instruction> insns;
+
+    std::size_t size() const { return insns.size(); }
+    py::object at(std::size_t i) const { return py::cast(insns[i], py::return_value_policy::copy); }
+};
+
 py::object method_or_none(std::optional<Method> m)
 {
     if (!m.has_value())
@@ -286,6 +300,7 @@ PYBIND11_MODULE(dexpp, m)
     m.attr("__version__") = DEXPP_VERSION;
 
     dexpp_py::define_error_classes(m);
+    dexpp_py::define_access_flags(m);
 
     // ===== free functions =====
 
@@ -549,6 +564,10 @@ PYBIND11_MODULE(dexpp, m)
         .def_readonly("src", &BinaryLitInstruction::src)
         .def_readonly("literal", &BinaryLitInstruction::literal);
 
+    bind_view<InstructionView>(m, "InstructionView",
+                               "Read-only sequence of one method's instructions; reading one "
+                               "does not copy the others.");
+
     // ===== CFG =====
 
     py::class_<CfgEdge>(m, "CfgEdge")
@@ -605,8 +624,11 @@ PYBIND11_MODULE(dexpp, m)
         .def_property_readonly("declaring_class", &Field::declaring_class)
         .def_property_readonly("type",
                                [](const Field &f) { return std::string(f.type().descriptor()); })
-        .def_property_readonly(
-            "access_flags", [](const Field &f) { return static_cast<uint32_t>(f.access_flags()); })
+        .def_property_readonly("access_flags",
+                               [](const Field &f) {
+                                   return dexpp_py::access_flags_to_py(
+                                       static_cast<uint32_t>(f.access_flags()));
+                               })
         .def_property_readonly("is_public", &Field::is_public)
         .def_property_readonly("is_static", &Field::is_static)
         .def_property_readonly("is_final", &Field::is_final)
@@ -674,9 +696,11 @@ PYBIND11_MODULE(dexpp, m)
                                        out.emplace_back(p.descriptor());
                                    return out;
                                })
-        .def_property_readonly(
-            "access_flags",
-            [](const Method &m_) { return static_cast<uint32_t>(m_.access_flags()); })
+        .def_property_readonly("access_flags",
+                               [](const Method &m_) {
+                                   return dexpp_py::access_flags_to_py(
+                                       static_cast<uint32_t>(m_.access_flags()));
+                               })
         .def_property_readonly("has_code", &Method::has_code)
         .def_property_readonly("is_constructor", &Method::is_constructor)
         .def_property_readonly("is_static", &Method::is_static)
@@ -685,9 +709,9 @@ PYBIND11_MODULE(dexpp, m)
         .def_property_readonly("is_abstract", &Method::is_abstract)
         .def_property_readonly("is_native", &Method::is_native)
         .def_property_readonly("instructions",
-                               [](const Method &m_) {
-                                   auto insns = m_.instructions();
-                                   return std::vector<Instruction>(insns.begin(), insns.end());
+                               [](py::object self) {
+                                   const Method &m_ = self.cast<const Method &>();
+                                   return InstructionView{self, m_.instructions()};
                                })
         .def_property_readonly("cfg", &Method::cfg, py::return_value_policy::reference_internal)
         .def_property_readonly("register_count", &Method::register_count)
@@ -711,8 +735,11 @@ PYBIND11_MODULE(dexpp, m)
         .def_property_readonly("methods", &Class::methods)
         .def_property_readonly("fields", &Class::fields)
         .def_property_readonly("annotations", &Class::annotations)
-        .def_property_readonly(
-            "access_flags", [](const Class &c) { return static_cast<uint32_t>(c.access_flags()); })
+        .def_property_readonly("access_flags",
+                               [](const Class &c) {
+                                   return dexpp_py::access_flags_to_py(
+                                       static_cast<uint32_t>(c.access_flags()));
+                               })
         .def_property_readonly("source_file",
                                [](const Class &c) -> py::object {
                                    auto sf = c.source_file();

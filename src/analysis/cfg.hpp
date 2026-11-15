@@ -7,9 +7,12 @@
 #include <vector>
 
 #include "instruction.hpp"
-#include "raw/types.hpp"
 
 namespace dex {
+
+namespace detail {
+struct CfgAccess;
+} // namespace detail
 
 /** Kind of edge between two basic blocks. */
 enum class EdgeKind : uint8_t {
@@ -70,18 +73,12 @@ class Cfg
     bool empty() const { return blocks_.empty(); }
 
   private:
-    friend Cfg build_cfg(const raw::CodeItem &code, std::span<const Instruction> insns);
+    friend struct detail::CfgAccess; // the builder, in cfg.cpp
     explicit Cfg(std::vector<BasicBlock> blocks);
 
     std::vector<BasicBlock> blocks_;
     /** Sorted (start_offset, block_index) pairs for binary-search lookup. */
     std::vector<std::pair<uint32_t, uint32_t>> offset_index_;
 };
-
-/** Build the CFG for a method's bytecode.
- *  @param code   Raw code item — needed for try blocks and catch handler resolution.
- *  @param insns  Decoded instruction stream (typically `Method::instructions()`).
- *  @return       A Cfg with one block per maximal straight-line region. */
-Cfg build_cfg(const raw::CodeItem &code, std::span<const Instruction> insns);
 
 } // namespace dex

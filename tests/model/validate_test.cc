@@ -341,5 +341,5 @@ TEST(ModelRead, RejectsOtherVersionsAndBadInput)
 
     auto file = read_file("does/not/exist.dex");
     ASSERT_FALSE(file.has_value());
-    EXPECT_EQ(file.error().kind, Error::Kind::Io);
+    EXPECT_EQ(file.error().kind, Error::Kind::FileNotFound);
 }

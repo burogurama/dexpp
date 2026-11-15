@@ -24,11 +24,15 @@ print(missing)
 for method in circle.methods:
     visibility: str = "public" if method.is_public is True else "non-public"
     print(visibility, method.name, method.parameters, "->", method.return_type)
+
+constructor: dexpp.Method = circle.methods[0]
+flags: dexpp.AccessFlags = constructor.access_flags
+print(constructor.name, int(flags), dexpp.AccessFlags.CONSTRUCTOR in flags)
 # --8<-- [end:methods]
 
 # --8<-- [start:instructions]
 area: dexpp.Method = next(method for method in circle.methods if method.name == "area")
-instructions: list[dexpp.Instruction] = area.instructions
+instructions: dexpp.InstructionView = area.instructions
 
 for instruction in instructions:
     print(f"{instruction.base.offset:04x}  {dexpp.to_string(instruction)}")
