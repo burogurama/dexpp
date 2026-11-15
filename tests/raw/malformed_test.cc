@@ -133,7 +133,7 @@ TEST(MalformedTest, OutOfRangeClassIdxYieldsEmptyDescriptor)
         // Touching members must also be safe.
         for (const auto &m : c.methods()) {
             (void)m.name();
-            (void)m.return_type().descriptor();
+            (void)m.return_type();
         }
         for (const auto &f : c.fields())
             (void)f.name();

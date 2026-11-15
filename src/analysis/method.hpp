@@ -14,7 +14,6 @@
 #include "cfg.hpp"
 #include "class_ref.hpp"
 #include "instruction.hpp"
-#include "type_descriptor.hpp"
 #include "xrefs.hpp" // MethodId, FieldId, InvokeKind, TypeUseKind
 
 namespace dex {
@@ -80,10 +79,12 @@ struct TryBlock
  *  double) parameters occupying a register pair (`reg` and `reg + 1`). */
 struct ParameterRegister
 {
-    uint16_t reg;        ///< First register holding the parameter (low half if wide).
-    TypeDescriptor type; ///< Declared type; the declaring class for `this`.
-    bool is_this;        ///< True for the implicit receiver of an instance method.
-    bool is_wide;        ///< True for long / double (occupies reg and reg + 1).
+    uint16_t reg; ///< First register holding the parameter (low half if wide).
+    /** Descriptor of the declared type, such as "I" or "Ljava/lang/String;";
+     *  the declaring class for `this`.  Valid for the context's lifetime. */
+    std::string_view type;
+    bool is_this; ///< True for the implicit receiver of an instance method.
+    bool is_wide; ///< True for long / double (occupies reg and reg + 1).
 };
 
 /** A lightweight, non-owning handle to a single DEX method.
@@ -119,11 +120,15 @@ class Method
      *  view stays valid for the lifetime of the AnalysisContext. */
     std::string_view proto() const;
 
-    /** Return type derived from the method's prototype. */
-    TypeDescriptor return_type() const;
+    /** Descriptor of the return type, from the prototype: "V" for void, "I",
+     *  "Ljava/lang/String;", "[B" and so on.  The view stays valid for the
+     *  lifetime of the AnalysisContext. */
+    std::string_view return_type() const;
 
-    /** Parameter types in declaration order; empty for no-arg methods. */
-    std::vector<TypeDescriptor> parameters() const;
+    /** Descriptors of the parameter types, in declaration order; empty for a
+     *  method without parameters.  The views stay valid for the lifetime of
+     *  the AnalysisContext. */
+    std::vector<std::string_view> parameters() const;
 
     AccessFlags access_flags() const { return static_cast<AccessFlags>(access_flags_); }
 

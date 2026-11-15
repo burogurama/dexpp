@@ -213,11 +213,7 @@ TEST(MethodTest, ReturnTypeVoid)
     ASSERT_EQ(methods.size(), 3u);
 
     // <init> returns void
-    auto rt = methods[0].return_type();
-    EXPECT_EQ(rt.descriptor(), "V");
-    EXPECT_TRUE(rt.is_primitive());
-    EXPECT_FALSE(rt.is_class());
-    EXPECT_FALSE(rt.is_array());
+    EXPECT_EQ(methods[0].return_type(), "V");
 }
 
 TEST(MethodTest, ReturnTypeString)
@@ -232,10 +228,7 @@ TEST(MethodTest, ReturnTypeString)
     ASSERT_EQ(methods.size(), 3u);
 
     // helloDex() returns String
-    auto rt = methods[1].return_type();
-    EXPECT_EQ(rt.descriptor(), "Ljava/lang/String;");
-    EXPECT_TRUE(rt.is_class());
-    EXPECT_FALSE(rt.is_primitive());
+    EXPECT_EQ(methods[1].return_type(), "Ljava/lang/String;");
 }
 
 TEST(MethodTest, MainParametersContainStringArray)
@@ -252,13 +245,7 @@ TEST(MethodTest, MainParametersContainStringArray)
     // main(String[]) has one parameter
     auto params = methods[2].parameters();
     ASSERT_EQ(params.size(), 1u);
-    EXPECT_EQ(params[0].descriptor(), "[Ljava/lang/String;");
-    EXPECT_TRUE(params[0].is_array());
-
-    auto elem = params[0].element_type();
-    ASSERT_TRUE(elem.has_value());
-    EXPECT_EQ(elem->descriptor(), "Ljava/lang/String;");
-    EXPECT_TRUE(elem->is_class());
+    EXPECT_EQ(params[0], "[Ljava/lang/String;");
 }
 
 TEST(MethodTest, InitHasNoParameters)
@@ -287,74 +274,6 @@ TEST(MethodTest, DeclaringClassDescriptor)
     ASSERT_FALSE(methods.empty());
 
     EXPECT_EQ(methods[0].declaring_class().descriptor(), "LTestDex;");
-}
-
-TEST(TypeDescriptorTest, Classification)
-{
-    TypeDescriptor cls("Ljava/lang/Object;");
-    EXPECT_TRUE(cls.is_class());
-    EXPECT_FALSE(cls.is_array());
-    EXPECT_FALSE(cls.is_primitive());
-
-    TypeDescriptor arr("[Ljava/lang/String;");
-    EXPECT_FALSE(arr.is_class());
-    EXPECT_TRUE(arr.is_array());
-    EXPECT_FALSE(arr.is_primitive());
-
-    TypeDescriptor prim_v("V");
-    EXPECT_FALSE(prim_v.is_class());
-    EXPECT_FALSE(prim_v.is_array());
-    EXPECT_TRUE(prim_v.is_primitive());
-
-    TypeDescriptor prim_i("I");
-    EXPECT_TRUE(prim_i.is_primitive());
-
-    TypeDescriptor prim_z("Z");
-    EXPECT_TRUE(prim_z.is_primitive());
-}
-
-TEST(TypeDescriptorTest, ElementTypeForArray)
-{
-    TypeDescriptor arr("[I");
-    auto elem = arr.element_type();
-    ASSERT_TRUE(elem.has_value());
-    EXPECT_EQ(elem->descriptor(), "I");
-    EXPECT_TRUE(elem->is_primitive());
-
-    TypeDescriptor nested("[[Ljava/lang/String;");
-    auto elem2 = nested.element_type();
-    ASSERT_TRUE(elem2.has_value());
-    EXPECT_EQ(elem2->descriptor(), "[Ljava/lang/String;");
-    EXPECT_TRUE(elem2->is_array());
-}
-
-TEST(TypeDescriptorTest, ElementTypeNulloptForNonArray)
-{
-    TypeDescriptor cls("Ljava/lang/Object;");
-    EXPECT_FALSE(cls.element_type().has_value());
-
-    TypeDescriptor prim("I");
-    EXPECT_FALSE(prim.element_type().has_value());
-}
-
-TEST(TypeDescriptorTest, AsClassRefReturnsRefForClass)
-{
-    auto ctx = AnalysisContext::from_dex("tests/data/classes.dex");
-    ASSERT_TRUE(ctx.has_value());
-
-    TypeDescriptor td("LTestDex;");
-    auto ref = td.as_class_ref(&*ctx);
-    ASSERT_TRUE(ref.has_value());
-    EXPECT_EQ(ref->descriptor(), "LTestDex;");
-}
-
-TEST(TypeDescriptorTest, AsClassRefNulloptForPrimitive)
-{
-    auto ctx = AnalysisContext::from_dex("tests/data/classes.dex");
-    ASSERT_TRUE(ctx.has_value());
-
-    TypeDescriptor prim("V");
-    EXPECT_FALSE(prim.as_class_ref(&*ctx).has_value());
 }
 
 TEST(ClassRefTest, ResolveHitsForKnownClass)
@@ -446,7 +365,7 @@ TEST_F(ShapesDexTest, AbstractShapeColorField)
     auto fields = cls->fields();
     ASSERT_EQ(fields.size(), 1u);
     EXPECT_EQ(fields[0].name(), "color");
-    EXPECT_EQ(fields[0].type().descriptor(), "Ljava/lang/String;");
+    EXPECT_EQ(fields[0].type(), "Ljava/lang/String;");
 }
 
 TEST_F(ShapesDexTest, AbstractShapeColorFieldIsProtected)
@@ -466,7 +385,7 @@ TEST_F(ShapesDexTest, CircleRadiusField)
     auto fields = cls->fields();
     ASSERT_EQ(fields.size(), 1u);
     EXPECT_EQ(fields[0].name(), "radius");
-    EXPECT_EQ(fields[0].type().descriptor(), "D");
+    EXPECT_EQ(fields[0].type(), "D");
     EXPECT_TRUE(has_flag(fields[0].access_flags(), AccessFlags::Private));
 }
 
@@ -479,8 +398,8 @@ TEST_F(ShapesDexTest, RectangleTwoFields)
     // field_ids order: height (field_id[2]) then width (field_id[3])
     EXPECT_EQ(fields[0].name(), "height");
     EXPECT_EQ(fields[1].name(), "width");
-    EXPECT_EQ(fields[0].type().descriptor(), "D");
-    EXPECT_EQ(fields[1].type().descriptor(), "D");
+    EXPECT_EQ(fields[0].type(), "D");
+    EXPECT_EQ(fields[1].type(), "D");
 }
 
 TEST_F(ShapesDexTest, CircleConstructorTwoParameters)
@@ -493,8 +412,8 @@ TEST_F(ShapesDexTest, CircleConstructorTwoParameters)
     EXPECT_EQ(methods[0].name(), "<init>");
     auto params = methods[0].parameters();
     ASSERT_EQ(params.size(), 2u);
-    EXPECT_EQ(params[0].descriptor(), "Ljava/lang/String;");
-    EXPECT_EQ(params[1].descriptor(), "D");
+    EXPECT_EQ(params[0], "Ljava/lang/String;");
+    EXPECT_EQ(params[1], "D");
 }
 
 TEST_F(ShapesDexTest, MethodAndFieldIdsMatchTheirParts)
@@ -525,9 +444,9 @@ TEST_F(ShapesDexTest, RectangleConstructorThreeParameters)
     EXPECT_EQ(methods[0].name(), "<init>");
     auto params = methods[0].parameters();
     ASSERT_EQ(params.size(), 3u);
-    EXPECT_EQ(params[0].descriptor(), "Ljava/lang/String;");
-    EXPECT_EQ(params[1].descriptor(), "D");
-    EXPECT_EQ(params[2].descriptor(), "D");
+    EXPECT_EQ(params[0], "Ljava/lang/String;");
+    EXPECT_EQ(params[1], "D");
+    EXPECT_EQ(params[2], "D");
 }
 
 // ---------------------------------------------------------------------------
@@ -570,11 +489,11 @@ TEST_F(TryCatchDexTest, DivideReturnTypeAndParameters)
 
     // methods()[1] = divide(II)I
     EXPECT_EQ(methods[1].name(), "divide");
-    EXPECT_EQ(methods[1].return_type().descriptor(), "I");
+    EXPECT_EQ(methods[1].return_type(), "I");
     auto params = methods[1].parameters();
     ASSERT_EQ(params.size(), 2u);
-    EXPECT_EQ(params[0].descriptor(), "I");
-    EXPECT_EQ(params[1].descriptor(), "I");
+    EXPECT_EQ(params[0], "I");
+    EXPECT_EQ(params[1], "I");
 }
 
 TEST_F(TryCatchDexTest, SafeParseReturnTypeAndParameter)
@@ -586,10 +505,10 @@ TEST_F(TryCatchDexTest, SafeParseReturnTypeAndParameter)
 
     // methods()[2] = safeParse(String)String
     EXPECT_EQ(methods[2].name(), "safeParse");
-    EXPECT_EQ(methods[2].return_type().descriptor(), "Ljava/lang/String;");
+    EXPECT_EQ(methods[2].return_type(), "Ljava/lang/String;");
     auto params = methods[2].parameters();
     ASSERT_EQ(params.size(), 1u);
-    EXPECT_EQ(params[0].descriptor(), "Ljava/lang/String;");
+    EXPECT_EQ(params[0], "Ljava/lang/String;");
 }
 
 // ===== Lifetime tests for handle/AnalysisContext shared ownership. =====

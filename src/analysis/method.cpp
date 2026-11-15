@@ -43,16 +43,14 @@ std::string_view Method::proto() const
     return impl_->proto_descriptor_of(dex_idx_, method_id->proto_idx);
 }
 
-TypeDescriptor Method::return_type() const
+std::string_view Method::return_type() const
 {
     const auto *method_id = impl_->method_item(dex_idx_, method_abs_idx_);
     const auto *proto = method_id ? impl_->proto_item(dex_idx_, method_id->proto_idx) : nullptr;
-    auto desc =
-        proto ? impl_->type_descriptor_of(dex_idx_, proto->return_type_idx) : std::string_view{};
-    return TypeDescriptor(desc);
+    return proto ? impl_->type_descriptor_of(dex_idx_, proto->return_type_idx) : std::string_view{};
 }
 
-std::vector<TypeDescriptor> Method::parameters() const
+std::vector<std::string_view> Method::parameters() const
 {
     const auto *method_id = impl_->method_item(dex_idx_, method_abs_idx_);
     const auto *proto = method_id ? impl_->proto_item(dex_idx_, method_id->proto_idx) : nullptr;
@@ -64,11 +62,10 @@ std::vector<TypeDescriptor> Method::parameters() const
     if (!type_list.has_value())
         return {};
 
-    std::vector<TypeDescriptor> params;
+    std::vector<std::string_view> params;
     params.reserve(type_list->type_ids.size());
-    for (auto type_idx : type_list->type_ids) {
-        params.emplace_back(impl_->type_descriptor_of(dex_idx_, type_idx));
-    }
+    for (auto type_idx : type_list->type_ids)
+        params.push_back(impl_->type_descriptor_of(dex_idx_, type_idx));
     return params;
 }
 
@@ -108,13 +105,12 @@ std::vector<ParameterRegister> Method::parameter_registers() const
         const auto *mid = impl_->method_item(dex_idx_, method_abs_idx_);
         auto this_desc =
             mid ? impl_->type_descriptor_of(dex_idx_, mid->class_idx) : std::string_view{};
-        out.push_back({reg, TypeDescriptor(this_desc), /*is_this=*/true, /*is_wide=*/false});
+        out.push_back({reg, this_desc, /*is_this=*/true, /*is_wide=*/false});
         ++reg;
     }
 
-    for (const auto &param : parameters()) {
-        auto desc = param.descriptor();
-        bool wide = desc == "J" || desc == "D";
+    for (std::string_view param : parameters()) {
+        bool wide = param == "J" || param == "D";
         out.push_back({reg, param, /*is_this=*/false, wide});
         reg = static_cast<uint16_t>(reg + (wide ? 2 : 1));
     }

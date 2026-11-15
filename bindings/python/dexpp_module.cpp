@@ -11,9 +11,6 @@
  *    equal when they point at the same thing of the same analysis.  Every
  *    class with __eq__ also has __hash__ (pybind11 makes a class that defines
  *    only __eq__ unhashable).
- *  - TypeDescriptor is flattened to a plain str: unlike the other handles it
- *    does not keep the AnalysisContext alive, so exposing it as an object
- *    would let Python code dangle it past the context's lifetime.
  *  - Small span-returning accessors copy into Python lists.  The whole-program
  *    index tables (CallGraph.nodes/edges, Xrefs.referrers, Cfg.blocks) are
  *    zero-copy sequence views instead, and call-graph nodes/edges are handles
@@ -644,8 +641,7 @@ PYBIND11_MODULE(dexpp, m)
     py::class_<Field>(m, "Field")
         .def_property_readonly("name", [](const Field &f) { return std::string(f.name()); })
         .def_property_readonly("declaring_class", &Field::declaring_class)
-        .def_property_readonly("type",
-                               [](const Field &f) { return std::string(f.type().descriptor()); })
+        .def_property_readonly("type", [](const Field &f) { return std::string(f.type()); })
         .def_property_readonly("id", &Field::id)
         .def_property_readonly("access_flags",
                                [](const Field &f) {
@@ -703,8 +699,8 @@ PYBIND11_MODULE(dexpp, m)
 
     py::class_<ParameterRegister>(m, "ParameterRegister")
         .def_readonly("reg", &ParameterRegister::reg)
-        .def_property_readonly(
-            "type", [](const ParameterRegister &p) { return std::string(p.type.descriptor()); })
+        .def_property_readonly("type",
+                               [](const ParameterRegister &p) { return std::string(p.type); })
         .def_readonly("is_this", &ParameterRegister::is_this)
         .def_readonly("is_wide", &ParameterRegister::is_wide);
 
@@ -713,14 +709,13 @@ PYBIND11_MODULE(dexpp, m)
         .def_property_readonly("declaring_class", &Method::declaring_class)
         .def_property_readonly("id", &Method::id)
         .def_property_readonly("proto", [](const Method &m_) { return std::string(m_.proto()); })
-        .def_property_readonly(
-            "return_type",
-            [](const Method &m_) { return std::string(m_.return_type().descriptor()); })
+        .def_property_readonly("return_type",
+                               [](const Method &m_) { return std::string(m_.return_type()); })
         .def_property_readonly("parameters",
                                [](const Method &m_) {
                                    std::vector<std::string> out;
-                                   for (const auto &p : m_.parameters())
-                                       out.emplace_back(p.descriptor());
+                                   for (std::string_view p : m_.parameters())
+                                       out.emplace_back(p);
                                    return out;
                                })
         .def_property_readonly("access_flags",

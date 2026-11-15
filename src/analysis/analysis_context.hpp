@@ -38,7 +38,7 @@ struct ApkLoadOptions
  *
  *  AnalysisContext owns one or more parsed DEX files and exposes a high-level API
  *  for querying classes, methods, and fields.  It is the root object that all
- *  Class / Method / Field / ClassRef / TypeDescriptor handles point back to.
+ *  Class / Method / Field / ClassRef handles point back to.
  *
  *  Internally the context uses a shared_ptr to a private Impl, making copy cheap
  *  (shared ownership) and the object safe to return from factory functions by value.

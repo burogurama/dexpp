@@ -12,7 +12,6 @@
 #include "annotations.hpp"
 #include "class_ref.hpp"
 #include "common/ids.hpp"
-#include "type_descriptor.hpp"
 
 namespace dex {
 
@@ -42,8 +41,10 @@ class Field
     /** ClassRef for the class that declares this field. */
     ClassRef declaring_class() const;
 
-    /** The declared type of the field. */
-    TypeDescriptor type() const;
+    /** Descriptor of the field's declared type, such as "I" or
+     *  "Ljava/lang/String;".  The view stays valid for the lifetime of the
+     *  AnalysisContext. */
+    std::string_view type() const;
 
     /** The field's identity: its class, name and type.  It is the identity the
      *  cross-references use, so a Field can be looked up in them with it. */

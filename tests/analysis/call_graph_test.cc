@@ -277,10 +277,10 @@ TEST(CallGraphTest, AbstractMethodNoOutgoingEdges)
         // Build the MethodId for this abstract method.
         auto params = m.parameters();
         std::string proto = "(";
-        for (const auto &p : params)
-            proto.append(p.descriptor());
+        for (std::string_view p : params)
+            proto.append(p);
         proto.push_back(')');
-        proto.append(m.return_type().descriptor());
+        proto.append(m.return_type());
 
         const CallNode *node =
             g.find(MethodId{std::string(cls->descriptor()), std::string(m.name()), proto});

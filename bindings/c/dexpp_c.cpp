@@ -274,17 +274,11 @@ DexppClassRef *dexpp_method_declaring_class(const DexppMethod *m)
 
 void dexpp_method_id(const DexppMethod *m, DexppMethodId *out) { *out = method_id(m->method.id()); }
 
-char *dexpp_method_return_type(const DexppMethod *m)
-{
-    return cstr(m->method.return_type().descriptor());
-}
+char *dexpp_method_return_type(const DexppMethod *m) { return cstr(m->method.return_type()); }
 
 char **dexpp_method_parameters(const DexppMethod *m, size_t *count)
 {
-    std::vector<std::string_view> types;
-    for (const auto &p : m->method.parameters())
-        types.push_back(p.descriptor());
-    return string_array(types, count);
+    return string_array(m->method.parameters(), count);
 }
 
 uint32_t dexpp_method_access_flags(const DexppMethod *m)
@@ -320,7 +314,7 @@ DexppClassRef *dexpp_field_declaring_class(const DexppField *f)
     return new DexppClassRef{f->field.declaring_class()};
 }
 
-char *dexpp_field_type(const DexppField *f) { return cstr(f->field.type().descriptor()); }
+char *dexpp_field_type(const DexppField *f) { return cstr(f->field.type()); }
 
 void dexpp_field_id(const DexppField *f, DexppFieldId *out) { *out = field_id(f->field.id()); }
 

@@ -33,7 +33,6 @@ INPUT                  = docs/cpp-mainpage.md \
                          src/analysis/field.hpp \
                          src/analysis/instruction.hpp \
                          src/analysis/method.hpp \
-                         src/analysis/type_descriptor.hpp \
                          src/analysis/xrefs.hpp \
                          src/apk/apk.hpp \
                          src/apk/axml.hpp \

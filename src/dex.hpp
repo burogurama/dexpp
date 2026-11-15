@@ -3,12 +3,10 @@
 /** dex public API.
  *
  *  Include this single header to gain access to the entire dex namespace:
- *  AnalysisContext, Class, Method, Field, ClassRef, TypeDescriptor,
- *  AccessFlags, Cfg, CallGraph, ClassHierarchy, and Xrefs; Error, the one
- *  error type of the whole library, with its ErrorCode;
- *  dex::apk for package metadata; and dex::model, the editable DEX model
- *  (read, change, write).  DEXPP_VERSION (from version.hpp) gives the
- *  library version. */
+ *  AnalysisContext, Class, Method, Field, ClassRef, AccessFlags, Cfg, CallGraph, ClassHierarchy,
+ * and Xrefs; Error, the one error type of the whole library, with its ErrorCode; dex::apk for
+ * package metadata; and dex::model, the editable DEX model (read, change, write).  DEXPP_VERSION
+ * (from version.hpp) gives the library version. */
 
 #include "analysis/access_flags.hpp"
 #include "analysis/analysis_context.hpp"
@@ -22,7 +20,6 @@
 #include "analysis/field.hpp"
 #include "analysis/instruction.hpp"
 #include "analysis/method.hpp"
-#include "analysis/type_descriptor.hpp"
 #include "analysis/xrefs.hpp"
 #include "apk/apk.hpp"
 #include "apk/axml.hpp"

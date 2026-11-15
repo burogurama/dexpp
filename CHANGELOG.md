@@ -575,6 +575,19 @@ aliases.
   the internal parser layer, so it was the one public function that tied users
   to that layer. `Method::cfg()` is the way to get a control-flow graph. The
   public headers no longer include any `raw/` header.
+- `TypeDescriptor` is removed. `Method::return_type()`, `Field::type()` and
+  `ParameterRegister::type` now give a `std::string_view`, and
+  `Method::parameters()` a `std::vector<std::string_view>`, like every other
+  descriptor in the API (`Class::descriptor()`, `TypeUse::descriptor`, the
+  class hierarchy) and like the Python, C, Go and Java bindings, which always
+  gave plain strings. The views stay valid as long as the context, or any
+  handle from it, is alive. `TypeDescriptor` had a public constructor that
+  took any `std::string_view`, so it was easy to build one over a temporary
+  string that then went away, and `as_class_ref()` asked for the context
+  again through a raw pointer. Code that used its helpers can test the string
+  itself: `d.front() == '['` for `is_array()`, `d.substr(1)` for
+  `element_type()`, and `AnalysisContext::find_class(d)` instead of
+  `as_class_ref(&ctx)->resolve()`.
 - `dex::build_call_graph`, `dex::build_xrefs` and `dex::build_class_hierarchy`
   are no longer public. They took the library's private implementation type,
   so no user could call them. `AnalysisContext::call_graph()`, `xrefs()` and

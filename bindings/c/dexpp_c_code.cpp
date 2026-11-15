@@ -563,8 +563,8 @@ DexppParameterRegister *dexpp_method_parameter_registers(const DexppMethod *m, s
     *count = regs.size();
     DexppParameterRegister *out = alloc_array<DexppParameterRegister>(regs.size());
     for (size_t i = 0; i < regs.size(); ++i)
-        out[i] = DexppParameterRegister{regs[i].reg, cstr(regs[i].type.descriptor()),
-                                        regs[i].is_this ? 1 : 0, regs[i].is_wide ? 1 : 0};
+        out[i] = DexppParameterRegister{regs[i].reg, cstr(regs[i].type), regs[i].is_this ? 1 : 0,
+                                        regs[i].is_wide ? 1 : 0};
     return out;
 }
 

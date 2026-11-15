@@ -29,12 +29,10 @@ ClassRef Field::declaring_class() const
     return ClassRef(desc, impl_);
 }
 
-TypeDescriptor Field::type() const
+std::string_view Field::type() const
 {
     const auto *field_id = impl_->field_item(dex_idx_, field_abs_idx_);
-    auto desc =
-        field_id ? impl_->type_descriptor_of(dex_idx_, field_id->type_idx) : std::string_view{};
-    return TypeDescriptor(desc);
+    return field_id ? impl_->type_descriptor_of(dex_idx_, field_id->type_idx) : std::string_view{};
 }
 
 FieldId Field::id() const { return impl_->field_id_of(dex_idx_, field_abs_idx_); }

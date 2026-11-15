@@ -93,9 +93,8 @@ inline std::vector<std::string> describe(const dex::AnalysisContext &ctx)
         for (const auto &a : c.annotations())
             out.push_back(cls + " " + render(a));
         for (const dex::Field &f : c.fields()) {
-            std::string line =
-                std::format("{} field {}:{} {:x}", cls, f.name(), f.type().descriptor(),
-                            static_cast<uint32_t>(f.access_flags()));
+            std::string line = std::format("{} field {}:{} {:x}", cls, f.name(), f.type(),
+                                           static_cast<uint32_t>(f.access_flags()));
             if (auto v = f.initial_value())
                 line += " = " + render(*v);
             for (const auto &a : f.annotations())
@@ -104,9 +103,9 @@ inline std::vector<std::string> describe(const dex::AnalysisContext &ctx)
         }
         for (const dex::Method &m : c.methods()) {
             std::string sig = std::string(m.name()) + "(";
-            for (const auto &p : m.parameters())
-                sig += p.descriptor();
-            sig += ")" + std::string(m.return_type().descriptor());
+            for (std::string_view p : m.parameters())
+                sig += p;
+            sig += ")" + std::string(m.return_type());
             std::string method_head =
                 std::format("{} method {} {:x}", cls, sig, static_cast<uint32_t>(m.access_flags()));
             for (const auto &a : m.annotations())

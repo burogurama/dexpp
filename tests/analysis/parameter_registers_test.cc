@@ -44,7 +44,7 @@ TEST(ParameterRegistersTest, StaticSingleParam)
     EXPECT_FALSE(params[0].is_this);
     EXPECT_FALSE(params[0].is_wide);
     EXPECT_EQ(params[0].reg, 1);
-    EXPECT_EQ(params[0].type.descriptor(), "[Ljava/lang/String;");
+    EXPECT_EQ(params[0].type, "[Ljava/lang/String;");
 }
 
 // TestDex.helloDex(): static, no parameters.
@@ -66,10 +66,10 @@ TEST(ParameterRegistersTest, InstanceMethodHasThisFirst)
     auto params = ctor.parameter_registers();
     ASSERT_EQ(params.size(), 2u);
     EXPECT_TRUE(params[0].is_this);
-    EXPECT_EQ(params[0].type.descriptor(), "LPet;");
+    EXPECT_EQ(params[0].type, "LPet;");
     EXPECT_EQ(params[0].reg, 0);
     EXPECT_FALSE(params[1].is_this);
-    EXPECT_EQ(params[1].type.descriptor(), "Ljava/lang/String;");
+    EXPECT_EQ(params[1].type, "Ljava/lang/String;");
     EXPECT_EQ(params[1].reg, 1);
 }
 
@@ -84,7 +84,7 @@ TEST(ParameterRegistersTest, WideParameterOccupiesPair)
     auto params = classify.parameter_registers();
     ASSERT_EQ(params.size(), 1u);
     EXPECT_TRUE(params[0].is_wide);
-    EXPECT_EQ(params[0].type.descriptor(), "J");
+    EXPECT_EQ(params[0].type, "J");
     EXPECT_EQ(params[0].reg, 3); // and v4 is the high half
 }
 
@@ -102,7 +102,7 @@ TEST(ParameterRegistersTest, InstanceWithPrimitiveParam)
     EXPECT_TRUE(params[0].is_this);
     EXPECT_EQ(params[0].reg, 9);
     EXPECT_FALSE(params[1].is_wide);
-    EXPECT_EQ(params[1].type.descriptor(), "I");
+    EXPECT_EQ(params[1].type, "I");
     EXPECT_EQ(params[1].reg, 10);
 }
 

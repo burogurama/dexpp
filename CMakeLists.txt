@@ -109,7 +109,6 @@ set(DEXPP_CORE_SOURCES
     src/analysis/class_ref.cpp
     src/analysis/method.cpp
     src/analysis/field.cpp
-    src/analysis/type_descriptor.cpp
     src/analysis/instruction.cpp
     src/analysis/cfg.cpp
     src/analysis/call_graph.cpp
