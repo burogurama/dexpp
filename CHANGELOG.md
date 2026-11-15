@@ -71,8 +71,8 @@ thing. The old names are gone; there are no aliases.
       Python, `DexppTypeUseKind` with the values `DEXPP_TYPE_USE_CONST_CLASS`
       and so on in C, `TypeUseKind` with the constants `TypeUseConstClass`
       and so on in Go, and `TypeUseKind` in Java. The C++ helper
-      `type_ref_kind_from_opcode` is now `type_use_kind_from_opcode`. The
-      member names and numbers do not change.
+      `type_ref_kind_from_opcode` is no longer public (see "C++ API
+      (breaking)"). The member names and numbers do not change.
 - A method's prototype, such as `"(Ljava/lang/String;I)V"`, is called `proto`
   everywhere, as in `MethodId.proto`. The accessor that called it a
   descriptor is renamed: `dexpp_method_descriptor` is now
@@ -440,6 +440,19 @@ aliases.
   `ctx.FindClass(d).Name()`, the garbage collector could free the handle while
   C was still using it. Every method now keeps its handle alive until it
   returns.
+- Python: some small value objects could read freed memory. These strings
+  pointed into the analysis's memory: `StringLoad.value`, `TypeUse.descriptor`,
+  `CatchHandler.type_descriptor` (in `TryBlock.handlers`),
+  `ParameterRegister.type`, and `CfgEdge.catch_type` (in
+  `BasicBlock.successors`). But these objects do not keep the analysis alive.
+  So once the last `AnalysisContext` and every handle from it were gone,
+  reading one of these strings gave garbage, raised `UnicodeDecodeError`, or
+  crashed. It happened to the results of `string_loads()`, `type_uses()`,
+  `try_blocks` and `parameter_registers`, and to every `BasicBlock` from
+  `Cfg.blocks`, `Cfg.entry` and `Cfg.block_at_offset()`. These objects now
+  hold their own copy of each string, made when the object is created, so
+  they stay valid on their own. The Python API does not change. C, Go and
+  Java were not affected: they always copied the strings.
 - `Model.read` in Python read the wrong memory when it got a buffer whose bytes
   are not next to each other, such as a reversed or strided `memoryview`: it
   read forward from the buffer's start and could go past its end. It now reads
@@ -609,6 +622,11 @@ aliases.
   are no longer public. They took the library's private implementation type,
   so no user could call them. `AnalysisContext::call_graph()`, `xrefs()` and
   `class_hierarchy()` are the way to get these, as before.
+- `dex::invoke_kind_from_opcode` and `dex::type_ref_kind_from_opcode` are no
+  longer public. They map a raw opcode byte to an `InvokeKind` or a
+  `TypeUseKind`, and the API already gives those kinds resolved:
+  `MethodCall::kind`, `TypeUse::kind`, `CallEdge::kind` and the kinds of the
+  cross-reference sites. No binding exposed them.
 - In the parser layer, `raw::ParseError::Code::NullPointer`, which
   `raw::parser::parse_file` used for a file it could not open, is replaced by
   `FileNotFound` and `CannotRead`.

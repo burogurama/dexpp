@@ -6,6 +6,7 @@
 
 #include "analysis_context_impl.hpp"
 #include "common/hash.hpp"
+#include "opcode_kinds.hpp"
 #include "raw/parser.hpp"
 
 namespace dex {
@@ -122,7 +123,7 @@ std::vector<MethodCall> Method::calls() const
     std::vector<MethodCall> out;
     for (const auto &insn : instructions()) {
         if (const auto *iv = std::get_if<InvokeInstruction>(&insn)) {
-            if (auto kind = invoke_kind_from_opcode(iv->base.opcode))
+            if (auto kind = detail::invoke_kind_from_opcode(iv->base.opcode))
                 out.push_back(
                     {iv->base.offset, impl_->method_id_of(dex_idx_, iv->method_index), *kind});
         }
@@ -167,7 +168,7 @@ std::vector<TypeUse> Method::type_uses() const
                                    TypeUseKind::ConstClass});
                 }
                 else if constexpr (std::is_same_v<T, TypeInstruction>) {
-                    if (auto kind = type_use_kind_from_opcode(v.base.opcode))
+                    if (auto kind = detail::type_use_kind_from_opcode(v.base.opcode))
                         out.push_back({v.base.offset,
                                        impl_->type_descriptor_of(dex_idx_, v.type_index), *kind});
                 }

@@ -17,6 +17,12 @@
  *    with direct navigation (edge.callee, node.out_edges) — see bind_view.
  *  - Lazily-built singletons (call_graph / class_hierarchy / xrefs / cfg) are
  *    returned by reference with keep_alive so the owning context outlives them.
+ *  - No Python object reads memory it does not keep alive.  Handles, views and
+ *    the singletons above keep their owner alive.  Value objects do not, so
+ *    they own all their data: a C++ value struct with a std::string_view
+ *    member is never bound itself, but copied into an owned twin when it
+ *    becomes a Python object (see namespace owned).  A new value struct with a
+ *    view member must get an owned twin too.
  *  - A property is cheap or cached.  Anything that walks the whole program
  *    (or archive, or graph neighbourhood, or a method's bytecode) again on
  *    every read is a method instead: classes(), strings(), entries(),
@@ -78,6 +84,127 @@ py::object annotation_value_to_py(const AnnotationValue &v)
         },
         v.value);
 }
+
+// ===== value objects that own their strings =====
+//
+// Some C++ value structs hold std::string_view members that point into the
+// AnalysisContext's string cache: StringLoad, TypeUse, CatchHandler,
+// ParameterRegister and CfgEdge, and through them TryBlock and BasicBlock.  A
+// view is valid only while the context lives.  A Python object that held such
+// a struct would not keep the context alive, because a value has no handle.  So
+// once the last Method and AnalysisContext were gone, reading its string would
+// read freed memory.
+//
+// So those C++ structs are never bound.  Each one has a twin here with the
+// same fields, where every view is a std::string, and it is copied into its
+// twin at the moment it becomes a Python object.  The Python object then owns
+// all its data and needs nothing else alive.
+namespace owned {
+
+struct StringLoad
+{
+    uint32_t code_offset;
+    std::string value;
+};
+
+struct TypeUse
+{
+    uint32_t code_offset;
+    std::string descriptor;
+    TypeUseKind kind;
+};
+
+struct CatchHandler
+{
+    std::string type_descriptor;
+    uint32_t handler_offset;
+};
+
+struct TryBlock
+{
+    uint32_t start_offset;
+    uint32_t end_offset;
+    std::vector<CatchHandler> handlers;
+    std::optional<uint32_t> catch_all_offset;
+};
+
+struct ParameterRegister
+{
+    uint16_t reg;
+    std::string type;
+    bool is_this;
+    bool is_wide;
+};
+
+struct CfgEdge
+{
+    uint32_t target_block;
+    CfgEdgeKind kind;
+    std::optional<int32_t> case_key;
+    std::optional<std::string> catch_type;
+};
+
+struct BasicBlock
+{
+    uint32_t index;
+    uint32_t start_offset;
+    uint32_t end_offset;
+    uint32_t first_insn;
+    uint32_t insn_count;
+    std::vector<CfgEdge> successors;
+    std::vector<uint32_t> predecessors;
+    bool is_handler_entry;
+};
+
+StringLoad from(const dex::StringLoad &s) { return {s.code_offset, std::string(s.value)}; }
+
+TypeUse from(const dex::TypeUse &t) { return {t.code_offset, std::string(t.descriptor), t.kind}; }
+
+CatchHandler from(const dex::CatchHandler &h)
+{
+    return {std::string(h.type_descriptor), h.handler_offset};
+}
+
+ParameterRegister from(const dex::ParameterRegister &p)
+{
+    return {p.reg, std::string(p.type), p.is_this, p.is_wide};
+}
+
+CfgEdge from(const dex::CfgEdge &e)
+{
+    std::optional<std::string> catch_type;
+    if (e.catch_type)
+        catch_type.emplace(*e.catch_type);
+    return {e.target_block, e.kind, e.case_key, std::move(catch_type)};
+}
+
+// Declared before from_all, so that it can find them: a vector of try blocks
+// is copied with from_all too.
+TryBlock from(const dex::TryBlock &t);
+BasicBlock from(const dex::BasicBlock &b);
+
+/** The owned twin of every element of @p values, in order. */
+template <typename T> auto from_all(const std::vector<T> &values)
+{
+    std::vector<decltype(from(values.front()))> out;
+    out.reserve(values.size());
+    for (const T &v : values)
+        out.push_back(from(v));
+    return out;
+}
+
+TryBlock from(const dex::TryBlock &t)
+{
+    return {t.start_offset, t.end_offset, from_all(t.handlers), t.catch_all_offset};
+}
+
+BasicBlock from(const dex::BasicBlock &b)
+{
+    return {b.index,      b.start_offset,         b.end_offset,   b.first_insn,
+            b.insn_count, from_all(b.successors), b.predecessors, b.is_handler_entry};
+}
+
+} // namespace owned
 
 // ===== zero-copy views and call-graph handles =====
 //
@@ -249,13 +376,15 @@ struct ReferrerView
     py::object at(std::size_t i) const { return py::cast(xrefs->referrers()[i]); }
 };
 
+/** Cfg.blocks.  Each block it hands out is an owned copy (owned::BasicBlock),
+ *  so a block stays valid after the view and the analysis are gone. */
 struct BasicBlockView
 {
     py::object owner;
     const Cfg *cfg;
 
     std::size_t size() const { return cfg->blocks().size(); }
-    py::object at(std::size_t i) const { return py::cast(cfg->blocks()[i]); }
+    py::object at(std::size_t i) const { return py::cast(owned::from(cfg->blocks()[i])); }
 };
 
 /** Method.instructions: one method's decoded bytecode, straight from the
@@ -572,25 +701,21 @@ PYBIND11_MODULE(dexpp, m)
 
     // ===== CFG =====
 
-    py::class_<CfgEdge>(m, "CfgEdge")
-        .def_readonly("target_block", &CfgEdge::target_block)
-        .def_readonly("kind", &CfgEdge::kind)
-        .def_readonly("case_key", &CfgEdge::case_key)
-        .def_property_readonly("catch_type", [](const CfgEdge &e) -> std::optional<std::string> {
-            if (!e.catch_type)
-                return std::nullopt;
-            return std::string(*e.catch_type);
-        });
+    py::class_<owned::CfgEdge>(m, "CfgEdge")
+        .def_readonly("target_block", &owned::CfgEdge::target_block)
+        .def_readonly("kind", &owned::CfgEdge::kind)
+        .def_readonly("case_key", &owned::CfgEdge::case_key)
+        .def_readonly("catch_type", &owned::CfgEdge::catch_type);
 
-    py::class_<BasicBlock>(m, "BasicBlock")
-        .def_readonly("index", &BasicBlock::index)
-        .def_readonly("start_offset", &BasicBlock::start_offset)
-        .def_readonly("end_offset", &BasicBlock::end_offset)
-        .def_readonly("first_insn", &BasicBlock::first_insn)
-        .def_readonly("insn_count", &BasicBlock::insn_count)
-        .def_readonly("successors", &BasicBlock::successors)
-        .def_readonly("predecessors", &BasicBlock::predecessors)
-        .def_readonly("is_handler_entry", &BasicBlock::is_handler_entry);
+    py::class_<owned::BasicBlock>(m, "BasicBlock")
+        .def_readonly("index", &owned::BasicBlock::index)
+        .def_readonly("start_offset", &owned::BasicBlock::start_offset)
+        .def_readonly("end_offset", &owned::BasicBlock::end_offset)
+        .def_readonly("first_insn", &owned::BasicBlock::first_insn)
+        .def_readonly("insn_count", &owned::BasicBlock::insn_count)
+        .def_readonly("successors", &owned::BasicBlock::successors)
+        .def_readonly("predecessors", &owned::BasicBlock::predecessors)
+        .def_readonly("is_handler_entry", &owned::BasicBlock::is_handler_entry);
 
     bind_view<BasicBlockView>(m, "BasicBlockView",
                               "Read-only sequence of a CFG's blocks; indexing does not copy "
@@ -604,7 +729,7 @@ PYBIND11_MODULE(dexpp, m)
                                [](const Cfg &c) -> py::object {
                                    if (c.empty())
                                        return py::none();
-                                   return py::cast(c.entry());
+                                   return py::cast(owned::from(c.entry()));
                                })
         .def(
             "block_at_offset",
@@ -612,7 +737,7 @@ PYBIND11_MODULE(dexpp, m)
                 const BasicBlock *b = c.block_at_offset(offset);
                 if (!b)
                     return py::none();
-                return py::cast(*b);
+                return py::cast(owned::from(*b));
             },
             py::arg("offset"))
         .def_property_readonly("empty", &Cfg::empty)
@@ -668,33 +793,30 @@ PYBIND11_MODULE(dexpp, m)
         .def_readonly("is_write", &FieldAccess::is_write)
         .def_readonly("is_static", &FieldAccess::is_static);
 
-    py::class_<StringLoad>(m, "StringLoad")
-        .def_readonly("code_offset", &StringLoad::code_offset)
-        .def_property_readonly("value", [](const StringLoad &s) { return std::string(s.value); });
+    py::class_<owned::StringLoad>(m, "StringLoad")
+        .def_readonly("code_offset", &owned::StringLoad::code_offset)
+        .def_readonly("value", &owned::StringLoad::value);
 
-    py::class_<TypeUse>(m, "TypeUse")
-        .def_readonly("code_offset", &TypeUse::code_offset)
-        .def_property_readonly("descriptor",
-                               [](const TypeUse &t) { return std::string(t.descriptor); })
-        .def_readonly("kind", &TypeUse::kind);
+    py::class_<owned::TypeUse>(m, "TypeUse")
+        .def_readonly("code_offset", &owned::TypeUse::code_offset)
+        .def_readonly("descriptor", &owned::TypeUse::descriptor)
+        .def_readonly("kind", &owned::TypeUse::kind);
 
-    py::class_<CatchHandler>(m, "CatchHandler")
-        .def_property_readonly("type_descriptor",
-                               [](const CatchHandler &h) { return std::string(h.type_descriptor); })
-        .def_readonly("handler_offset", &CatchHandler::handler_offset);
+    py::class_<owned::CatchHandler>(m, "CatchHandler")
+        .def_readonly("type_descriptor", &owned::CatchHandler::type_descriptor)
+        .def_readonly("handler_offset", &owned::CatchHandler::handler_offset);
 
-    py::class_<TryBlock>(m, "TryBlock")
-        .def_readonly("start_offset", &TryBlock::start_offset)
-        .def_readonly("end_offset", &TryBlock::end_offset)
-        .def_readonly("handlers", &TryBlock::handlers)
-        .def_readonly("catch_all_offset", &TryBlock::catch_all_offset);
+    py::class_<owned::TryBlock>(m, "TryBlock")
+        .def_readonly("start_offset", &owned::TryBlock::start_offset)
+        .def_readonly("end_offset", &owned::TryBlock::end_offset)
+        .def_readonly("handlers", &owned::TryBlock::handlers)
+        .def_readonly("catch_all_offset", &owned::TryBlock::catch_all_offset);
 
-    py::class_<ParameterRegister>(m, "ParameterRegister")
-        .def_readonly("reg", &ParameterRegister::reg)
-        .def_property_readonly("type",
-                               [](const ParameterRegister &p) { return std::string(p.type); })
-        .def_readonly("is_this", &ParameterRegister::is_this)
-        .def_readonly("is_wide", &ParameterRegister::is_wide);
+    py::class_<owned::ParameterRegister>(m, "ParameterRegister")
+        .def_readonly("reg", &owned::ParameterRegister::reg)
+        .def_readonly("type", &owned::ParameterRegister::type)
+        .def_readonly("is_this", &owned::ParameterRegister::is_this)
+        .def_readonly("is_wide", &owned::ParameterRegister::is_wide);
 
     py::class_<Method>(m, "Method")
         .def_property_readonly("name", [](const Method &m_) { return std::string(m_.name()); })
@@ -729,12 +851,15 @@ PYBIND11_MODULE(dexpp, m)
                                })
         .def_property_readonly("cfg", &Method::cfg, py::return_value_policy::reference_internal)
         .def_property_readonly("register_count", &Method::register_count)
-        .def_property_readonly("parameter_registers", &Method::parameter_registers)
+        .def_property_readonly(
+            "parameter_registers",
+            [](const Method &m_) { return owned::from_all(m_.parameter_registers()); })
         .def("calls", &Method::calls)
         .def("field_accesses", &Method::field_accesses)
-        .def("string_loads", &Method::string_loads)
-        .def("type_uses", &Method::type_uses)
-        .def_property_readonly("try_blocks", &Method::try_blocks)
+        .def("string_loads", [](const Method &m_) { return owned::from_all(m_.string_loads()); })
+        .def("type_uses", [](const Method &m_) { return owned::from_all(m_.type_uses()); })
+        .def_property_readonly("try_blocks",
+                               [](const Method &m_) { return owned::from_all(m_.try_blocks()); })
         .def_property_readonly("annotations", &Method::annotations)
         .def(py::self == py::self)
         .def("__hash__", [](const Method &m_) { return std::hash<Method>{}(m_); })

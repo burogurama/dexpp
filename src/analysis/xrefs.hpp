@@ -30,10 +30,6 @@ enum class TypeUseKind : uint8_t {
     FilledNewArray, ///< filled-new-array / filled-new-array/range  (0x24, 0x25)
 };
 
-/** Map a type-referencing opcode to its TypeUseKind.  Returns std::nullopt for
- *  any opcode that does not carry a type operand (e.g. array-length). */
-std::optional<TypeUseKind> type_use_kind_from_opcode(uint8_t opcode);
-
 /** One string-loading instruction (const-string / const-string/jumbo). */
 struct StringXref
 {
