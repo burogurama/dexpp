@@ -1,5 +1,7 @@
 #include "cfg.hpp"
 
+#include "cfg_builder.hpp"
+
 #include <algorithm>
 #include <iterator>
 #include <limits>
@@ -62,6 +64,14 @@ struct LeaderSet
 };
 
 } // namespace
+
+namespace detail {
+
+/** Lets the builder below use Cfg's private constructor. */
+struct CfgAccess
+{
+    static Cfg make(std::vector<BasicBlock> blocks) { return Cfg(std::move(blocks)); }
+};
 
 Cfg build_cfg(const raw::CodeItem &code, std::span<const Instruction> insns)
 {
@@ -252,7 +262,9 @@ Cfg build_cfg(const raw::CodeItem &code, std::span<const Instruction> insns)
                                blk.predecessors.end());
     }
 
-    return Cfg(std::move(blocks));
+    return CfgAccess::make(std::move(blocks));
 }
+
+} // namespace detail
 
 } // namespace dex

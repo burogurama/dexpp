@@ -18,6 +18,7 @@
 #endif
 
 #include "analysis_context_impl.hpp"
+#include "cfg_builder.hpp"
 #include "raw/file_io.hpp"
 #include "raw/parser.hpp"
 #include "raw/zip.hpp"
@@ -572,7 +573,7 @@ const Cfg &AnalysisContextImpl::get_cfg(std::size_t dex_idx, uint32_t code_off) 
     if (it != slot.cfg_cache.end())
         return it->second;
 
-    auto [ins_it, ok] = slot.cfg_cache.emplace(code_off, build_cfg(*ci, insns));
+    auto [ins_it, ok] = slot.cfg_cache.emplace(code_off, detail::build_cfg(*ci, insns));
     return ins_it->second;
 }
 

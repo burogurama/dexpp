@@ -7,6 +7,7 @@
 
 #include "../raw/test_utils.hpp"
 #include "analysis/cfg.hpp"
+#include "analysis/cfg_builder.hpp"
 #include "dex.hpp"
 #include "raw/parser.hpp"
 #include "raw/types.hpp"
@@ -22,7 +23,7 @@ Cfg build_synthetic(std::vector<uint16_t> insns)
     CodeItem code{};
     code.insns = std::move(insns);
     auto decoded = decode_instructions(std::span<const uint16_t>(code.insns));
-    return build_cfg(code, decoded);
+    return detail::build_cfg(code, decoded);
 }
 
 inline void push_s32(std::vector<uint16_t> &v, int32_t x)
@@ -40,7 +41,7 @@ TEST(CfgTest, EmptyCodeItemEmptyCfg)
 {
     CodeItem code{};
     auto decoded = decode_instructions(std::span<const uint16_t>(code.insns));
-    auto cfg = build_cfg(code, decoded);
+    auto cfg = detail::build_cfg(code, decoded);
     EXPECT_TRUE(cfg.empty());
 }
 
@@ -162,7 +163,7 @@ TEST(CfgTest, ThrowInTryNoFallthrough)
     code.handler_byte_offsets.push_back(0);
 
     auto decoded = decode_instructions(std::span<const uint16_t>(code.insns));
-    auto cfg = build_cfg(code, decoded);
+    auto cfg = detail::build_cfg(code, decoded);
     ASSERT_FALSE(cfg.empty());
 
     const BasicBlock *throw_blk = cfg.block_at_offset(0);
@@ -199,7 +200,7 @@ CfgBundle load_trycatch_cfg(uint32_t code_off)
     CfgBundle out;
     out.code = std::move(*ci);
     out.decoded = decode_instructions(std::span<const uint16_t>(out.code.insns));
-    out.cfg = build_cfg(out.code, std::span<const Instruction>(out.decoded));
+    out.cfg = detail::build_cfg(out.code, std::span<const Instruction>(out.decoded));
     return out;
 }
 

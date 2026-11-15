@@ -69,6 +69,10 @@
   `InvalidDescriptor`. The remaining values are `FileNotFound`, `CannotRead`,
   `InvalidDexFile` and `InvalidApk`. Code that named one of the removed values
   no longer compiles; it could never have received one.
+- `dex::build_cfg` is no longer public. It took a `raw::CodeItem`, a type of
+  the internal parser layer, so it was the one public function that tied users
+  to that layer. `Method::cfg()` is the way to get a control-flow graph. The
+  public headers no longer include any `raw/` header.
 
 ### Build
 
