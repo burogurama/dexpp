@@ -99,7 +99,8 @@ The low four bits are the base level: 0 normal, 1 dangerous, 2 signature,
 ## Resources
 
 `apk.resources` is the decoded `resources.arsc` table, or `None` when the APK
-has none. It resolves resource ids to names and to string values.
+has none or it cannot be decoded. It resolves resource ids to names and to
+string values.
 
 ```python
 --8<-- "apk_metadata.py:resources"

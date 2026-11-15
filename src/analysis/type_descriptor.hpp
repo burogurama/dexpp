@@ -30,7 +30,7 @@ class TypeDescriptor
     /** Returns true for array descriptors that start with '['. */
     bool is_array() const { return !descriptor_.empty() && descriptor_.front() == '['; }
 
-    /** Returns true for the eight primitive type codes: V B C D F I J S Z. */
+    /** Returns true for the nine primitive type codes, `void` included: V B C D F I J S Z. */
     bool is_primitive() const;
 
     /** If this is a class descriptor, constructs and returns a ClassRef for it.
