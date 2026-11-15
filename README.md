@@ -1,7 +1,7 @@
 # dex++
 
-Fast static analysis of Android APK / DEX files — a C++23 core with Python, C
-and Go bindings.
+Fast static analysis of Android APK / DEX files — a C++23 core with Python, C,
+Go and Java bindings.
 
 The current release is **0.2.0** (alpha): the API may still change between
 0.x releases. See [CHANGELOG.md](https://github.com/burogurama/dexpp/blob/main/CHANGELOG.md).
@@ -22,8 +22,8 @@ reference, and the C++ and C reference, for the latest release.
   loads what), both forward and reverse.
 - **DEX editing** — read a DEX file into an editable model, change it or
   build one from scratch, and write a valid DEX file (`dex::model`). From
-  Python (`dexpp.Model`) and Go, the model works a whole class at a time:
-  copy, move, remove and rename classes, then write.
+  Python (`dexpp.Model`), Go and Java, the model works a whole class at a
+  time: copy, move, remove and rename classes, then write.
 
 It inspects APK and DEX files and edits DEX files. It does not decompile or
 verify signatures.
@@ -80,10 +80,10 @@ cmake --build build -j
 PYTHONPATH=build python3 bindings/python/test_dexpp.py
 ```
 
-## Using it from C++ or Go
+## Using it from C++, Go or Java
 
-The C++ library and the C / Go bindings are source-only for now: there are no
-install rules or prebuilt binaries.
+The C++ library and the C / Go / Java bindings are source-only for now: there
+are no install rules or prebuilt binaries.
 
 - **C++**: add the checkout to your build with `add_subdirectory(dexpp)`, link
   the `dexpp_core` target, and include `dex.hpp`. `DEXPP_VERSION` gives the
@@ -111,6 +111,19 @@ model itself.
   and the editable model a whole class at a time. It links the C shim from
   this repository's `build/` directory, so it works from a checkout, not
   through `go get`. It supports Linux and macOS, not Windows.
+- **Java**: see [bindings/java/README.md](https://github.com/burogurama/dexpp/blob/main/bindings/java/README.md).
+  The package `io.github.burogurama.dexpp`
+  (`bindings/java`, built with Maven) reaches the same API as Go. It needs
+  Java 22 or newer: it calls the C API through the Foreign Function & Memory
+  API, from the shared library that the CMake option
+  `-DDEXPP_BUILD_C_SHARED=ON` adds (`dexpp_c_shared`). It works on Linux,
+  macOS and Windows, from a checkout; it is not on Maven Central yet.
+
+  ```bash
+  cmake -S . -B build -DDEXPP_BUILD_C_SHARED=ON
+  cmake --build build --target dexpp_c_shared --config Release -j
+  cd bindings/java && mvn verify     # builds the jar and runs the tests
+  ```
 
 The library, its tests and the Python module are built and tested on Linux,
 macOS (Apple Silicon and Intel) and Windows x64.
@@ -128,4 +141,6 @@ macOS (Apple Silicon and Intel) and Windows x64.
 - `src/dex.hpp` — the single public umbrella header.
 - `bindings/python/` — the pybind11 module, stubs, and Python tests.
 - `bindings/c/`, `bindings/go/` — the C ABI shim and the Go package over it.
+- `bindings/java/` — the Java package over the same C ABI (FFM, Java 22+),
+  with its Maven build and tests.
 - `docs/` — the sources of the documentation site (see `docs/README.md`).

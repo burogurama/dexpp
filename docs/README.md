@@ -12,6 +12,7 @@ so it describes the latest release.
 | `examples/check.py` | Runs the examples and compares their output with the saved one. CI runs it. |
 | `examples/cpp/` | The C++ examples. The unit test build compiles and runs them. |
 | `../bindings/go/dexpp/example_test.go` | The Go examples that `c-go.md` shows. `go test` runs them and checks their output. |
+| `../bindings/java/src/test/java/.../ExamplesTest.java` | The Java examples that `java.md` shows. `mvn test` runs them and compares their output with `../bindings/java/src/test/resources/examples/`. |
 | `Doxyfile`, `cpp-mainpage.md` | Doxygen setup for the C++ and C reference. |
 | `hooks.py` | Puts the version on the site and prepares the Python stubs for the reference. |
 | `build.sh`, `requirements.txt` | Build the site. |
@@ -79,6 +80,20 @@ end marker and `// Output:`. Without it, the two comments form one block that
 does not start with "Output:", and `go test` only compiles the example
 instead of running it.
 
+The Java snippets of `java.md` come from the examples in
+`bindings/java/src/test/java/io/github/burogurama/dexpp/ExamplesTest.java`,
+between `// --8<-- [start:name]` and `// --8<-- [end:name]` comments. The
+output each one prints is in
+`bindings/java/src/test/resources/examples/NAME.txt`, which the page shows
+too. The tests compare the two. After changing an example, write the output
+files again and look at the diff:
+
+```bash
+cd bindings/java
+mvn test -Dtest=ExamplesTest -Ddexpp.examples.update=true
+git diff src/test/resources/examples
+```
+
 ## Explicit types
 
 Every code snippet on the site states its types:
@@ -90,6 +105,8 @@ Every code snippet on the site states its types:
   `MYPYPATH=bindings/python mypy --strict docs/examples/*.py`, so a wrong
   annotation fails the build.
 - **C++**: the full type, not `auto`.
+- **Java**: the full type, not `var`. Lambda parameters that a snippet shows
+  have their type too: `(long sdk) -> ...`.
 
 Loop variables and comprehension variables take their type from the annotated
 collection they come from. The Go snippets keep Go's `:=`.

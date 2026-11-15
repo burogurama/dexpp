@@ -3,7 +3,7 @@
 site_name: dex++
 site_description: >-
   Fast static analysis of Android APK and DEX files: a C++23 library with
-  Python, C and Go bindings.
+  Python, C, Go and Java bindings.
 site_url: https://burogurama.github.io/dexpp/
 repo_url: https://github.com/burogurama/dexpp
 repo_name: burogurama/dexpp
@@ -102,6 +102,7 @@ nav:
   - Other languages:
       - C++: cpp.md
       - C and Go: c-go.md
+      - Java: java.md
   - Python reference:
       - Overview: reference/python/index.md
       - APK, manifest, resources, signing: reference/python/apk.md
