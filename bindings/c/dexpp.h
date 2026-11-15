@@ -266,6 +266,9 @@ typedef struct DexppFieldId
 /** Free the strings of one DexppMethodId and set them to NULL. */
 DEXPP_C_API void dexpp_method_id_clear(DexppMethodId *id);
 
+/** Free the strings of one DexppFieldId and set them to NULL. */
+DEXPP_C_API void dexpp_field_id_clear(DexppFieldId *id);
+
 /** Free an array of DexppMethodId. Accepts NULL. */
 DEXPP_C_API void dexpp_method_id_array_free(DexppMethodId *ids, size_t count);
 
@@ -562,6 +565,11 @@ DEXPP_C_API char *dexpp_method_proto(const DexppMethod *m);
 /** The class that defines the method. Free with dexpp_class_ref_free(). */
 DEXPP_C_API DexppClassRef *dexpp_method_declaring_class(const DexppMethod *m);
 
+/** Fill @p out with the method's identity: its class, name and prototype
+ *  (release with dexpp_method_id_clear()). It is the identity the call graph
+ *  and the cross-references use. */
+DEXPP_C_API void dexpp_method_id(const DexppMethod *m, DexppMethodId *out);
+
 /** The return type descriptor; "V" for void. */
 DEXPP_C_API char *dexpp_method_return_type(const DexppMethod *m);
 
@@ -652,6 +660,11 @@ DEXPP_C_API DexppClassRef *dexpp_field_declaring_class(const DexppField *f);
 
 /** The field's type descriptor. */
 DEXPP_C_API char *dexpp_field_type(const DexppField *f);
+
+/** Fill @p out with the field's identity: its class, name and type (release
+ *  with dexpp_field_id_clear()). It is the identity the cross-references
+ *  use. */
+DEXPP_C_API void dexpp_field_id(const DexppField *f, DexppFieldId *out);
 
 /** The access flags (see DexppAccessFlag). */
 DEXPP_C_API uint32_t dexpp_field_access_flags(const DexppField *f);

@@ -109,6 +109,16 @@ class Method
     /** ClassRef for the class that defines this method. */
     ClassRef declaring_class() const;
 
+    /** The method's identity: its class, name and prototype.  It is the
+     *  identity the call graph and the cross-references use, so a Method can be
+     *  looked up in them with it. */
+    MethodId id() const;
+
+    /** The prototype: the parameter types inside parentheses, then the return
+     *  type, e.g. "(Ljava/lang/String;I)V".  It is the `proto` of id().  The
+     *  view stays valid for the lifetime of the AnalysisContext. */
+    std::string_view proto() const;
+
     /** Return type derived from the method's prototype. */
     TypeDescriptor return_type() const;
 

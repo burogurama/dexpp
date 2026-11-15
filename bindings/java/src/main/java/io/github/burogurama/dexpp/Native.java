@@ -204,6 +204,17 @@ final class Native {
         }
     }
 
+    private static final MethodHandle dexpp_field_id_clear =
+            downcallVoid("dexpp_field_id_clear", ADDRESS);
+
+    static void dexpp_field_id_clear(MemorySegment id) {
+        try {
+            dexpp_field_id_clear.invokeExact(id);
+        } catch (Throwable t) {
+            throw failure(t);
+        }
+    }
+
     private static final MethodHandle dexpp_method_id_array_free =
             downcallVoid("dexpp_method_id_array_free", ADDRESS, JAVA_LONG);
 
@@ -579,6 +590,17 @@ final class Native {
         }
     }
 
+    private static final MethodHandle dexpp_method_id =
+            downcallVoid("dexpp_method_id", ADDRESS, ADDRESS);
+
+    static void dexpp_method_id(MemorySegment m, MemorySegment out) {
+        try {
+            dexpp_method_id.invokeExact(m, out);
+        } catch (Throwable t) {
+            throw failure(t);
+        }
+    }
+
     private static final MethodHandle dexpp_method_return_type =
             downcall("dexpp_method_return_type", ADDRESS, ADDRESS);
 
@@ -849,6 +871,17 @@ final class Native {
     static MemorySegment dexpp_field_type(MemorySegment f) {
         try {
             return (MemorySegment) dexpp_field_type.invokeExact(f);
+        } catch (Throwable t) {
+            throw failure(t);
+        }
+    }
+
+    private static final MethodHandle dexpp_field_id =
+            downcallVoid("dexpp_field_id", ADDRESS, ADDRESS);
+
+    static void dexpp_field_id(MemorySegment f, MemorySegment out) {
+        try {
+            dexpp_field_id.invokeExact(f, out);
         } catch (Throwable t) {
             throw failure(t);
         }

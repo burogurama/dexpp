@@ -11,6 +11,7 @@
 #include "access_flags.hpp"
 #include "annotations.hpp"
 #include "class_ref.hpp"
+#include "common/ids.hpp"
 #include "type_descriptor.hpp"
 
 namespace dex {
@@ -43,6 +44,10 @@ class Field
 
     /** The declared type of the field. */
     TypeDescriptor type() const;
+
+    /** The field's identity: its class, name and type.  It is the identity the
+     *  cross-references use, so a Field can be looked up in them with it. */
+    FieldId id() const;
 
     AccessFlags access_flags() const { return static_cast<AccessFlags>(access_flags_); }
 

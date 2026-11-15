@@ -619,6 +619,7 @@ PYBIND11_MODULE(dexpp, m)
         .def_property_readonly("declaring_class", &Field::declaring_class)
         .def_property_readonly("type",
                                [](const Field &f) { return std::string(f.type().descriptor()); })
+        .def_property_readonly("id", &Field::id)
         .def_property_readonly("access_flags",
                                [](const Field &f) {
                                    return dexpp_py::access_flags_to_py(
@@ -683,6 +684,8 @@ PYBIND11_MODULE(dexpp, m)
     py::class_<Method>(m, "Method")
         .def_property_readonly("name", [](const Method &m_) { return std::string(m_.name()); })
         .def_property_readonly("declaring_class", &Method::declaring_class)
+        .def_property_readonly("id", &Method::id)
+        .def_property_readonly("proto", [](const Method &m_) { return std::string(m_.proto()); })
         .def_property_readonly(
             "return_type",
             [](const Method &m_) { return std::string(m_.return_type().descriptor()); })

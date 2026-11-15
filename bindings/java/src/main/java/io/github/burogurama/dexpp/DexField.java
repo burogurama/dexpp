@@ -58,9 +58,17 @@ public final class DexField implements AutoCloseable {
      * @return the identity
      */
     public FieldId id() {
-        try (ClassRef cls = declaringClass()) {
-            return new FieldId(cls.descriptor(), name(), type());
-        }
+        return handle.call(p -> {
+            try (Arena arena = Arena.ofConfined()) {
+                MemorySegment out = arena.allocate(Layouts.FieldId.LAYOUT);
+                Native.dexpp_field_id(p, out);
+                try {
+                    return Mem.fieldId(out, 0);
+                } finally {
+                    Native.dexpp_field_id_clear(out);
+                }
+            }
+        });
     }
 
     /**

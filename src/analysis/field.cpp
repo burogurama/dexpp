@@ -37,6 +37,8 @@ TypeDescriptor Field::type() const
     return TypeDescriptor(desc);
 }
 
+FieldId Field::id() const { return impl_->field_id_of(dex_idx_, field_abs_idx_); }
+
 std::vector<Annotation> Field::annotations() const
 {
     const auto &dex = impl_->dex_files()[dex_idx_];

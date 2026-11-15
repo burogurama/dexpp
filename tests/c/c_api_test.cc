@@ -288,6 +288,13 @@ TEST(CApiMethod, DescribesTheMethodsOfAClass)
         if (name == "main") {
             saw_main = true;
             EXPECT_EQ(proto, "([Ljava/lang/String;)V");
+            DexppMethodId id{};
+            dexpp_method_id(m, &id);
+            EXPECT_STREQ(id.class_descriptor, "LTestDex;");
+            EXPECT_STREQ(id.name, "main");
+            EXPECT_STREQ(id.proto, "([Ljava/lang/String;)V");
+            dexpp_method_id_clear(&id);
+            EXPECT_EQ(id.class_descriptor, nullptr);
             EXPECT_EQ(dexpp_method_access_flags(m), DEXPP_ACC_PUBLIC | DEXPP_ACC_STATIC);
             size_t n = 0;
             char **params = dexpp_method_parameters(m, &n);
@@ -354,6 +361,13 @@ TEST(CApiField, DescribesFieldsAndInitialValues)
         int has_value = dexpp_field_initial_value(f, &v);
         if (name == "MAGIC") {
             EXPECT_EQ(take(dexpp_field_type(f)), "I");
+            DexppFieldId id{};
+            dexpp_field_id(f, &id);
+            EXPECT_STREQ(id.class_descriptor, "LAnnotated;");
+            EXPECT_STREQ(id.name, "MAGIC");
+            EXPECT_STREQ(id.type, "I");
+            dexpp_field_id_clear(&id);
+            EXPECT_EQ(id.name, nullptr);
             ASSERT_EQ(has_value, 1);
             EXPECT_EQ(v.kind, DEXPP_VALUE_INT);
             EXPECT_EQ(v.int_value, 42);

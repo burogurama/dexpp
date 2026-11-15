@@ -1058,6 +1058,12 @@ class Field:
     def type(self) -> str:
         """Descriptor of the field's type."""
     @property
+    def id(self) -> FieldId:
+        """The field's identity: its class, name and type. It is the identity the
+        cross-references use, so `ctx.xrefs.field_refs(field.id)` finds the code that
+        reads or writes this field.
+        """
+    @property
     def access_flags(self) -> AccessFlags:
         """The access flags. The `is_...` properties read single flags of it."""
     @property
@@ -1098,6 +1104,17 @@ class Method:
     @property
     def declaring_class(self) -> ClassRef:
         """The class that defines the method."""
+    @property
+    def id(self) -> MethodId:
+        """The method's identity: its class, name and prototype. It is the identity the
+        call graph and the cross-references use, so `ctx.call_graph.find(method.id)`
+        finds the method's node.
+        """
+    @property
+    def proto(self) -> str:
+        """The prototype: the parameter types inside parentheses, then the return type,
+        such as `"(Ljava/lang/String;I)V"`. It is the `proto` of `id`.
+        """
     @property
     def return_type(self) -> str:
         """Descriptor of the return type. `V` means `void`."""

@@ -497,6 +497,25 @@ TEST_F(ShapesDexTest, CircleConstructorTwoParameters)
     EXPECT_EQ(params[1].descriptor(), "D");
 }
 
+TEST_F(ShapesDexTest, MethodAndFieldIdsMatchTheirParts)
+{
+    auto cls = ctx().find_class("LCircle;");
+    ASSERT_TRUE(cls.has_value());
+    auto methods = cls->methods();
+    ASSERT_FALSE(methods.empty());
+    const Method &init = methods[0];
+    EXPECT_EQ(init.proto(), "(Ljava/lang/String;D)V");
+    EXPECT_EQ(init.id(), (MethodId{"LCircle;", "<init>", "(Ljava/lang/String;D)V"}));
+    // The id is the one the call graph keys its nodes by.
+    const CallNode *node = ctx().call_graph().find(init.id());
+    ASSERT_NE(node, nullptr);
+    EXPECT_EQ(ctx().call_graph().method_for(*node), init);
+
+    auto fields = cls->fields();
+    ASSERT_EQ(fields.size(), 1u);
+    EXPECT_EQ(fields[0].id(), (FieldId{"LCircle;", "radius", "D"}));
+}
+
 TEST_F(ShapesDexTest, RectangleConstructorThreeParameters)
 {
     auto cls = ctx().find_class("LRectangle;");

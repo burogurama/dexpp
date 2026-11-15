@@ -97,6 +97,28 @@ thing. The old names are gone; there are no aliases.
   `Model.ClassCount()` and `Model.HasClass()`, `Model.classCount()` and
   `Model.hasClass()`.
 
+### No magic numbers, no raw indices, no hidden cases
+
+These changes make every value say what it is. A number that only meant
+something together with a table nobody could read, a special value that
+stood for a different case, and one type that held several different cases
+are gone. Most of them are breaking; the old names are gone, with no
+aliases.
+
+- A method's identity and prototype, and a field's identity, are now one call
+  in every language. Go and Java already had `Method.ID()` / `id()`,
+  `Method.Proto()` / `proto()` and `Field.ID()` / `id()`; C++ and Python had
+  none of them.
+    - C++: `Method::id()` returns the `MethodId`, `Method::proto()` the
+      prototype (such as `"(Ljava/lang/String;I)V"`), and `Field::id()` the
+      `FieldId`.
+    - Python: the properties `Method.id`, `Method.proto` and `Field.id`.
+    - C: `dexpp_method_id()` and `dexpp_field_id()` fill a `DexppMethodId` or
+      a `DexppFieldId`. The new `dexpp_field_id_clear()` frees a
+      `DexppFieldId`.
+    - Go and Java now get each identity with one call to C, instead of one
+      call for each part.
+
 ### Python bindings
 
 - The enums `InvokeKind`, `EdgeOrigin`, `CfgEdgeKind`, `TypeUseKind`,

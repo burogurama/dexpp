@@ -307,9 +307,11 @@ func (m *Method) DeclaringClass() *ClassRef {
 // ID returns the method's identity: its class, name and prototype. It is the
 // identity that the call graph and the cross-references use.
 func (m *Method) ID() MethodID {
-	ref := m.DeclaringClass()
-	defer ref.Close()
-	return MethodID{ClassDescriptor: ref.Descriptor(), Name: m.Name(), Proto: m.Proto()}
+	defer runtime.KeepAlive(m)
+	var out C.DexppMethodId
+	C.dexpp_method_id(m.p(), &out)
+	defer C.dexpp_method_id_clear(&out)
+	return goMethodID(out)
 }
 
 // ReturnType returns the descriptor of the return type; "V" means void.
@@ -427,9 +429,11 @@ func (f *Field) Type() string {
 // ID returns the field's identity: its class, name and type. It is the
 // identity that the cross-references use.
 func (f *Field) ID() FieldID {
-	ref := f.DeclaringClass()
-	defer ref.Close()
-	return FieldID{ClassDescriptor: ref.Descriptor(), Name: f.Name(), Type: f.Type()}
+	defer runtime.KeepAlive(f)
+	var out C.DexppFieldId
+	C.dexpp_field_id(f.p(), &out)
+	defer C.dexpp_field_id_clear(&out)
+	return goFieldID(out)
 }
 
 // AccessFlags returns the field's access flags.

@@ -116,6 +116,19 @@ def test_methods_and_instructions():
     assert "InvokeInstruction" in kinds
 
 
+def test_method_and_field_ids():
+    ctx = dexpp.AnalysisContext.from_dex("tests/data/classes.dex")
+    main = next(m for m in ctx.find_class("LTestDex;").methods if m.name == "main")
+    assert main.proto == "([Ljava/lang/String;)V"
+    assert main.id == dexpp.MethodId("LTestDex;", "main", "([Ljava/lang/String;)V")
+    # The id finds the method's node in the call graph.
+    assert ctx.call_graph.find(main.id).method == main
+
+    annotated = dexpp.AnalysisContext.from_dex("tests/data/annotated.dex")
+    magic = next(f for f in annotated.find_class("LAnnotated;").fields if f.name == "MAGIC")
+    assert magic.id == dexpp.FieldId("LAnnotated;", "MAGIC", "I")
+
+
 def test_instruction_view():
     import collections.abc
     import gc

@@ -1,5 +1,6 @@
 package io.github.burogurama.dexpp;
 
+import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
 import java.util.List;
 
@@ -59,9 +60,17 @@ public final class DexMethod implements AutoCloseable {
      * @return the identity
      */
     public MethodId id() {
-        try (ClassRef cls = declaringClass()) {
-            return new MethodId(cls.descriptor(), name(), proto());
-        }
+        return handle.call(p -> {
+            try (Arena arena = Arena.ofConfined()) {
+                MemorySegment out = arena.allocate(Layouts.MethodId.LAYOUT);
+                Native.dexpp_method_id(p, out);
+                try {
+                    return Mem.methodId(out, 0);
+                } finally {
+                    Native.dexpp_method_id_clear(out);
+                }
+            }
+        });
     }
 
     /**

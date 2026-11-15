@@ -33,6 +33,16 @@ ClassRef Method::declaring_class() const
     return ClassRef(desc, impl_);
 }
 
+MethodId Method::id() const { return impl_->method_id_of(dex_idx_, method_abs_idx_); }
+
+std::string_view Method::proto() const
+{
+    const auto *method_id = impl_->method_item(dex_idx_, method_abs_idx_);
+    if (!method_id)
+        return {};
+    return impl_->proto_descriptor_of(dex_idx_, method_id->proto_idx);
+}
+
 TypeDescriptor Method::return_type() const
 {
     const auto *method_id = impl_->method_item(dex_idx_, method_abs_idx_);
