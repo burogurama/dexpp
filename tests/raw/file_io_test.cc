@@ -91,6 +91,7 @@ TEST(LoadersGivenADirectory, ParseFileReturnsAnError)
 {
     auto dex = dex::raw::parser::parse_file(kDirectory);
     ASSERT_FALSE(dex.has_value());
+    EXPECT_EQ(dex.error().code, dex::raw::ParseError::Code::CannotRead);
     EXPECT_NE(dex.error().message.find("directory"), std::string::npos);
 }
 
@@ -116,11 +117,11 @@ TEST(LoadersGivenADirectory, ApkOpenReturnsCannotRead)
     EXPECT_EQ(apk.error().code, dex::AnalysisError::Code::CannotRead);
 }
 
-TEST(LoadersGivenADirectory, ModelReadFileReturnsIoWithoutThrowing)
+TEST(LoadersGivenADirectory, ModelReadFileReturnsCannotReadWithoutThrowing)
 {
     auto model = dex::model::read_file(kDirectory);
     ASSERT_FALSE(model.has_value());
-    EXPECT_EQ(model.error().kind, dex::model::Error::Kind::Io);
+    EXPECT_EQ(model.error().kind, dex::model::Error::Kind::CannotRead);
 }
 
 TEST(LoadersGivenAMissingPath, StillReportFileNotFound)
@@ -135,5 +136,56 @@ TEST(LoadersGivenAMissingPath, StillReportFileNotFound)
 
     auto model = dex::model::read_file(kMissing);
     ASSERT_FALSE(model.has_value());
-    EXPECT_EQ(model.error().kind, dex::model::Error::Kind::Io);
+    EXPECT_EQ(model.error().kind, dex::model::Error::Kind::FileNotFound);
+}
+
+// write_whole_file() and model::write_file().  A failed write must be reported,
+// including one that only fails when the file is closed.
+
+TEST(WriteWholeFile, WritesEveryByteAndReplacesTheFile)
+{
+    TempFile file("dexpp_file_io_write.bin", {1, 2, 3, 4, 5, 6, 7, 8});
+    const std::vector<uint8_t> content = {9, 8, 7};
+    auto written = dex::raw::write_whole_file(file.path(), content);
+    ASSERT_TRUE(written.has_value()) << written.error().message;
+    auto back = dex::raw::read_whole_file(file.path());
+    ASSERT_TRUE(back.has_value());
+    EXPECT_EQ(*back, content);
+}
+
+TEST(WriteWholeFile, ADirectoryOrAMissingFolderIsCannotWrite)
+{
+    const std::vector<uint8_t> content = {1};
+    for (const std::string &path : {kDirectory, std::string("tests/data/no/such/folder/out.bin")}) {
+        auto written = dex::raw::write_whole_file(path, content);
+        ASSERT_FALSE(written.has_value()) << path;
+        EXPECT_EQ(written.error().kind, dex::raw::FileError::Kind::CannotWrite) << path;
+        EXPECT_NE(written.error().message.find(path), std::string::npos);
+    }
+}
+
+TEST(WriteWholeFile, AFullDiskIsReported)
+{
+    // On Linux, every write to /dev/full fails with "No space left on device".
+    // The bytes fit in the stdio buffer, so the failure shows up only when the
+    // file is closed.
+    if (!std::filesystem::exists("/dev/full"))
+        GTEST_SKIP() << "/dev/full is not available here";
+    auto written = dex::raw::write_whole_file("/dev/full", std::vector<uint8_t>(100, 0x2a));
+    ASSERT_FALSE(written.has_value());
+    EXPECT_EQ(written.error().kind, dex::raw::FileError::Kind::CannotWrite);
+}
+
+TEST(ModelWriteFile, ReportsCannotWrite)
+{
+    auto model = dex::model::read_file("tests/data/shapes.dex");
+    ASSERT_TRUE(model.has_value());
+    std::vector<std::string> paths = {kDirectory, "tests/data/no/such/folder/out.dex"};
+    if (std::filesystem::exists("/dev/full"))
+        paths.push_back("/dev/full");
+    for (const std::string &path : paths) {
+        auto written = dex::model::write_file(*model, path);
+        ASSERT_FALSE(written.has_value()) << path;
+        EXPECT_EQ(written.error().kind, dex::model::Error::Kind::CannotWrite) << path;
+    }
 }

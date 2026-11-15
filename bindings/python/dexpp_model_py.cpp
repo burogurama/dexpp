@@ -53,8 +53,11 @@ using dex::model::Dex;
         PyErr_SetObject(type.ptr(), exception.ptr());
         throw py::error_already_set();
     }
-    case Kind::Io:
-        break; // the callers that touch files handle it before they get here
+    case Kind::FileNotFound:
+        dexpp_py::raise_file_not_found(error.message);
+    case Kind::CannotRead:
+    case Kind::CannotWrite:
+        dexpp_py::raise_os_error(error.message);
     }
     dexpp_py::raise_error("ModelError", error.message);
 }
@@ -161,8 +164,6 @@ void register_model(py::module_ &m)
                 dex::model::ReadOptions options;
                 options.debug_info = debug_info;
                 auto result = dex::model::read_file(path, options);
-                if (!result && result.error().kind == dex::model::Error::Kind::Io)
-                    dexpp_py::raise_read_failure(path, result.error().message);
                 if (!result)
                     raise(result.error());
                 return std::move(*result);
@@ -315,8 +316,6 @@ void register_model(py::module_ &m)
                 dex::model::WriteOptions options;
                 options.debug_info = debug_info;
                 auto result = dex::model::write_file(dex, path, options);
-                if (!result && result.error().kind == dex::model::Error::Kind::Io)
-                    dexpp_py::raise_os_error(result.error().message);
                 if (!result)
                     raise(result.error());
             },

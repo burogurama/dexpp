@@ -955,8 +955,12 @@ std::expected<Dex, Error> read(std::span<const uint8_t> bytes, const ReadOptions
 std::expected<Dex, Error> read_file(const std::string &path, const ReadOptions &options)
 {
     auto bytes = raw::read_whole_file(path);
-    if (!bytes)
-        return std::unexpected(Error{Error::Kind::Io, bytes.error().message, {}});
+    if (!bytes) {
+        const Error::Kind kind = bytes.error().kind == raw::FileError::Kind::NotFound
+                                     ? Error::Kind::FileNotFound
+                                     : Error::Kind::CannotRead;
+        return std::unexpected(Error{kind, bytes.error().message, {}});
+    }
     return read(*bytes, options);
 }
 

@@ -840,6 +840,10 @@ def test_file_errors_are_not_dexpp_errors():
         unwritable = os.path.join(directory, "no", "such", "folder", "out.dex")
         assert type(_error_from(lambda: model.write_file(unwritable))) is OSError
         assert type(_error_from(lambda: model.write_file(directory))) is OSError
+        # A full disk: on Linux every write to /dev/full fails, but only when
+        # the file is closed, because the bytes fit in one buffer.
+        if os.path.exists("/dev/full"):
+            assert type(_error_from(lambda: model.write_file("/dev/full"))) is OSError
 
 
 # ===== the type stubs =====

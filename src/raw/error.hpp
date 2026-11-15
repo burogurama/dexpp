@@ -22,7 +22,8 @@ struct ParseError
         InvalidUtf8String,
         InvalidLeb128,
         InvalidOpcode,
-        NullPointer,
+        FileNotFound, ///< parse_file(): the path does not exist.
+        CannotRead,   ///< parse_file(): the path exists but cannot be read (a directory).
         UnknownError
     };
 
