@@ -21,11 +21,11 @@ const char *const kShapes = "tests/data/shapes.dex";
 
 DexppModelDex *read_shapes()
 {
-    char *err = nullptr;
+    DexppError *err = nullptr;
     DexppModelDex *model = dexpp_model_read_file(kShapes, 1, &err);
-    EXPECT_NE(model, nullptr) << (err == nullptr ? "" : err);
+    EXPECT_NE(model, nullptr) << (err == nullptr ? "" : dexpp_error_message(err));
     EXPECT_EQ(err, nullptr);
-    dexpp_string_free(err);
+    dexpp_error_free(err);
     return model;
 }
 
@@ -38,12 +38,13 @@ std::vector<std::string> descriptors_of(const DexppModelDex *model)
     return out;
 }
 
-/** Expect a failed call's message, then free it. */
-void expect_error(char *err)
+/** Expect a failed call's error code and message, then free the error. */
+void expect_error(DexppError *err, DexppErrorCode code)
 {
     ASSERT_NE(err, nullptr);
-    EXPECT_NE(std::string(err), "");
-    dexpp_string_free(err);
+    EXPECT_EQ(dexpp_error_code(err), code);
+    EXPECT_NE(std::string(dexpp_error_message(err)), "");
+    dexpp_error_free(err);
 }
 
 } // namespace
@@ -71,9 +72,9 @@ TEST(CModelRead, ReadsBytes)
     ASSERT_FALSE(bytes.empty());
 
     for (int debug_info : {0, 1}) {
-        char *err = nullptr;
+        DexppError *err = nullptr;
         DexppModelDex *model = dexpp_model_read(bytes.data(), bytes.size(), debug_info, &err);
-        ASSERT_NE(model, nullptr) << (err == nullptr ? "" : err);
+        ASSERT_NE(model, nullptr) << (err == nullptr ? "" : dexpp_error_message(err));
         EXPECT_EQ(err, nullptr);
         EXPECT_EQ(dexpp_model_class_count(model), 4u);
         dexpp_model_free(model);
@@ -83,18 +84,24 @@ TEST(CModelRead, ReadsBytes)
 TEST(CModelRead, ReportsReadErrorsThroughErr)
 {
     const std::vector<uint8_t> junk = {'n', 'o', 't', ' ', 'a', ' ', 'd', 'e', 'x'};
-    char *err = nullptr;
+    DexppError *err = nullptr;
     EXPECT_EQ(dexpp_model_read(junk.data(), junk.size(), 1, &err), nullptr);
-    expect_error(err);
+    expect_error(err, DEXPP_ERROR_INVALID_DEX);
     EXPECT_EQ(dexpp_model_read(junk.data(), junk.size(), 1, nullptr), nullptr);
 
-    for (const char *path :
-         {"tests/data/no_such_file.dex", "tests/data/TestDex.java", "tests/data"}) {
-        SCOPED_TRACE(path);
+    struct Case
+    {
+        const char *path;
+        DexppErrorCode code;
+    };
+    for (const Case &c : {Case{"tests/data/no_such_file.dex", DEXPP_ERROR_FILE_NOT_FOUND},
+                          Case{"tests/data/TestDex.java", DEXPP_ERROR_INVALID_DEX},
+                          Case{"tests/data", DEXPP_ERROR_CANNOT_READ}}) {
+        SCOPED_TRACE(c.path);
         err = nullptr;
-        EXPECT_EQ(dexpp_model_read_file(path, 1, &err), nullptr);
-        expect_error(err);
-        EXPECT_EQ(dexpp_model_read_file(path, 1, nullptr), nullptr);
+        EXPECT_EQ(dexpp_model_read_file(c.path, 1, &err), nullptr);
+        expect_error(err, c.code);
+        EXPECT_EQ(dexpp_model_read_file(c.path, 1, nullptr), nullptr);
     }
 }
 
@@ -134,15 +141,15 @@ TEST(CModelWrite, WritesBytesThatReadBack)
     DexppModelDex *model = read_shapes();
     ASSERT_NE(model, nullptr);
 
-    char *err = nullptr;
+    DexppError *err = nullptr;
     size_t len = 0;
     uint8_t *bytes = dexpp_model_write(model, 1, &len, &err);
-    ASSERT_NE(bytes, nullptr) << (err == nullptr ? "" : err);
+    ASSERT_NE(bytes, nullptr) << (err == nullptr ? "" : dexpp_error_message(err));
     EXPECT_EQ(err, nullptr);
     ASSERT_GT(len, 0u);
 
     DexppModelDex *again = dexpp_model_read(bytes, len, 1, &err);
-    ASSERT_NE(again, nullptr) << (err == nullptr ? "" : err);
+    ASSERT_NE(again, nullptr) << (err == nullptr ? "" : dexpp_error_message(err));
     EXPECT_EQ(dexpp_model_class_count(again), 4u);
 
     // Writing is repeatable: the same bytes again.
@@ -166,11 +173,12 @@ TEST(CModelWrite, WritesAFile)
     const std::string path =
         (std::filesystem::temp_directory_path() / "dexpp_c_model_test.dex").string();
 
-    char *err = nullptr;
-    ASSERT_EQ(dexpp_model_write_file(model, path.c_str(), 1, &err), 1) << (err ? err : "");
+    DexppError *err = nullptr;
+    ASSERT_EQ(dexpp_model_write_file(model, path.c_str(), 1, &err), 1)
+        << (err ? dexpp_error_message(err) : "");
     EXPECT_EQ(err, nullptr);
     DexppModelDex *again = dexpp_model_read_file(path.c_str(), 1, &err);
-    ASSERT_NE(again, nullptr) << (err == nullptr ? "" : err);
+    ASSERT_NE(again, nullptr) << (err == nullptr ? "" : dexpp_error_message(err));
     EXPECT_EQ(dexpp_model_class_count(again), 4u);
     dexpp_model_free(again);
     std::filesystem::remove(path);
@@ -178,7 +186,7 @@ TEST(CModelWrite, WritesAFile)
     // A folder that does not exist: the write fails and says why.
     const char *bad = "tests/data/no/such/folder/out.dex";
     EXPECT_EQ(dexpp_model_write_file(model, bad, 1, &err), 0);
-    expect_error(err);
+    expect_error(err, DEXPP_ERROR_CANNOT_WRITE);
     EXPECT_EQ(dexpp_model_write_file(model, bad, 1, nullptr), 0);
 
     dexpp_model_free(model);
@@ -228,17 +236,24 @@ TEST(CModelValidate, AnInvalidModelListsItsProblemsAndDoesNotWrite)
     }
     dexpp_problem_array_free(problems, count);
 
-    char *err = nullptr;
+    DexppError *err = nullptr;
     size_t len = 0;
     EXPECT_EQ(dexpp_model_write(model, 1, &len, &err), nullptr);
-    expect_error(err);
+    ASSERT_NE(err, nullptr);
+    // The error lists the same problems validate() returns.
+    EXPECT_EQ(dexpp_error_problem_count(err), count);
+    for (size_t i = 0; i < dexpp_error_problem_count(err); ++i) {
+        EXPECT_NE(dexpp_error_problem_where(err, i), nullptr);
+        EXPECT_NE(std::string(dexpp_error_problem_message(err, i)), "");
+    }
+    expect_error(err, DEXPP_ERROR_INVALID_MODEL);
     EXPECT_EQ(dexpp_model_write(model, 1, &len, nullptr), nullptr);
 
     const std::string path =
         (std::filesystem::temp_directory_path() / "dexpp_c_model_invalid.dex").string();
     err = nullptr;
     EXPECT_EQ(dexpp_model_write_file(model, path.c_str(), 1, &err), 0);
-    expect_error(err);
+    expect_error(err, DEXPP_ERROR_INVALID_MODEL);
     EXPECT_FALSE(std::filesystem::exists(path));
 
     dexpp_model_free(model);
@@ -256,14 +271,14 @@ TEST(CModelClasses, DescribesAClass)
     EXPECT_EQ(info.interface_count, 0u);
     EXPECT_EQ(info.field_count, 1u);
     EXPECT_EQ(info.method_count, 4u);
-    dexpp_class_info_free(&info);
+    dexpp_class_info_clear(&info);
     // The strings are cleared, so freeing the same struct again is harmless.
     EXPECT_EQ(info.descriptor, nullptr);
-    dexpp_class_info_free(&info);
+    dexpp_class_info_clear(&info);
 
     ASSERT_EQ(dexpp_model_class_info(model, "LAbstractShape;", &info), 1);
     EXPECT_EQ(info.interface_count, 1u);
-    dexpp_class_info_free(&info);
+    dexpp_class_info_clear(&info);
 
     // An absent class leaves `out` as it was.
     DexppClassInfo untouched{};
@@ -295,30 +310,32 @@ TEST(CModelEdit, MovesCopiesAndRemovesClasses)
     ASSERT_NE(src, nullptr);
     DexppModelDex *dst = dexpp_model_new(dexpp_model_version(src));
 
-    char *err = nullptr;
-    ASSERT_EQ(dexpp_model_copy_class(dst, src, "LCircle;", &err), 1) << (err ? err : "");
+    DexppError *err = nullptr;
+    ASSERT_EQ(dexpp_model_copy_class(dst, src, "LCircle;", &err), 1)
+        << (err ? dexpp_error_message(err) : "");
     EXPECT_EQ(err, nullptr);
     EXPECT_EQ(dexpp_model_has_class(src, "LCircle;"), 1); // the copy left the source alone
     EXPECT_EQ(dexpp_model_has_class(dst, "LCircle;"), 1);
 
-    ASSERT_EQ(dexpp_model_move_class(dst, src, "LRectangle;", &err), 1) << (err ? err : "");
+    ASSERT_EQ(dexpp_model_move_class(dst, src, "LRectangle;", &err), 1)
+        << (err ? dexpp_error_message(err) : "");
     EXPECT_EQ(err, nullptr);
     EXPECT_EQ(dexpp_model_has_class(src, "LRectangle;"), 0); // the move took it out
     EXPECT_EQ(descriptors_of(dst), (std::vector<std::string>{"LCircle;", "LRectangle;"}));
 
     // The destination already has the class.
     EXPECT_EQ(dexpp_model_copy_class(dst, src, "LCircle;", &err), 0);
-    expect_error(err);
+    expect_error(err, DEXPP_ERROR_MODEL);
     err = nullptr;
     EXPECT_EQ(dexpp_model_move_class(dst, src, "LCircle;", &err), 0);
-    expect_error(err);
+    expect_error(err, DEXPP_ERROR_MODEL);
     // The source has no such class.
     err = nullptr;
     EXPECT_EQ(dexpp_model_copy_class(dst, src, "Lno/such/Class;", &err), 0);
-    expect_error(err);
+    expect_error(err, DEXPP_ERROR_MODEL);
     err = nullptr;
     EXPECT_EQ(dexpp_model_move_class(dst, src, "Lno/such/Class;", &err), 0);
-    expect_error(err);
+    expect_error(err, DEXPP_ERROR_MODEL);
     // The message is optional.
     EXPECT_EQ(dexpp_model_copy_class(dst, src, "LCircle;", nullptr), 0);
     EXPECT_EQ(dexpp_model_move_class(dst, src, "Lno/such/Class;", nullptr), 0);
@@ -333,7 +350,7 @@ TEST(CModelEdit, MovesCopiesAndRemovesClasses)
     size_t len = 0;
     err = nullptr;
     uint8_t *bytes = dexpp_model_write(dst, 1, &len, &err);
-    ASSERT_NE(bytes, nullptr) << (err == nullptr ? "" : err);
+    ASSERT_NE(bytes, nullptr) << (err == nullptr ? "" : dexpp_error_message(err));
     dexpp_buffer_free(bytes);
     dexpp_model_free(dst);
 }

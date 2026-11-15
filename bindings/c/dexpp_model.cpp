@@ -12,32 +12,14 @@
 #include <unordered_map>
 #include <vector>
 
+#include "dexpp_c_internal.hpp"
 #include "model/model.hpp"
 
+using dexpp_c::cstr;
+using dexpp_c::reset;
+using dexpp_c::set_error;
+
 namespace {
-
-/* malloc'd, null-terminated copy of a string (the C side frees it). */
-char *cstr(std::string_view sv)
-{
-    char *p = static_cast<char *>(std::malloc(sv.size() + 1));
-    if (p == nullptr) {
-        return nullptr;
-    }
-    // An empty view may have a null data pointer, which memcpy must not get.
-    if (!sv.empty()) {
-        std::memcpy(p, sv.data(), sv.size());
-    }
-    p[sv.size()] = '\0';
-    return p;
-}
-
-/* Report a model Error through *err, if the caller asked for it. */
-void set_error(char **err, const dex::model::Error &e)
-{
-    if (err != nullptr) {
-        *err = cstr(e.message);
-    }
-}
 
 /* The index of the class with this descriptor, or -1. */
 long class_index(const dex::model::Dex &dex, std::string_view descriptor)
@@ -61,28 +43,34 @@ extern "C" {
 
 /* ---- Read / write / lifetime -------------------------------------------- */
 
-DexppModelDex *dexpp_model_read(const uint8_t *bytes, size_t len, int debug_info, char **err)
+DexppModelDex *dexpp_model_read(const uint8_t *bytes, size_t len, int debug_info, DexppError **err)
 {
-    dex::model::ReadOptions options;
-    options.debug_info = debug_info != 0;
-    auto r = dex::model::read(std::span<const uint8_t>(bytes, len), options);
-    if (!r) {
-        set_error(err, r.error());
-        return nullptr;
-    }
-    return new DexppModelDex{std::move(*r)};
+    reset(err);
+    return dexpp_c::guarded<DexppModelDex *>(err, nullptr, [&]() -> DexppModelDex * {
+        dex::model::ReadOptions options;
+        options.debug_info = debug_info != 0;
+        auto r = dex::model::read(std::span<const uint8_t>(bytes, len), options);
+        if (!r) {
+            set_error(err, r.error());
+            return nullptr;
+        }
+        return new DexppModelDex{std::move(*r)};
+    });
 }
 
-DexppModelDex *dexpp_model_read_file(const char *path, int debug_info, char **err)
+DexppModelDex *dexpp_model_read_file(const char *path, int debug_info, DexppError **err)
 {
-    dex::model::ReadOptions options;
-    options.debug_info = debug_info != 0;
-    auto r = dex::model::read_file(path, options);
-    if (!r) {
-        set_error(err, r.error());
-        return nullptr;
-    }
-    return new DexppModelDex{std::move(*r)};
+    reset(err);
+    return dexpp_c::guarded<DexppModelDex *>(err, nullptr, [&]() -> DexppModelDex * {
+        dex::model::ReadOptions options;
+        options.debug_info = debug_info != 0;
+        auto r = dex::model::read_file(path, options);
+        if (!r) {
+            set_error(err, r.error());
+            return nullptr;
+        }
+        return new DexppModelDex{std::move(*r)};
+    });
 }
 
 DexppModelDex *dexpp_model_new(uint32_t version)
@@ -96,36 +84,42 @@ DexppModelDex *dexpp_model_clone(const DexppModelDex *dex) { return new DexppMod
 
 void dexpp_model_free(DexppModelDex *dex) { delete dex; }
 
-uint8_t *dexpp_model_write(const DexppModelDex *dex, int debug_info, size_t *out_len, char **err)
+uint8_t *dexpp_model_write(const DexppModelDex *dex, int debug_info, size_t *out_len,
+                           DexppError **err)
 {
-    dex::model::WriteOptions options;
-    options.debug_info = debug_info != 0;
-    auto r = dex::model::write(dex->dex, options);
-    if (!r) {
-        set_error(err, r.error());
-        return nullptr;
-    }
-    auto *buffer = static_cast<uint8_t *>(std::malloc(r->empty() ? 1 : r->size()));
-    if (buffer != nullptr) {
+    reset(err);
+    *out_len = 0;
+    return dexpp_c::guarded<uint8_t *>(err, nullptr, [&]() -> uint8_t * {
+        dex::model::WriteOptions options;
+        options.debug_info = debug_info != 0;
+        auto r = dex::model::write(dex->dex, options);
+        if (!r) {
+            set_error(err, r.error());
+            return nullptr;
+        }
+        // A DEX file is never empty (it starts with a 112-byte header).
+        auto *buffer = dexpp_c::alloc_array<uint8_t>(r->size());
         std::memcpy(buffer, r->data(), r->size());
-    }
-    *out_len = r->size();
-    return buffer;
+        *out_len = r->size();
+        return buffer;
+    });
 }
 
-int dexpp_model_write_file(const DexppModelDex *dex, const char *path, int debug_info, char **err)
+int dexpp_model_write_file(const DexppModelDex *dex, const char *path, int debug_info,
+                           DexppError **err)
 {
-    dex::model::WriteOptions options;
-    options.debug_info = debug_info != 0;
-    auto r = dex::model::write_file(dex->dex, path, options);
-    if (!r) {
-        set_error(err, r.error());
-        return 0;
-    }
-    return 1;
+    reset(err);
+    return dexpp_c::guarded<int>(err, 0, [&]() {
+        dex::model::WriteOptions options;
+        options.debug_info = debug_info != 0;
+        auto r = dex::model::write_file(dex->dex, path, options);
+        if (!r) {
+            set_error(err, r.error());
+            return 0;
+        }
+        return 1;
+    });
 }
-
-void dexpp_buffer_free(uint8_t *buffer) { std::free(buffer); }
 
 /* ---- Version, pools, validation ----------------------------------------- */
 
@@ -174,16 +168,11 @@ size_t dexpp_model_class_count(const DexppModelDex *dex) { return dex->dex.class
 
 char **dexpp_model_class_descriptors(const DexppModelDex *dex, size_t *count)
 {
-    const auto &classes = dex->dex.classes;
-    *count = classes.size();
-    if (classes.empty()) {
-        return nullptr;
-    }
-    auto **arr = static_cast<char **>(std::malloc(sizeof(char *) * classes.size()));
-    for (std::size_t i = 0; i < classes.size(); ++i) {
-        arr[i] = cstr(classes[i].type);
-    }
-    return arr;
+    std::vector<std::string_view> types;
+    types.reserve(dex->dex.classes.size());
+    for (const dex::model::ClassDef &cls : dex->dex.classes)
+        types.push_back(cls.type);
+    return dexpp_c::string_array(types, count);
 }
 
 int dexpp_model_has_class(const DexppModelDex *dex, const char *descriptor)
@@ -208,7 +197,7 @@ int dexpp_model_class_info(const DexppModelDex *dex, const char *descriptor, Dex
     return 1;
 }
 
-void dexpp_class_info_free(DexppClassInfo *info)
+void dexpp_class_info_clear(DexppClassInfo *info)
 {
     std::free(info->descriptor);
     std::free(info->superclass);
@@ -225,34 +214,23 @@ char **dexpp_model_class_interfaces(const DexppModelDex *dex, const char *descri
         *count = 0;
         return nullptr;
     }
-    const auto &interfaces = dex->dex.classes[static_cast<std::size_t>(i)].interfaces;
-    *count = interfaces.size();
-    if (interfaces.empty()) {
-        return nullptr;
-    }
-    auto **arr = static_cast<char **>(std::malloc(sizeof(char *) * interfaces.size()));
-    for (std::size_t j = 0; j < interfaces.size(); ++j) {
-        arr[j] = cstr(interfaces[j]);
-    }
-    return arr;
+    return dexpp_c::string_array(dex->dex.classes[static_cast<std::size_t>(i)].interfaces, count);
 }
 
 /* ---- Editing by whole class --------------------------------------------- */
 
 int dexpp_model_move_class(DexppModelDex *dst, DexppModelDex *src, const char *descriptor,
-                           char **err)
+                           DexppError **err)
 {
+    reset(err);
     if (class_index(dst->dex, descriptor) >= 0) {
-        if (err != nullptr) {
-            *err = cstr(std::string("destination already has class ") + descriptor);
-        }
+        set_error(err, DEXPP_ERROR_MODEL,
+                  std::string("destination already has class ") + descriptor);
         return 0;
     }
     long i = class_index(src->dex, descriptor);
     if (i < 0) {
-        if (err != nullptr) {
-            *err = cstr(std::string("source has no class ") + descriptor);
-        }
+        set_error(err, DEXPP_ERROR_MODEL, std::string("source has no class ") + descriptor);
         return 0;
     }
     auto it = src->dex.classes.begin() + i;
@@ -262,19 +240,17 @@ int dexpp_model_move_class(DexppModelDex *dst, DexppModelDex *src, const char *d
 }
 
 int dexpp_model_copy_class(DexppModelDex *dst, const DexppModelDex *src, const char *descriptor,
-                           char **err)
+                           DexppError **err)
 {
+    reset(err);
     if (class_index(dst->dex, descriptor) >= 0) {
-        if (err != nullptr) {
-            *err = cstr(std::string("destination already has class ") + descriptor);
-        }
+        set_error(err, DEXPP_ERROR_MODEL,
+                  std::string("destination already has class ") + descriptor);
         return 0;
     }
     long i = class_index(src->dex, descriptor);
     if (i < 0) {
-        if (err != nullptr) {
-            *err = cstr(std::string("source has no class ") + descriptor);
-        }
+        set_error(err, DEXPP_ERROR_MODEL, std::string("source has no class ") + descriptor);
         return 0;
     }
     dst->dex.classes.push_back(src->dex.classes[static_cast<std::size_t>(i)]);

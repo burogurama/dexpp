@@ -1,39 +1,29 @@
-/* C ABI for dex::model, dexpp's editable DEX model: read a DEX file into an
- * in-memory model, change it, and write a DEX file again.
+/**
+ * @file dexpp_model.h
+ * @brief C API for dex::model, the editable DEX model.
  *
- * This is the interop boundary for non-C++ consumers (Go via cgo, etc.). The
- * C++ model is a tree of plain structs (src/model/types.hpp); this shim keeps
- * it behind one opaque handle, DexppModelDex, and works at the granularity of
- * whole classes:
+ * Read a DEX file into an in-memory model, change it, and write a DEX file
+ * again. The C++ model is a tree of plain structs (src/model/types.hpp); this
+ * API keeps it behind one opaque handle, DexppModelDex, and works at the
+ * granularity of whole classes:
  *
- *   - read a DEX into a model, or make an empty model;
- *   - inspect its classes (descriptor, access flags, superclass, interfaces,
- *     source file, field and method counts);
- *   - build a new model by moving or copying whole classes between models —
- *     this is how a DEX is split into several files, or several merged;
- *   - rename every reference to a class (rename_types);
- *   - validate it, ask the lowest DEX version it needs, count its pools;
- *   - write it back to DEX bytes.
+ * - read a DEX into a model, or make an empty model;
+ * - inspect its classes (descriptor, access flags, superclass, interfaces,
+ *   source file, field and method counts);
+ * - build a new model by moving or copying whole classes between models,
+ *   which is how a DEX file is split into several files or several merged;
+ * - rename every reference to a class;
+ * - validate it, ask the lowest DEX version it needs, count its pools;
+ * - write it back to DEX bytes.
  *
- * Editing inside a method (the instruction stream) is NOT exposed here: a
- * class crosses this boundary whole. That covers splitting, merging and
- * renaming; building new classes instruction by instruction stays in the C++
- * API (src/model/types.hpp).
+ * Editing inside a method is not exposed: a class crosses this boundary
+ * whole. Building classes instruction by instruction stays in the C++ API.
  *
- * Conventions (as in dexpp.h):
- *   - Fallible functions take a `char **err`: on failure they return NULL (or
- *     0) and set *err to a malloc'd message freed with dexpp_string_free; on
- *     success *err is left NULL. `err` may be NULL if the caller does not want
- *     the message.
- *   - Returned strings are malloc'd copies, freed with dexpp_string_free.
- *     Returned string arrays are freed with dexpp_string_array_free, byte
- *     buffers with dexpp_buffer_free, problem arrays with
- *     dexpp_problem_array_free.
- *   - Class descriptors and names here are the model's strings. The DEX format
- *     allows them to differ from a strict identifier, but a type descriptor
- *     never contains a NUL byte, so plain C strings carry them faithfully.
- *   - dexpp_buffer_free is declared here; dexpp_string_free comes from
- *     dexpp.h, so include that header too.
+ * The conventions are those of dexpp.h (errors, strings, arrays, `_clear`
+ * functions), which this header includes. A failed write reports
+ * DEXPP_ERROR_INVALID_MODEL with the list of problems, DEXPP_ERROR_POOL_OVERFLOW
+ * or DEXPP_ERROR_VERSION_TOO_LOW; a failed move or copy reports
+ * DEXPP_ERROR_MODEL.
  */
 #ifndef DEXPP_MODEL_H
 #define DEXPP_MODEL_H
@@ -41,140 +31,149 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include "dexpp.h" /* dexpp_string_free, dexpp_string_array_free */
+#include "dexpp.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
+/** An editable DEX file in memory. */
 typedef struct DexppModelDex DexppModelDex;
 
 /* ---- Read / write / lifetime -------------------------------------------- */
 
-/* Read a DEX file into a model. `debug_info` nonzero keeps line numbers and
- * local variables. Returns NULL and sets *err on a malformed or unsupported
- * file. */
-DexppModelDex *dexpp_model_read(const uint8_t *bytes, size_t len, int debug_info, char **err);
-DexppModelDex *dexpp_model_read_file(const char *path, int debug_info, char **err);
+/** Read DEX bytes into a model. `debug_info` nonzero keeps line numbers and
+ *  local variables. Errors: INVALID_DEX, UNSUPPORTED_DEX. */
+DexppModelDex *dexpp_model_read(const uint8_t *bytes, size_t len, int debug_info, DexppError **err);
 
-/* An empty model of the given DEX version (35, 37, 38, 39 or 40). */
+/** Read a DEX file into a model. Errors: FILE_NOT_FOUND, CANNOT_READ,
+ *  INVALID_DEX, UNSUPPORTED_DEX. */
+DexppModelDex *dexpp_model_read_file(const char *path, int debug_info, DexppError **err);
+
+/** An empty model of the given DEX version (35, 37, 38, 39 or 40). */
 DexppModelDex *dexpp_model_new(uint32_t version);
 
-/* A deep copy of a model. */
+/** A deep copy of a model. */
 DexppModelDex *dexpp_model_clone(const DexppModelDex *dex);
 
+/** Free a model. Accepts NULL. */
 void dexpp_model_free(DexppModelDex *dex);
 
-/* Write the model to DEX bytes. `debug_info` nonzero writes debug info. On
- * success returns a malloc'd buffer of `*out_len` bytes (free with
- * dexpp_buffer_free) and leaves *err NULL; on failure returns NULL and sets
- * *err (the model is invalid, a pool overflowed, or a feature needs a higher
- * version). */
-uint8_t *dexpp_model_write(const DexppModelDex *dex, int debug_info, size_t *out_len, char **err);
+/** Write the model to DEX bytes. `debug_info` nonzero writes debug info. On
+ *  success returns a malloc'd buffer of `*out_len` bytes (free with
+ *  dexpp_buffer_free()). Errors: INVALID_MODEL (with the problems),
+ *  POOL_OVERFLOW, VERSION_TOO_LOW. */
+uint8_t *dexpp_model_write(const DexppModelDex *dex, int debug_info, size_t *out_len,
+                           DexppError **err);
 
-/* Write straight to a file. Returns 1 on success, 0 and sets *err on failure. */
-int dexpp_model_write_file(const DexppModelDex *dex, const char *path, int debug_info, char **err);
-
-/* Free a byte buffer returned by dexpp_model_write. */
-void dexpp_buffer_free(uint8_t *buffer);
+/** Write straight to a file. Returns 1 on success, 0 on failure. Errors as
+ *  dexpp_model_write(), plus CANNOT_WRITE. */
+int dexpp_model_write_file(const DexppModelDex *dex, const char *path, int debug_info,
+                           DexppError **err);
 
 /* ---- Version, pools, validation ----------------------------------------- */
 
+/** The DEX format version dexpp_model_write() uses. */
 uint32_t dexpp_model_version(const DexppModelDex *dex);
+
+/** Set the DEX format version. Writing never raises it by itself. */
 void dexpp_model_set_version(DexppModelDex *dex, uint32_t version);
 
-/* The lowest DEX version that has every feature the model uses. */
+/** The lowest DEX version that has every feature the model uses. */
 uint32_t dexpp_model_required_version(const DexppModelDex *dex);
 
-/* How many entries each pool of the written file would have. Use it to decide
- * how to split classes across files (the format indexes types and prototypes
- * with 16 bits, fields and methods with 16 bits). */
-typedef struct
+/** How many entries each pool of the written file would have. Use it to decide
+ *  how to split classes across files: a DEX file holds at most 65535 types and
+ *  prototypes, and at most 65536 fields, methods, method handles and call
+ *  sites. */
+typedef struct DexppPoolStats
 {
-    size_t strings;
-    size_t types;
-    size_t protos;
-    size_t fields;
-    size_t methods;
-    size_t method_handles;
-    size_t call_sites;
+    size_t strings;        /**< Number of strings. */
+    size_t types;          /**< Number of types. */
+    size_t protos;         /**< Number of method prototypes. */
+    size_t fields;         /**< Number of field identities. */
+    size_t methods;        /**< Number of method identities. */
+    size_t method_handles; /**< Number of method handles. */
+    size_t call_sites;     /**< Number of call sites. */
 } DexppPoolStats;
 
+/** The pool sizes the model would write. */
 DexppPoolStats dexpp_model_pool_stats(const DexppModelDex *dex);
 
-/* One problem validate() found. */
-typedef struct
+/** One rule of the format a model breaks. */
+typedef struct DexppProblem
 {
-    char *where;   /* e.g. "Lcom/a/B;->run()V, item 12"; "" for the whole file */
-    char *message; /* what is wrong */
+    char *where;   /**< e.g. "Lcom/a/B;->run()V, item 12"; "" for the whole file. */
+    char *message; /**< What is wrong. */
 } DexppProblem;
 
-/* Every rule of the format the model breaks. A malloc'd array of `*count`
- * problems (free with dexpp_problem_array_free); `*count` 0 (and NULL) means
- * the model is valid. */
+/** Every rule of the format the model breaks. Free with
+ *  dexpp_problem_array_free(). An empty array (NULL, `*count` 0) means
+ *  dexpp_model_write() can encode the model. */
 DexppProblem *dexpp_model_validate(const DexppModelDex *dex, size_t *count);
+
+/** Free an array of problems. Accepts NULL. */
 void dexpp_problem_array_free(DexppProblem *problems, size_t count);
 
 /* ---- Classes ------------------------------------------------------------ */
 
-/* The number of classes in the model. */
+/** The number of classes in the model. */
 size_t dexpp_model_class_count(const DexppModelDex *dex);
 
-/* The descriptors of every class, in model order. A malloc'd array of `*count`
- * malloc'd strings (free with dexpp_string_array_free). */
+/** The descriptors of every class, in model order. Free with
+ *  dexpp_string_array_free(). */
 char **dexpp_model_class_descriptors(const DexppModelDex *dex, size_t *count);
 
-/* Does the model have a class with this descriptor? */
+/** 1 when the model has a class with this descriptor, otherwise 0. */
 int dexpp_model_has_class(const DexppModelDex *dex, const char *descriptor);
 
-/* Facts about one class, filled by dexpp_model_class_info. The strings are
- * malloc'd (superclass and source_file are NULL when the class has none); free
- * each with dexpp_string_free. */
-typedef struct
+/** Facts about one class of a model. Release with dexpp_class_info_clear(). */
+typedef struct DexppClassInfo
 {
-    char *descriptor;
-    uint32_t access_flags;
-    char *superclass;  /* descriptor, or NULL for java.lang.Object */
-    char *source_file; /* or NULL */
-    size_t interface_count;
-    size_t field_count;
-    size_t method_count;
+    char *descriptor;       /**< The class descriptor. */
+    uint32_t access_flags;  /**< The access flags (see DexppAccessFlag). */
+    char *superclass;       /**< The superclass descriptor, or NULL for java.lang.Object. */
+    char *source_file;      /**< The source file name, or NULL. */
+    size_t interface_count; /**< Number of interfaces implemented directly. */
+    size_t field_count;     /**< Number of fields. */
+    size_t method_count;    /**< Number of methods. */
 } DexppClassInfo;
 
-/* Fill `out` for the class with this descriptor. Returns 1 on success, 0 if no
- * such class (then `out` is untouched). Free the strings in `out` with
- * dexpp_string_free / dexpp_class_info_free. */
+/** Fill @p out for the class with this descriptor (release with
+ *  dexpp_class_info_clear()). Returns 0 when there is no such class; then
+ *  @p out is untouched. */
 int dexpp_model_class_info(const DexppModelDex *dex, const char *descriptor, DexppClassInfo *out);
 
-/* Free the malloc'd strings held in a DexppClassInfo (not the struct itself). */
-void dexpp_class_info_free(DexppClassInfo *info);
+/** Free the strings of a DexppClassInfo (not the struct) and set them to
+ *  NULL. */
+void dexpp_class_info_clear(DexppClassInfo *info);
 
-/* The interface descriptors a class implements. NULL and *count 0 if the class
- * is absent or implements none. Free with dexpp_string_array_free. */
+/** The interface descriptors a class implements; empty when the class is
+ *  absent or implements none. Free with dexpp_string_array_free(). */
 char **dexpp_model_class_interfaces(const DexppModelDex *dex, const char *descriptor,
                                     size_t *count);
 
 /* ---- Editing by whole class --------------------------------------------- */
 
-/* Move the class `descriptor` out of `src` and into `dst`. The class's data is
+/** Move the class `descriptor` out of `src` and into `dst`. The class's data is
  * moved, not copied, so this is cheap for a large class. Returns 1 on success;
- * 0 and sets *err if `src` has no such class, or `dst` already has one with
- * that descriptor. */
+ * 0 and sets *err (DEXPP_ERROR_MODEL) if `src` has no such class, or `dst`
+ * already has one with that descriptor. */
 int dexpp_model_move_class(DexppModelDex *dst, DexppModelDex *src, const char *descriptor,
-                           char **err);
+                           DexppError **err);
 
-/* Copy the class `descriptor` from `src` into `dst`, leaving `src` unchanged.
+/** Copy the class `descriptor` from `src` into `dst`, leaving `src` unchanged.
  * Returns 1 on success; 0 and sets *err as dexpp_model_move_class does. */
 int dexpp_model_copy_class(DexppModelDex *dst, const DexppModelDex *src, const char *descriptor,
-                           char **err);
+                           DexppError **err);
 
-/* Remove the class `descriptor` from the model. Returns 1 if it was removed, 0
+/** Remove the class `descriptor` from the model. Returns 1 if it was removed, 0
  * if there was no such class. */
 int dexpp_model_remove_class(DexppModelDex *dex, const char *descriptor);
 
 /* ---- Renaming ----------------------------------------------------------- */
 
-/* Rename classes everywhere they are referenced: class definitions,
+/** Rename classes everywhere they are referenced: class definitions,
  * supertypes, member ids, prototypes, array types, annotations and values,
  * call sites, catch types, debug local types, and the class names inside
  * generic signatures. `from[i]` -> `to[i]` for each of the `count` pairs; a

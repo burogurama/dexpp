@@ -105,6 +105,68 @@
   type stubs already declared these two unions, but the module did not have
   them, so `isinstance(x, dexpp.Instruction)` raised `AttributeError`.
 
+### C and Go bindings
+
+- The C API (`bindings/c/dexpp.h`) now covers the whole analysis API, the same
+  ground as the Python binding. Before, it had loading, classes, the names,
+  descriptors and flags of methods, the string table, and the manifest's
+  package and components. New: fields and class references, decoded
+  instructions with `dexpp_opcode_name` and `dexpp_instruction_to_string`,
+  control-flow graphs, try blocks, annotations with typed values and the
+  initial values of static fields, a method's calls, field accesses, string
+  loads, type uses and parameter registers, the call graph, the class
+  hierarchy, the cross-reference index, and the whole manifest, resources,
+  archive entries and signing information of an APK. The header's first
+  comment gives the rules for memory, arrays and threads.
+- **Breaking for C callers:** every function that can fail now takes a
+  `DexppError **err` instead of a `char **err`. The error object gives a code
+  (`dexpp_error_code`, one value per kind of failure, matching the Python
+  exceptions), a message (`dexpp_error_message`) and, for a model that breaks
+  rules of the DEX format, the list of problems
+  (`dexpp_error_problem_count`, `dexpp_error_problem_where`,
+  `dexpp_error_problem_message`). Free it with `dexpp_error_free`.
+- Other changes that break C callers: `dexpp_context_from_apk` takes the
+  number of threads; `dexpp_class_superclass` and `dexpp_class_interfaces`
+  return `DexppClassRef` handles instead of strings; `dexpp_context_strings`
+  returns `DexppText`, which keeps NUL bytes; `dexpp_method_call_count` is
+  replaced by `dexpp_method_calls`; `dexpp_apk_components` is replaced by
+  `dexpp_apk_manifest`; and `dexpp_class_info_free` is renamed
+  `dexpp_class_info_clear`.
+- The Go package now reaches the whole analysis API too: `Field`, `ClassRef`,
+  `Method.Instructions` (an `Instruction` interface with one struct type per
+  opcode family), `OpcodeName`, `ToString`, `Method.Cfg`, `Method.TryBlocks`,
+  `Annotations` and `Field.InitialValue`, `Method.Calls`, `FieldAccesses`,
+  `StringLoads`, `TypeUses` and `ParameterRegisters`, `CallGraph`,
+  `ClassHierarchy`, `Xrefs`, `FromDEXFiles`, the `WithThreads` option of
+  `FromAPK`, the whole `Manifest` with intent filters, `ResourceTable`,
+  `Apk.Entries`, `Apk.Read`, `Apk.Signing` and `Version`.
+- Go errors are now `*dexpp.Error` values with a `Code`, a `Message` and, for
+  an invalid model, the `Problems`. Each code has a sentinel, such as
+  `dexpp.ErrInvalidDex`, for `errors.Is`, and `errors.Is(err, fs.ErrNotExist)`
+  is true for a missing file. Before, errors were plain strings.
+- Changed Go signatures (breaking):
+    - `Class.Superclass()` returns a `*ClassRef`, which is nil for
+      `java.lang.Object`, instead of a string that was empty when there was
+      no superclass. `Class.Interfaces()` returns `[]*ClassRef` instead of
+      `[]string`.
+    - The component kind constants are renamed: `Activity`, `Service`,
+      `Receiver` and `Provider` are now `ComponentActivity`,
+      `ComponentService`, `ComponentReceiver` and `ComponentProvider`.
+    - `Apk.Components()` is replaced by `Apk.Manifest()`, which returns the
+      whole manifest. In `Component`, `Exported` is now the attribute as the
+      manifest writes it (a `*bool`, nil when missing), `IsExported` is the
+      effective answer, and `Reachable` is renamed `IsReachable`.
+    - `Apk.Package()` returns `(string, bool)`, false when the APK has no
+      manifest, instead of an empty string.
+    - `Class.AccessFlags()`, `Method.AccessFlags()` and
+      `ClassInfo.AccessFlags` are a `dexpp.AccessFlags` instead of a `uint32`.
+    - `Method.CallCount()` is removed. Its comment said it counted resolved
+      calls, but it counted every invoke instruction. `len(m.Calls())` gives
+      the same number.
+- Go: calling a method on a closed or nil handle now panics with a message
+  that names the handle type, instead of passing a null pointer to C.
+  `Close()` on a nil handle does nothing.
+
 ### Fixes
 
 - A damaged APK Signing Block could make `parse_signing_info` (and so
