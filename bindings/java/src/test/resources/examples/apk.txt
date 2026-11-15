@@ -1,9 +1,0 @@
-package: com.example.dexpp
-min SDK: 21
-ACTIVITY com.example.dexpp.MainActivity exported=true reachable=true
-SERVICE  com.example.dexpp.SyncService exported=false reachable=false
-RECEIVER com.example.dexpp.BootReceiver exported=true reachable=true
-PROVIDER com.example.dexpp.DataProvider exported=false reachable=false
-@string/app_name = Dexpp Sample
-signed: false
-classes: 1

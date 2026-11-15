@@ -1,0 +1,5 @@
+0000  iget-wide v0, v4.field@1
+0002  const-wide v2, #4614256656552045848
+0007  mul-double v2, v2, v0
+0009  mul-double v2, v2, v0
+000b  return-wide v2

@@ -54,8 +54,11 @@ java --enable-native-access=ALL-UNNAMED -Ddexpp.library.path=build \
 
 ## Usage
 
-The documentation page, `docs/java.md`, shows tested examples:
-<https://burogurama.github.io/dexpp/java/>.
+The guides of the documentation site show every example in Java, next to
+Python and Go: <https://burogurama.github.io/dexpp/>. The examples are in
+`src/test/java/io/github/burogurama/dexpp/examples/`, and `ExamplesTest`
+runs them and checks what they print. `docs/java.md`
+(<https://burogurama.github.io/dexpp/java/>) covers setup, errors and memory.
 
 - `AnalysisContext.fromDex`, `fromDexFiles` and `fromApk` load code;
   `Apk.open` opens an APK for its manifest, resources and signatures;

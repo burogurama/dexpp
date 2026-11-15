@@ -1,5 +1,0 @@
-[LPet;, Ljava/lang/Object;, LAnimal;]
-true
-noise calls LAnimal; at 0
-dogNoise calls LDog; at 0
-describe calls LPet; at 15

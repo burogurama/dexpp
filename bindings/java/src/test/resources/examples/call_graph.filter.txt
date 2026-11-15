@@ -1,0 +1,1 @@
+17 call sites, 1 of them invoke-interface

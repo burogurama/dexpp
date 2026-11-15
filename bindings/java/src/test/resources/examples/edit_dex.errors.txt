@@ -1,0 +1,1 @@
+InvalidDexException: not a DEX file (bad magic)
