@@ -34,6 +34,32 @@ Attributes that the manifest may leave out, such as `version_code`, `min_sdk`
 or `debuggable`, are `None` when they are not set. So `debuggable is None`
 means "not written in the manifest", which Android treats as false.
 
+### Values given by a resource reference
+
+A manifest can give a boolean or integer attribute through a resource
+reference instead of a plain value, for example
+`android:debuggable="@bool/debug"` or `android:exported="@bool/is_exported"`.
+dexpp then looks the value up in the APK's resource table (`resources.arsc`),
+in the default configuration, and the property holds that value. The
+reference id itself is kept in a second property: `version_code_reference`,
+`min_sdk_reference`, `target_sdk_reference`, `debuggable_reference`,
+`allow_backup_reference`, and `exported_reference` on a component. These are
+`None` for a plain value or a missing attribute.
+
+A reference can fail to resolve: the APK has no resource table, the table has
+no such id, the value has another type (a string where a boolean is expected),
+or the attribute names a theme attribute (`?attr/...`), whose value depends on
+the theme the app runs with. Then the value property is `None`, but the
+`..._reference` property still holds the id. So the two cases stay apart:
+
+- value `None`, reference `None`: the attribute is not in the manifest;
+- value `None`, reference set: the attribute is in the manifest, but its value
+  is unknown.
+
+When a resource has variants, for example a `values-v31` folder that changes a
+boolean on Android 12 and newer, only the default value is used. On a device
+that matches the variant, Android uses the other value.
+
 dexpp reads the `android:` attributes the way Android does: by their resource
 id, not by their name. In the binary manifest, each attribute name is a string,
 and a table in the file gives the framework attributes their ids, such as
@@ -59,10 +85,15 @@ as `.MainActivity` is completed with the package name.
 There are two ways to ask whether a component is exported:
 
 - `exported` is what the manifest says: `True`, `False`, or `None` when the
-  `android:exported` attribute is missing.
+  `android:exported` attribute is missing or is a reference that could not be
+  resolved.
 - `is_exported` is the effective answer. When the attribute is missing, a
   component with at least one intent filter counts as exported. This is the
-  rule Android applied before Android 12.
+  rule Android applied before Android 12. When the attribute is a reference
+  that could not be resolved (`exported is None` and `exported_reference` is
+  set), `is_exported` is `True`: the developer set the flag, its value is
+  unknown, and for triage "possibly exported" is the safe answer. Guessing
+  from the intent filters could hide an exported component.
 
 ## Which components can another app reach
 
@@ -94,13 +125,16 @@ Two cases stay reachable on purpose:
 `declared_permission_protection_level(name)` returns the raw Android value for
 a permission the app declares, or `None` for a permission it does not declare.
 The low four bits are the base level: 0 normal, 1 dangerous, 2 signature,
-3 signatureOrSystem.
+3 signatureOrSystem. A protection level given by a resource reference is
+resolved like the other values. When it cannot be resolved, the function
+returns `None` for that declared permission too, and the permission does not
+count as a guard: a component it protects stays reachable.
 
 ## Resources
 
 `apk.resources` is the decoded `resources.arsc` table, or `None` when the APK
 has none or it cannot be decoded. It resolves resource ids to names and to
-string values.
+string, boolean and integer values.
 
 ```python
 --8<-- "apk_metadata.py:resources"
@@ -115,9 +149,17 @@ string values.
 - `resolve_string(id)` gives the value of a string resource. It returns `None`
   when the id is missing or its value is not a string.
 - `apk.resolve_string(id)` is a shortcut for the same lookup.
+- `resolve_bool(id)` and `resolve_int(id)` give the value of a boolean or an
+  integer resource. Like Android, both accept any integer-typed value: a
+  boolean read as an integer gives its raw data (aapt2 writes `true` as -1),
+  and an integer read as a boolean is true when it is not 0. They return
+  `None` when the id is missing or its value has another type, such as a
+  string.
 
-Only string values are resolved. When a resource has several variants, for
-example one per language, the value of the default configuration is returned.
+A resource whose value is a reference to another resource, such as
+`<bool name="a">@bool/b</bool>`, is followed to the end, for up to 20 steps as
+Android does. When a resource has several variants, for example one per
+language, the value of the default configuration is returned.
 
 ## Signing
 

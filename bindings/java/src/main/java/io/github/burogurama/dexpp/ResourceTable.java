@@ -1,16 +1,19 @@
 package io.github.burogurama.dexpp;
 
 import static java.lang.foreign.ValueLayout.JAVA_INT;
+import static java.lang.foreign.ValueLayout.JAVA_LONG;
 
 import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
 import java.util.Optional;
 import java.util.OptionalInt;
+import java.util.OptionalLong;
 
 /**
  * The decoded {@code resources.arsc} table of an {@link Apk}. It maps resource ids to names and to
- * string values. When a resource has several variants, for example one per language, the value of
- * the default configuration is used.
+ * string, boolean and integer values. When a resource has several variants, for example one per
+ * language, the value of the default configuration is used. A resource whose value refers to
+ * another resource is followed to the end.
  *
  * <p>It reads through the {@link Apk} it came from, so that APK must stay open while the table is
  * used.
@@ -66,6 +69,47 @@ public final class ResourceTable {
      */
     public Optional<String> resolveString(int id) {
         return apk.resolveString(id);
+    }
+
+    /**
+     * The value of a resource as a boolean: a bool resource, or any integer-typed value (nonzero is
+     * true), as Android reads it.
+     *
+     * @param id a resource id
+     * @return the value, or empty when the id is missing or its value is of another type, such as a
+     *     string
+     */
+    public Optional<Boolean> resolveBool(int id) {
+        return apk.handle()
+                .call(a -> {
+                    try (Arena arena = Arena.ofConfined()) {
+                        MemorySegment out = arena.allocate(JAVA_INT);
+                        if (Native.dexpp_apk_resolve_bool(a, id, out) == 0) {
+                            return Optional.empty();
+                        }
+                        return Optional.of(out.get(JAVA_INT, 0) != 0);
+                    }
+                });
+    }
+
+    /**
+     * The value of a resource as an integer: an integer resource, or any other integer-typed value,
+     * read as its signed 32-bit data.
+     *
+     * @param id a resource id
+     * @return the value, or empty when the id is missing or its value is of another type
+     */
+    public OptionalLong resolveInt(int id) {
+        return apk.handle()
+                .call(a -> {
+                    try (Arena arena = Arena.ofConfined()) {
+                        MemorySegment out = arena.allocate(JAVA_LONG);
+                        if (Native.dexpp_apk_resolve_int(a, id, out) == 0) {
+                            return OptionalLong.empty();
+                        }
+                        return OptionalLong.of(out.get(JAVA_LONG, 0));
+                    }
+                });
     }
 
     /**

@@ -173,6 +173,116 @@ TEST(CApiApk, ResolvesResources)
     dexpp_apk_free(apk);
 }
 
+TEST(CApiApk, ResolvesReferencesInTheManifest)
+{
+    // refs.apk writes its boolean and integer attributes as resource
+    // references (tests/data/RefsManifest.xml).
+    DexppApk *apk = open_apk("tests/data/refs.apk");
+    ASSERT_NE(apk, nullptr);
+    uint32_t yes = 0, no = 0, min_sdk = 0, debug = 0, not_a_bool = 0;
+    ASSERT_EQ(dexpp_apk_resource_id(apk, "bool", "yes", &yes), 1);
+    ASSERT_EQ(dexpp_apk_resource_id(apk, "bool", "no", &no), 1);
+    ASSERT_EQ(dexpp_apk_resource_id(apk, "integer", "min_sdk", &min_sdk), 1);
+    ASSERT_EQ(dexpp_apk_resource_id(apk, "bool", "debug", &debug), 1);
+    ASSERT_EQ(dexpp_apk_resource_id(apk, "string", "not_a_bool", &not_a_bool), 1);
+
+    DexppManifest m{};
+    ASSERT_EQ(dexpp_apk_manifest(apk, &m), 1);
+    EXPECT_EQ(m.has_min_sdk, 1);
+    EXPECT_EQ(m.min_sdk, 23);
+    EXPECT_EQ(m.min_sdk_reference, min_sdk);
+    EXPECT_EQ(m.has_target_sdk, 1);
+    EXPECT_EQ(m.target_sdk, 34);
+    EXPECT_NE(m.target_sdk_reference, 0u);
+    EXPECT_EQ(m.has_version_code, 1);
+    EXPECT_EQ(m.version_code, 42);
+    EXPECT_EQ(m.version_code_reference, 0u); // a plain value
+    EXPECT_EQ(m.debuggable, 1);
+    EXPECT_EQ(m.debuggable_reference, debug);
+    EXPECT_EQ(m.allow_backup, 0);
+    EXPECT_NE(m.allow_backup_reference, 0u);
+
+    std::map<std::string, const DexppComponent *> by_name;
+    for (size_t i = 0; i < m.component_count; ++i)
+        by_name[m.components[i].name] = &m.components[i];
+    const DexppComponent *exported = by_name["com.dexpp.refs.ExportedActivity"];
+    ASSERT_NE(exported, nullptr);
+    EXPECT_EQ(exported->exported, 1);
+    EXPECT_EQ(exported->exported_reference, yes);
+    EXPECT_EQ(exported->is_exported, 1);
+    const DexppComponent *hidden = by_name["com.dexpp.refs.HiddenActivity"];
+    ASSERT_NE(hidden, nullptr);
+    EXPECT_EQ(hidden->exported, 0);
+    EXPECT_EQ(hidden->exported_reference, no);
+    EXPECT_EQ(hidden->is_exported, 0);
+    // A reference to a string: set, but unknown, so possibly exported.
+    const DexppComponent *text = by_name["com.dexpp.refs.TextActivity"];
+    ASSERT_NE(text, nullptr);
+    EXPECT_EQ(text->exported, -1);
+    EXPECT_EQ(text->exported_reference, not_a_bool);
+    EXPECT_EQ(text->is_exported, 1);
+    EXPECT_EQ(text->is_reachable, 1);
+
+    std::map<std::string, const DexppDeclaredPermission *> declared;
+    for (size_t i = 0; i < m.declared_permission_count; ++i)
+        declared[m.declared_permissions[i].name] = &m.declared_permissions[i];
+    ASSERT_EQ(declared.size(), 2u);
+    EXPECT_EQ(declared["com.dexpp.refs.P_SIGNATURE"]->has_protection_level, 1);
+    EXPECT_EQ(declared["com.dexpp.refs.P_SIGNATURE"]->protection_level, 2);
+    EXPECT_EQ(declared["com.dexpp.refs.P_TEXT"]->has_protection_level, 0);
+    EXPECT_EQ(by_name["com.dexpp.refs.GuardedService"]->is_reachable, 0);
+    EXPECT_EQ(by_name["com.dexpp.refs.TextGuardedService"]->is_reachable, 1);
+    dexpp_manifest_clear(&m);
+
+    // The plain-value manifest of sample.apk has no references.
+    DexppApk *sample = open_apk("tests/data/sample.apk");
+    ASSERT_NE(sample, nullptr);
+    ASSERT_EQ(dexpp_apk_manifest(sample, &m), 1);
+    EXPECT_EQ(m.min_sdk_reference, 0u);
+    EXPECT_EQ(m.debuggable_reference, 0u);
+    for (size_t i = 0; i < m.component_count; ++i)
+        EXPECT_EQ(m.components[i].exported_reference, 0u) << m.components[i].name;
+    dexpp_manifest_clear(&m);
+    dexpp_apk_free(sample);
+    dexpp_apk_free(apk);
+}
+
+TEST(CApiApk, ResolvesBooleanAndIntegerResources)
+{
+    DexppApk *apk = open_apk("tests/data/refs.apk");
+    ASSERT_NE(apk, nullptr);
+    uint32_t yes = 0, same_as_yes = 0, no = 0, min_sdk = 0, not_a_bool = 0;
+    ASSERT_EQ(dexpp_apk_resource_id(apk, "bool", "yes", &yes), 1);
+    ASSERT_EQ(dexpp_apk_resource_id(apk, "bool", "same_as_yes", &same_as_yes), 1);
+    ASSERT_EQ(dexpp_apk_resource_id(apk, "bool", "no", &no), 1);
+    ASSERT_EQ(dexpp_apk_resource_id(apk, "integer", "min_sdk", &min_sdk), 1);
+    ASSERT_EQ(dexpp_apk_resource_id(apk, "string", "not_a_bool", &not_a_bool), 1);
+
+    int b = -1;
+    ASSERT_EQ(dexpp_apk_resolve_bool(apk, yes, &b), 1);
+    EXPECT_EQ(b, 1);
+    ASSERT_EQ(dexpp_apk_resolve_bool(apk, same_as_yes, &b), 1);
+    EXPECT_EQ(b, 1);
+    ASSERT_EQ(dexpp_apk_resolve_bool(apk, no, &b), 1);
+    EXPECT_EQ(b, 0);
+    EXPECT_EQ(dexpp_apk_resolve_bool(apk, not_a_bool, &b), 0);
+    EXPECT_EQ(dexpp_apk_resolve_bool(apk, 0x7f999999, &b), 0);
+
+    int64_t n = 0;
+    ASSERT_EQ(dexpp_apk_resolve_int(apk, min_sdk, &n), 1);
+    EXPECT_EQ(n, 23);
+    EXPECT_EQ(dexpp_apk_resolve_int(apk, not_a_bool, &n), 0);
+    EXPECT_EQ(dexpp_apk_resolve_int(apk, 0x7f999999, &n), 0);
+    dexpp_apk_free(apk);
+
+    // No resource table at all.
+    DexppApk *bare = open_apk("tests/data/app.apk");
+    ASSERT_NE(bare, nullptr);
+    EXPECT_EQ(dexpp_apk_resolve_bool(bare, yes, &b), 0);
+    EXPECT_EQ(dexpp_apk_resolve_int(bare, min_sdk, &n), 0);
+    dexpp_apk_free(bare);
+}
+
 TEST(CApiApk, ListsAndReadsArchiveEntries)
 {
     DexppApk *apk = open_apk("tests/data/sample.apk");

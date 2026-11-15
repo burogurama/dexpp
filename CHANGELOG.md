@@ -291,6 +291,50 @@
   cross-reference. `classes()` still lists every definition. The call-graph
   documentation said "the last definition wins, as on Android"; that was
   wrong, and it now describes the rule above.
+- A boolean or integer manifest attribute given by a resource reference, such
+  as `android:exported="@bool/is_exported"` or
+  `android:debuggable="@bool/debug"`, read as "not set". For `exported` that
+  was a security problem: `is_exported` then fell back to the intent-filter
+  rule, so `is_reachable` could call an exported component unreachable.
+  `Apk::manifest()` now resolves such references through the APK's resource
+  table, in its default configuration, for `exported`, `debuggable`,
+  `allowBackup`, `versionCode`, `minSdkVersion`, `targetSdkVersion` and
+  `protectionLevel`. The reference id is kept next to the value:
+  `Component::exported_reference` and `Manifest::version_code_reference()`,
+  `min_sdk_reference()`, `target_sdk_reference()`, `debuggable_reference()`
+  and `allow_backup_reference()` (in Python `exported_reference`,
+  `version_code_reference` and so on; in C the `*_reference` members of
+  `DexppComponent` and `DexppManifest`, 0 for none; in Go the `...Reference`
+  fields; in Java the `...Reference` record components). When a reference
+  cannot be resolved (no resource table, an unknown id, a value of another
+  type, or a theme attribute `?attr/...`), the value stays unset and the
+  reference id is still there, so "not written" and "written, value unknown"
+  can be told apart. `Manifest` takes the resource table as a new, optional
+  constructor argument; built from an `XmlDocument` alone, it resolves
+  nothing and keeps the reference ids. Text attributes (`android:name`,
+  `android:permission`, `android:versionName`) are still read as written.
+  Breaking:
+  - `is_exported()` (and `is_reachable()`) now answer true when
+    `android:exported` is a reference that could not be resolved, instead of
+    guessing from the intent filters: the value is unknown, and "possibly
+    exported" is the safe answer for triage.
+  - `declared_permission_protection_level()` now returns no value for a
+    declared permission whose level is an unresolved reference, and such a
+    permission does not make a component `guarded_by_signature_permission`.
+    Before, the level read as normal (0).
+  - C: `DexppComponent` and `DexppManifest` have new members, so code built
+    against the old `dexpp.h` must be rebuilt.
+  - Java: the `Component` and `Manifest` records have new components, so
+    their constructors take more arguments.
+- `ResourceTable` now resolves boolean and integer resources too:
+  `resolve_bool(id)` and `resolve_int(id)` (Python `resolve_bool` and
+  `resolve_int`, C `dexpp_apk_resolve_bool` and `dexpp_apk_resolve_int`, Go
+  `ResourceTable.ResolveBool` and `ResolveInt`, Java
+  `ResourceTable.resolveBool` and `resolveInt`). Like Android's `TypedArray`,
+  both accept any integer-typed value. All the resolve functions, including
+  `resolve_string`, now follow a resource whose value refers to another
+  resource (`<bool name="a">@bool/b</bool>`), for up to 20 steps as Android
+  does; before, `resolve_string` returned nothing for such a resource.
 
 ### C++ API
 

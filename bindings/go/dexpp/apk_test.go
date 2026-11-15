@@ -192,6 +192,117 @@ func TestResources(t *testing.T) {
 	}
 }
 
+// refs.apk writes its boolean and integer manifest attributes as resource
+// references (tests/data/RefsManifest.xml).
+func TestManifestReferences(t *testing.T) {
+	apk := mustAPK(t, "refs.apk")
+	rt := apk.Resources()
+	if rt == nil {
+		t.Fatal("no resource table")
+	}
+	id := func(typ, entry string) uint32 {
+		t.Helper()
+		v, ok := rt.IDOf(typ, entry)
+		if !ok {
+			t.Fatalf("IDOf(%s, %s) found nothing", typ, entry)
+		}
+		return v
+	}
+	m := mustManifest(t, apk)
+	if m.MinSDK == nil || *m.MinSDK != 23 || m.MinSDKReference == nil || *m.MinSDKReference != id("integer", "min_sdk") {
+		t.Errorf("MinSDK = %v, reference %v", m.MinSDK, m.MinSDKReference)
+	}
+	if m.TargetSDK == nil || *m.TargetSDK != 34 || m.TargetSDKReference == nil {
+		t.Errorf("TargetSDK = %v, reference %v", m.TargetSDK, m.TargetSDKReference)
+	}
+	if m.Debuggable == nil || !*m.Debuggable || m.DebuggableReference == nil || *m.DebuggableReference != id("bool", "debug") {
+		t.Errorf("Debuggable = %v, reference %v", m.Debuggable, m.DebuggableReference)
+	}
+	if m.AllowBackup == nil || *m.AllowBackup || m.AllowBackupReference == nil {
+		t.Errorf("AllowBackup = %v, reference %v", m.AllowBackup, m.AllowBackupReference)
+	}
+	// A plain value has no reference.
+	if m.VersionCode == nil || *m.VersionCode != 42 || m.VersionCodeReference != nil {
+		t.Errorf("VersionCode = %v, reference %v", m.VersionCode, m.VersionCodeReference)
+	}
+
+	byName := map[string]Component{}
+	for _, c := range m.Components {
+		byName[c.Name[strings.LastIndex(c.Name, ".")+1:]] = c
+	}
+	// Resolved: true without an intent filter, false with one.
+	exported := byName["ExportedActivity"]
+	if exported.Exported == nil || !*exported.Exported || !exported.IsExported ||
+		exported.ExportedReference == nil || *exported.ExportedReference != id("bool", "yes") {
+		t.Errorf("ExportedActivity = %+v", exported)
+	}
+	if hidden := byName["HiddenActivity"]; hidden.Exported == nil || *hidden.Exported || hidden.IsExported {
+		t.Errorf("HiddenActivity = %+v", hidden)
+	}
+	// A reference to a string: written, but unknown, so possibly exported.
+	text := byName["TextActivity"]
+	if text.Exported != nil || text.ExportedReference == nil || *text.ExportedReference != id("string", "not_a_bool") ||
+		!text.IsExported || !text.IsReachable {
+		t.Errorf("TextActivity = %+v", text)
+	}
+	// The signature level is resolved; a level given as a string is unknown.
+	if got, ok := m.DeclaredPermissionProtectionLevel("com.dexpp.refs.P_SIGNATURE"); !ok || got != 2 {
+		t.Errorf("P_SIGNATURE level = %d, %v", got, ok)
+	}
+	if got, ok := m.DeclaredPermissionProtectionLevel("com.dexpp.refs.P_TEXT"); ok {
+		t.Errorf("P_TEXT level = %d", got)
+	}
+	if byName["GuardedService"].IsReachable || !byName["TextGuardedService"].IsReachable {
+		t.Errorf("GuardedService = %+v, TextGuardedService = %+v", byName["GuardedService"], byName["TextGuardedService"])
+	}
+
+	// sample.apk writes plain values: no references.
+	sample := mustManifest(t, mustAPK(t, "sample.apk"))
+	if sample.MinSDKReference != nil || sample.DebuggableReference != nil || sample.VersionCodeReference != nil {
+		t.Errorf("sample.apk has references: %+v", sample)
+	}
+	for _, c := range sample.Components {
+		if c.ExportedReference != nil {
+			t.Errorf("%s has an exported reference", c.Name)
+		}
+	}
+}
+
+func TestResolveBoolAndInt(t *testing.T) {
+	rt := mustAPK(t, "refs.apk").Resources()
+	if rt == nil {
+		t.Fatal("no resource table")
+	}
+	id := func(typ, entry string) uint32 {
+		t.Helper()
+		v, ok := rt.IDOf(typ, entry)
+		if !ok {
+			t.Fatalf("IDOf(%s, %s) found nothing", typ, entry)
+		}
+		return v
+	}
+	for entry, want := range map[string]bool{"yes": true, "no": false, "same_as_yes": true} {
+		if got, ok := rt.ResolveBool(id("bool", entry)); !ok || got != want {
+			t.Errorf("ResolveBool(bool/%s) = %v, %v; want %v", entry, got, ok, want)
+		}
+	}
+	if got, ok := rt.ResolveInt(id("integer", "min_sdk")); !ok || got != 23 {
+		t.Errorf("ResolveInt(integer/min_sdk) = %d, %v", got, ok)
+	}
+	if _, ok := rt.ResolveBool(id("string", "not_a_bool")); ok {
+		t.Error("ResolveBool resolved a string")
+	}
+	if _, ok := rt.ResolveInt(id("string", "not_a_number")); ok {
+		t.Error("ResolveInt resolved a string")
+	}
+	if _, ok := rt.ResolveBool(0x7f999999); ok {
+		t.Error("ResolveBool(0x7f999999) resolved")
+	}
+	if _, ok := rt.ResolveInt(0x7f999999); ok {
+		t.Error("ResolveInt(0x7f999999) resolved")
+	}
+}
+
 func TestAnApkWithoutAManifestOrResources(t *testing.T) {
 	// app.apk is a ZIP of DEX files only.
 	apk := mustAPK(t, "app.apk")

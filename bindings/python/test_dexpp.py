@@ -557,6 +557,66 @@ def test_resources():
     assert rt.resolve_string(0x7F999999) is None
 
 
+def test_manifest_references():
+    # refs.apk writes its boolean and integer attributes as resource references
+    # (tests/data/RefsManifest.xml).
+    apk = dexpp.Apk.open("tests/data/refs.apk")
+    rt = apk.resources
+    assert rt is not None
+    m = apk.manifest
+    assert m is not None
+
+    assert m.min_sdk == 23 and m.min_sdk_reference == rt.id_of("integer", "min_sdk")
+    assert m.target_sdk == 34 and m.target_sdk_reference is not None
+    assert m.debuggable is True and m.debuggable_reference == rt.id_of("bool", "debug")
+    assert m.allow_backup is False and m.allow_backup_reference is not None
+    # A plain value has no reference.
+    assert m.version_code == 42 and m.version_code_reference is None
+
+    by_name = {c.name.split(".")[-1]: c for c in m.components}
+    exported = by_name["ExportedActivity"]
+    assert exported.exported is True
+    assert exported.exported_reference == rt.id_of("bool", "yes")
+    assert exported.is_exported
+    hidden = by_name["HiddenActivity"]
+    assert hidden.exported is False and not hidden.is_exported
+    # A reference to a string: written, but unknown, so possibly exported.
+    text = by_name["TextActivity"]
+    assert text.exported is None
+    assert text.exported_reference == rt.id_of("string", "not_a_bool")
+    assert text.is_exported and text.is_reachable
+
+    assert m.declared_permission_protection_level("com.dexpp.refs.P_SIGNATURE") == 2
+    assert m.declared_permission_protection_level("com.dexpp.refs.P_TEXT") is None
+    assert not by_name["GuardedService"].is_reachable
+    assert by_name["TextGuardedService"].is_reachable
+
+    # sample.apk writes plain values: no references.
+    sample = dexpp.Apk.open("tests/data/sample.apk").manifest
+    assert sample is not None
+    assert sample.min_sdk_reference is None and sample.debuggable_reference is None
+    assert all(c.exported_reference is None for c in sample.components)
+
+
+def test_resolve_bool_and_int():
+    rt = dexpp.Apk.open("tests/data/refs.apk").resources
+    assert rt is not None
+    yes = rt.id_of("bool", "yes")
+    no = rt.id_of("bool", "no")
+    same_as_yes = rt.id_of("bool", "same_as_yes")
+    min_sdk = rt.id_of("integer", "min_sdk")
+    not_a_bool = rt.id_of("string", "not_a_bool")
+    assert None not in (yes, no, same_as_yes, min_sdk, not_a_bool)
+    assert rt.resolve_bool(yes) is True
+    assert rt.resolve_bool(no) is False
+    assert rt.resolve_bool(same_as_yes) is True
+    assert rt.resolve_int(min_sdk) == 23
+    assert rt.resolve_bool(not_a_bool) is None
+    assert rt.resolve_int(not_a_bool) is None
+    assert rt.resolve_bool(0x7F999999) is None
+    assert rt.resolve_int(id=0x7F999999) is None
+
+
 def test_apk_resolve_string():
     apk = dexpp.Apk.open("tests/data/sample.apk")
     ref = apk.resources.id_of("string", "app_name")
