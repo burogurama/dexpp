@@ -65,6 +65,11 @@
 
 ### Fixes
 
+- A damaged APK Signing Block could make `parse_signing_info` (and so
+  `Apk::signing()` / `Apk.signing`) read outside the APK's memory, or loop
+  forever. Two size checks were written as `a + b > c`, and a huge size taken
+  from the file wrapped around and passed them. The fuzzer found it; the checks
+  now compare by subtraction.
 - The manifest now reads the `android:` attributes by resource id, as Android
   does, instead of by name. Before, an app could hide `android:exported` (and
   so change `is_exported` and `is_reachable`) by renaming the attribute's name
