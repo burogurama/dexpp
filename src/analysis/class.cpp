@@ -3,6 +3,7 @@
 #include <span>
 
 #include "analysis_context_impl.hpp"
+#include "common/hash.hpp"
 #include "raw/parser.hpp"
 
 namespace dex {
@@ -128,3 +129,11 @@ std::optional<std::string_view> Class::source_file() const
 }
 
 } // namespace dex
+
+std::size_t std::hash<dex::Class>::operator()(const dex::Class &cls) const noexcept
+{
+    std::size_t h = std::hash<const void *>{}(cls.impl_.get());
+    dex::detail::hash_combine(h, cls.dex_idx_);
+    dex::detail::hash_combine(h, cls.class_def_idx_);
+    return h;
+}

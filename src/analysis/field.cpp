@@ -1,6 +1,7 @@
 #include "field.hpp"
 
 #include "analysis_context_impl.hpp"
+#include "common/hash.hpp"
 #include "raw/parser.hpp"
 
 namespace dex {
@@ -101,3 +102,13 @@ std::optional<AnnotationValue> Field::initial_value() const
 }
 
 } // namespace dex
+
+// Hashes a subset of what == compares (not the access flags), so equal handles
+// hash the same.
+std::size_t std::hash<dex::Field>::operator()(const dex::Field &field) const noexcept
+{
+    std::size_t h = std::hash<const void *>{}(field.impl_.get());
+    dex::detail::hash_combine(h, field.dex_idx_);
+    dex::detail::hash_combine(h, field.field_abs_idx_);
+    return h;
+}

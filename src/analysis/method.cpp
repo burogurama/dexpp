@@ -5,6 +5,7 @@
 #include <variant>
 
 #include "analysis_context_impl.hpp"
+#include "common/hash.hpp"
 #include "raw/parser.hpp"
 
 namespace dex {
@@ -229,3 +230,13 @@ std::vector<TryBlock> Method::try_blocks() const
 }
 
 } // namespace dex
+
+// Hashes a subset of what == compares (not the access flags and code offset), so equal handles
+// hash the same.
+std::size_t std::hash<dex::Method>::operator()(const dex::Method &method) const noexcept
+{
+    std::size_t h = std::hash<const void *>{}(method.impl_.get());
+    dex::detail::hash_combine(h, method.dex_idx_);
+    dex::detail::hash_combine(h, method.method_abs_idx_);
+    return h;
+}

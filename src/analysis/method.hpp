@@ -1,6 +1,8 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <span>
@@ -165,7 +167,15 @@ class Method
     /** Annotations attached to this method, resolved.  Parsed on demand. */
     std::vector<Annotation> annotations() const;
 
+    /** Two handles are equal when they come from the same analysis (one
+     *  AnalysisContext, or copies of it) and point at the same method of the
+     *  same DEX file.  Handles from two contexts that loaded the same file
+     *  are not equal.  std::hash<Method> is consistent with it. */
+    bool operator==(const Method &) const = default;
+
   private:
+    friend struct std::hash<Method>;
+
     std::shared_ptr<const detail::AnalysisContextImpl> impl_;
     std::size_t dex_idx_;
     uint32_t method_abs_idx_;
@@ -174,3 +184,14 @@ class Method
 };
 
 } // namespace dex
+
+namespace std {
+
+/** Hash of a Method handle, consistent with Method::operator==, so handles can
+ *  be keys of std::unordered_map and std::unordered_set. */
+template <> struct hash<dex::Method>
+{
+    std::size_t operator()(const dex::Method &method) const noexcept;
+};
+
+} // namespace std

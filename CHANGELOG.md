@@ -139,6 +139,16 @@
   `dexpp_class_package` in `dexpp.h` also said the package comes back as
   `pkg.sub`; it comes back as `pkg/sub`, and the comment now says so.
 
+### C++ API
+
+- `Class`, `Method`, `Field` and `ClassRef` now have `operator==` and a
+  `std::hash` specialization, so they can be compared and used as keys of
+  `std::unordered_map` and `std::unordered_set`. Two handles are equal when
+  they come from the same analysis (one `AnalysisContext`, or copies of it) and
+  point at the same class, method or field. Handles from two contexts that
+  loaded the same file are not equal. A default-constructed `Class` equals only
+  another default-constructed one.
+
 ### C++ API (breaking)
 
 - `AnalysisError::Code` lost four values that the library never produced:

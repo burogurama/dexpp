@@ -1,6 +1,8 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string_view>
@@ -74,10 +76,30 @@ class Class
     /** Default constructor produces an invalid handle (is_valid() == false). */
     Class() : impl_(nullptr), dex_idx_(0), class_def_idx_(0) {}
 
+    /** Two handles are equal when they come from the same analysis (one
+     *  AnalysisContext, or copies of it) and point at the same class
+     *  definition.  Handles from two contexts that loaded the same file are
+     *  not equal.  A default-constructed handle equals only another
+     *  default-constructed one.  std::hash<Class> is consistent with it. */
+    bool operator==(const Class &) const = default;
+
   private:
+    friend struct std::hash<Class>;
+
     std::shared_ptr<const detail::AnalysisContextImpl> impl_;
     std::size_t dex_idx_;
     uint32_t class_def_idx_;
 };
 
 } // namespace dex
+
+namespace std {
+
+/** Hash of a Class handle, consistent with Class::operator==, so handles can be
+ *  keys of std::unordered_map and std::unordered_set. */
+template <> struct hash<dex::Class>
+{
+    std::size_t operator()(const dex::Class &cls) const noexcept;
+};
+
+} // namespace std

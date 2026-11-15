@@ -1,6 +1,8 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string_view>
@@ -57,7 +59,15 @@ class Field
      *  mean "the type's default value" (0 / null) at runtime. */
     std::optional<AnnotationValue> initial_value() const;
 
+    /** Two handles are equal when they come from the same analysis (one
+     *  AnalysisContext, or copies of it) and point at the same field of the
+     *  same DEX file.  Handles from two contexts that loaded the same file
+     *  are not equal.  std::hash<Field> is consistent with it. */
+    bool operator==(const Field &) const = default;
+
   private:
+    friend struct std::hash<Field>;
+
     std::shared_ptr<const detail::AnalysisContextImpl> impl_;
     std::size_t dex_idx_;
     uint32_t field_abs_idx_;
@@ -65,3 +75,14 @@ class Field
 };
 
 } // namespace dex
+
+namespace std {
+
+/** Hash of a Field handle, consistent with Field::operator==, so handles can be
+ *  keys of std::unordered_map and std::unordered_set. */
+template <> struct hash<dex::Field>
+{
+    std::size_t operator()(const dex::Field &field) const noexcept;
+};
+
+} // namespace std

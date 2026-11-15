@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cstddef>
+#include <functional>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -46,9 +48,28 @@ class ClassRef
     /** Returns true iff resolve() would return a valid handle. */
     bool is_resolved() const;
 
+    /** Two references are equal when they come from the same analysis (one
+     *  AnalysisContext, or copies of it) and name the same descriptor.
+     *  References from two contexts that loaded the same file are not equal.
+     *  std::hash<ClassRef> is consistent with it. */
+    bool operator==(const ClassRef &) const = default;
+
   private:
+    friend struct std::hash<ClassRef>;
+
     std::string descriptor_;
     std::shared_ptr<const detail::AnalysisContextImpl> impl_;
 };
 
 } // namespace dex
+
+namespace std {
+
+/** Hash of a ClassRef, consistent with ClassRef::operator==, so references can
+ *  be keys of std::unordered_map and std::unordered_set. */
+template <> struct hash<dex::ClassRef>
+{
+    std::size_t operator()(const dex::ClassRef &ref) const noexcept;
+};
+
+} // namespace std

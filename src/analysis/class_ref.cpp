@@ -3,6 +3,7 @@
 #include "analysis_context.hpp"
 #include "analysis_context_impl.hpp"
 #include "class.hpp"
+#include "common/hash.hpp"
 
 namespace dex {
 
@@ -35,3 +36,10 @@ bool ClassRef::is_resolved() const
 }
 
 } // namespace dex
+
+std::size_t std::hash<dex::ClassRef>::operator()(const dex::ClassRef &ref) const noexcept
+{
+    std::size_t h = std::hash<const void *>{}(ref.impl_.get());
+    dex::detail::hash_combine(h, std::hash<std::string>{}(ref.descriptor_));
+    return h;
+}
