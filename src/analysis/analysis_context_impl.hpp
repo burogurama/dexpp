@@ -207,6 +207,12 @@ struct AnalysisContextImpl : public std::enable_shared_from_this<AnalysisContext
 
     /** Canonical FieldId for field_ids[field_index]. */
     FieldId field_id_of(std::size_t dex_idx, uint32_t field_index) const;
+
+    /** method_handles[handle_index], resolved to its kind and member.  An
+     *  out-of-range index, or a handle type that is not one of the nine
+     *  kinds, gives InvokeStatic with an empty MethodId. */
+    AnnotationValue::MethodHandleValue method_handle_of(std::size_t dex_idx,
+                                                        uint32_t handle_index) const;
 };
 
 // ---- annotation resolution (implemented in annotations.cpp) ----

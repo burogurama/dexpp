@@ -86,8 +86,9 @@ std::string method_repr_id(const MethodId &id)
 }
 
 /** Recursively convert a resolved AnnotationValue into native Python objects:
- *  None / bool / int / float / str / list, the bound *Ref classes for typed
- *  pool references, and Annotation for nested annotations. */
+ *  None / bool / int / float / str / list, the bound *Value classes for the
+ *  values that name a type, a member, a prototype or a method handle, and
+ *  Annotation for nested annotations. */
 py::object annotation_value_to_py(const AnnotationValue &v)
 {
     return std::visit(
@@ -352,48 +353,70 @@ PYBIND11_MODULE(dexpp, m)
 
     // ===== annotations =====
 
-    py::class_<AnnotationValue::TypeRef>(m, "TypeRef")
-        .def_readonly("descriptor", &AnnotationValue::TypeRef::descriptor)
+    py::class_<AnnotationValue::TypeValue>(m, "TypeValue")
+        .def_readonly("descriptor", &AnnotationValue::TypeValue::descriptor)
         .def(py::self == py::self)
         .def("__hash__",
-             [](const AnnotationValue::TypeRef &t) {
+             [](const AnnotationValue::TypeValue &t) {
                  return std::hash<std::string>{}(t.descriptor);
              })
         .def("__repr__",
-             [](const AnnotationValue::TypeRef &t) { return "TypeRef(" + t.descriptor + ")"; });
+             [](const AnnotationValue::TypeValue &t) { return "TypeValue(" + t.descriptor + ")"; });
 
-    py::class_<AnnotationValue::EnumRef>(m, "EnumRef")
-        .def_readonly("constant", &AnnotationValue::EnumRef::constant)
+    py::class_<AnnotationValue::EnumValue>(m, "EnumValue")
+        .def_readonly("constant", &AnnotationValue::EnumValue::constant)
         .def(py::self == py::self)
         .def("__hash__",
-             [](const AnnotationValue::EnumRef &e) { return FieldIdHash{}(e.constant); })
-        .def("__repr__", [](const AnnotationValue::EnumRef &e) {
-            return "EnumRef(" + e.constant.class_descriptor + "->" + e.constant.name + ")";
+             [](const AnnotationValue::EnumValue &e) { return FieldIdHash{}(e.constant); })
+        .def("__repr__", [](const AnnotationValue::EnumValue &e) {
+            return "EnumValue(" + e.constant.class_descriptor + "->" + e.constant.name + ")";
         });
 
-    py::class_<AnnotationValue::FieldRef>(m, "FieldRef")
-        .def_readonly("field", &AnnotationValue::FieldRef::field)
-        .def(py::self == py::self)
-        .def("__hash__", [](const AnnotationValue::FieldRef &f) { return FieldIdHash{}(f.field); });
-
-    py::class_<AnnotationValue::MethodRef>(m, "MethodRef")
-        .def_readonly("method", &AnnotationValue::MethodRef::method)
+    py::class_<AnnotationValue::FieldValue>(m, "FieldValue")
+        .def_readonly("field", &AnnotationValue::FieldValue::field)
         .def(py::self == py::self)
         .def("__hash__",
-             [](const AnnotationValue::MethodRef &r) { return MethodIdHash{}(r.method); });
+             [](const AnnotationValue::FieldValue &f) { return FieldIdHash{}(f.field); });
 
-    py::class_<AnnotationValue::MethodTypeRef>(m, "MethodTypeRef")
-        .def_readonly("proto", &AnnotationValue::MethodTypeRef::proto)
+    py::class_<AnnotationValue::MethodValue>(m, "MethodValue")
+        .def_readonly("method", &AnnotationValue::MethodValue::method)
         .def(py::self == py::self)
-        .def("__hash__", [](const AnnotationValue::MethodTypeRef &t) {
+        .def("__hash__",
+             [](const AnnotationValue::MethodValue &r) { return MethodIdHash{}(r.method); });
+
+    py::class_<AnnotationValue::MethodTypeValue>(m, "MethodTypeValue")
+        .def_readonly("proto", &AnnotationValue::MethodTypeValue::proto)
+        .def(py::self == py::self)
+        .def("__hash__", [](const AnnotationValue::MethodTypeValue &t) {
             return std::hash<std::string>{}(t.proto);
         });
 
-    py::class_<AnnotationValue::MethodHandleRef>(m, "MethodHandleRef")
-        .def_readonly("index", &AnnotationValue::MethodHandleRef::index)
+    py::class_<AnnotationValue::MethodHandleValue>(m, "MethodHandleValue")
+        .def_readonly("kind", &AnnotationValue::MethodHandleValue::kind)
+        .def_readonly("member", &AnnotationValue::MethodHandleValue::member)
         .def(py::self == py::self)
-        .def("__hash__", [](const AnnotationValue::MethodHandleRef &h) {
-            return std::hash<uint32_t>{}(h.index);
+        .def("__hash__",
+             [](const AnnotationValue::MethodHandleValue &h) {
+                 std::size_t member = std::visit(
+                     [](const auto &id) -> std::size_t {
+                         if constexpr (std::is_same_v<std::decay_t<decltype(id)>, MethodId>)
+                             return MethodIdHash{}(id);
+                         else
+                             return FieldIdHash{}(id);
+                     },
+                     h.member);
+                 return member * 31 + static_cast<std::size_t>(h.kind);
+             })
+        .def("__repr__", [](const AnnotationValue::MethodHandleValue &h) {
+            std::string member = std::visit(
+                [](const auto &id) -> std::string {
+                    if constexpr (std::is_same_v<std::decay_t<decltype(id)>, MethodId>)
+                        return method_repr_id(id);
+                    else
+                        return id.class_descriptor + "->" + id.name + ":" + id.type;
+                },
+                h.member);
+            return "MethodHandleValue(" + member + ")";
         });
 
     py::class_<Annotation>(m, "Annotation")
@@ -1289,8 +1312,8 @@ PYBIND11_MODULE(dexpp, m)
         values.append(py::none());
         for (const char *name : {"bool", "int", "float", "str"})
             values.append(builtins.attr(name));
-        for (const char *name :
-             {"TypeRef", "EnumRef", "FieldRef", "MethodRef", "MethodTypeRef", "MethodHandleRef"})
+        for (const char *name : {"TypeValue", "EnumValue", "FieldValue", "MethodValue",
+                                 "MethodTypeValue", "MethodHandleValue"})
             values.append(m.attr(name));
         values.append(builtins.attr("list"));
         values.append(m.attr("Annotation"));

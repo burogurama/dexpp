@@ -239,6 +239,30 @@ class TypeUseKind(Enum):
     is the array type.
     """
 
+class MethodHandleKind(Enum):
+    """What a method handle does, as `MethodHandleValue.kind` gives it. The values are
+    the method handle type codes of the DEX format.
+    """
+
+    STATIC_PUT = 0
+    """Writes a static field."""
+    STATIC_GET = 1
+    """Reads a static field."""
+    INSTANCE_PUT = 2
+    """Writes an instance field."""
+    INSTANCE_GET = 3
+    """Reads an instance field."""
+    INVOKE_STATIC = 4
+    """Calls a static method."""
+    INVOKE_INSTANCE = 5
+    """Calls an instance method, with virtual dispatch."""
+    INVOKE_CONSTRUCTOR = 6
+    """Creates an object with a constructor."""
+    INVOKE_DIRECT = 7
+    """Calls an instance method without dispatch, such as a private method."""
+    INVOKE_INTERFACE = 8
+    """Calls an interface method."""
+
 class OperandWidth(Enum):
     """How many registers a value takes."""
 
@@ -339,7 +363,7 @@ class FieldId:
 
 # ===== annotations =====
 
-class TypeRef:
+class TypeValue:
     """A class literal as an annotation value, such as `String.class`.
 
     It is a plain value: two are equal when their content is equal, and it can be a
@@ -352,7 +376,7 @@ class TypeRef:
     def __eq__(self, other: object) -> bool: ...
     def __hash__(self) -> int: ...
 
-class EnumRef:
+class EnumValue:
     """An enum constant as an annotation value.
 
     It is a plain value: two are equal when their content is equal, and it can be a
@@ -365,9 +389,8 @@ class EnumRef:
     def __eq__(self, other: object) -> bool: ...
     def __hash__(self) -> int: ...
 
-class FieldRef:
-    """A reference to a field as an annotation value. It is rare outside system
-    annotations.
+class FieldValue:
+    """A field as an annotation value. It is rare outside system annotations.
 
     It is a plain value: two are equal when their content is equal, and it can be a
     dictionary key or a set member.
@@ -379,9 +402,8 @@ class FieldRef:
     def __eq__(self, other: object) -> bool: ...
     def __hash__(self) -> int: ...
 
-class MethodRef:
-    """A reference to a method as an annotation value. It is rare outside system
-    annotations.
+class MethodValue:
+    """A method as an annotation value. It is rare outside system annotations.
 
     It is a plain value: two are equal when their content is equal, and it can be a
     dictionary key or a set member.
@@ -393,8 +415,9 @@ class MethodRef:
     def __eq__(self, other: object) -> bool: ...
     def __hash__(self) -> int: ...
 
-class MethodTypeRef:
-    """A method prototype as an annotation value.
+class MethodTypeValue:
+    """A method prototype as an annotation value: a `java.lang.invoke.MethodType`
+    constant.
 
     It is a plain value: two are equal when their content is equal, and it can be a
     dictionary key or a set member.
@@ -406,24 +429,32 @@ class MethodTypeRef:
     def __eq__(self, other: object) -> bool: ...
     def __hash__(self) -> int: ...
 
-class MethodHandleRef:
-    """A method handle as an annotation value.
+class MethodHandleValue:
+    """A method handle as an annotation value: a `java.lang.invoke.MethodHandle`
+    constant, which reads or writes a field, or calls a method.
 
     It is a plain value: two are equal when their content is equal, and it can be a
     dictionary key or a set member.
     """
 
     @property
-    def index(self) -> int:
-        """Index of the handle in the DEX file's method handle table. It is not resolved
-        further.
+    def kind(self) -> MethodHandleKind:
+        """What the handle does with its member."""
+    @property
+    def member(self) -> Union[MethodId, FieldId]:
+        """The member the handle works on: a `FieldId` for the four field kinds
+        (`STATIC_PUT`, `STATIC_GET`, `INSTANCE_PUT`, `INSTANCE_GET`), a `MethodId` for
+        the five invoke kinds.
+
+        In a damaged file, where the handle cannot be read, the kind is
+        `INVOKE_STATIC` and the member is a `MethodId` of empty strings.
         """
     def __eq__(self, other: object) -> bool: ...
     def __hash__(self) -> int: ...
 
 AnnotationValue = Union[
     None, bool, int, float, str,
-    TypeRef, EnumRef, FieldRef, MethodRef, MethodTypeRef, MethodHandleRef,
+    TypeValue, EnumValue, FieldValue, MethodValue, MethodTypeValue, MethodHandleValue,
     list["AnnotationValue"], "Annotation",
 ]
 """The value of an annotation element, and the type of `Field.initial_value`.
@@ -431,8 +462,9 @@ AnnotationValue = Union[
 Numbers, booleans, strings and `null` become plain Python values. All integer types
 (`byte`, `short`, `char`, `int`, `long`) become `int`, and `float` and `double`
 become `float`, so the original width is not kept. An array becomes a `list`. A value
-that refers to something is one of the small reference classes, and a nested
-annotation is an `Annotation`.
+that names a type, a member, a prototype or a method handle is one of the small
+value classes (`TypeValue`, `EnumValue`, `FieldValue`, `MethodValue`,
+`MethodTypeValue`, `MethodHandleValue`), and a nested annotation is an `Annotation`.
 """
 
 class Annotation:

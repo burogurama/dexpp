@@ -118,6 +118,36 @@ aliases.
       `DexppFieldId`.
     - Go and Java now get each identity with one call to C, instead of one
       call for each part.
+- Breaking: a method handle value (in an annotation, or as a static field's
+  initial value) is now resolved. Before, it was only a raw index into one
+  DEX file's method handle table, which no public call could resolve. Now it
+  has a `kind`, which says what the handle does, and a `member`, the field or
+  the method it works on. The kind is a new enum, `MethodHandleKind`, with
+  the nine method handle types of the DEX format: `STATIC_PUT`, `STATIC_GET`,
+  `INSTANCE_PUT` and `INSTANCE_GET` work on a field (a `FieldId`), and
+  `INVOKE_STATIC`, `INVOKE_INSTANCE`, `INVOKE_CONSTRUCTOR`, `INVOKE_DIRECT`
+  and `INVOKE_INTERFACE` call a method (a `MethodId`). In C++ the enum is
+  `dex::MethodHandleKind`, in `common/method_handle_kind.hpp`: the editable
+  model's `model::MethodHandle` now uses the same enum, so the analysis and
+  the model share one vocabulary (code that named it
+  `dex::model::MethodHandleKind` now names `dex::MethodHandleKind`).
+    - C: the enum `DexppMethodHandleKind` and the member
+      `DexppValue.method_handle_kind` replace `method_handle_index`; the
+      member is in `field` or `method`.
+    - Go: `MethodHandleValue.Kind` (a `MethodHandleKind`) and
+      `MethodHandleValue.Member` (a `MemberID`: a `MethodID` or a `FieldID`)
+      replace `Index`.
+    - Java: `MethodHandleValue.kind()` and `MethodHandleValue.member()` (a
+      `MemberId`, the new sealed interface of `MethodId` and `FieldId`)
+      replace `index()`.
+- Breaking: the annotation value classes are renamed so that they do not
+  look like handles or cross-references. They are plain values:
+  `TypeRef` is now `TypeValue`, `EnumRef` is `EnumValue`, `FieldRef` is
+  `FieldValue`, `MethodRef` is `MethodValue`, `MethodTypeRef` is
+  `MethodTypeValue` and `MethodHandleRef` is `MethodHandleValue`. This
+  applies to the nested types of `dex::AnnotationValue` in C++, the Python
+  classes, the Go types and the Java records. C keeps its `DEXPP_VALUE_*`
+  kinds.
 - Breaking: a control-flow-graph edge no longer has a `label`. The label was
   one optional integer with two meanings: the case key of a switch-case edge,
   or, on an exception edge, the caught type as a raw index into one DEX
@@ -188,10 +218,11 @@ aliases.
   ctx.find_class("LA;")` was `False`, because each call makes a new Python
   object, and a `set` of methods did not remove duplicates. The same file
   loaded twice gives two analyses, and their objects are not equal.
-- `TypeRef`, `EnumRef`, `FieldRef`, `MethodRef`, `MethodTypeRef`,
-  `MethodHandleRef` and `ResourceName` could be compared but not hashed, so
-  they could not be dictionary keys or set members. They now have a hash that
-  matches their equality.
+- The annotation value classes (`TypeRef`, `EnumRef`, `FieldRef`,
+  `MethodRef`, `MethodTypeRef` and `MethodHandleRef`, now renamed; see "No
+  magic numbers, no raw indices, no hidden cases") and `ResourceName` could
+  be compared but not hashed, so they could not be dictionary keys or set
+  members. They now have a hash that matches their equality.
 - Breaking: thirteen properties that do a lot of work on every read are now
   methods, so they need `()`: `AnalysisContext.classes()` (makes a new `Class`
   object for every class of every DEX file), `AnalysisContext.strings()`

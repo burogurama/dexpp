@@ -10,7 +10,7 @@ import java.util.Objects;
  * @param name the field name, such as {@code "out"}
  * @param type the type descriptor, such as {@code "Ljava/io/PrintStream;"}
  */
-public record FieldId(String classDescriptor, String name, String type) {
+public record FieldId(String classDescriptor, String name, String type) implements MemberId {
     /** Checks that every part is given. */
     public FieldId {
         Objects.requireNonNull(classDescriptor, "classDescriptor");

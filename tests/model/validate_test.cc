@@ -11,6 +11,7 @@
 using namespace dex::model;
 using dex::AccessFlags;
 using dex::FieldId;
+using dex::MethodHandleKind;
 using dex::MethodId;
 
 namespace {

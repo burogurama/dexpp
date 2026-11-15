@@ -88,6 +88,20 @@ class TypeUseKind(_enum.Enum):
     FILLED_NEW_ARRAY = 5
 
 
+class MethodHandleKind(_enum.Enum):
+    """What a method handle does."""
+
+    STATIC_PUT = 0
+    STATIC_GET = 1
+    INSTANCE_PUT = 2
+    INSTANCE_GET = 3
+    INVOKE_STATIC = 4
+    INVOKE_INSTANCE = 5
+    INVOKE_CONSTRUCTOR = 6
+    INVOKE_DIRECT = 7
+    INVOKE_INTERFACE = 8
+
+
 class OperandWidth(_enum.Enum):
     """How many registers a value takes."""
 
@@ -146,6 +160,15 @@ static_assert(static_cast<int>(dex::TypeUseKind::ConstClass) == 0 &&
               static_cast<int>(dex::TypeUseKind::NewInstance) == 3 &&
               static_cast<int>(dex::TypeUseKind::NewArray) == 4 &&
               static_cast<int>(dex::TypeUseKind::FilledNewArray) == 5);
+static_assert(static_cast<int>(dex::MethodHandleKind::StaticPut) == 0 &&
+              static_cast<int>(dex::MethodHandleKind::StaticGet) == 1 &&
+              static_cast<int>(dex::MethodHandleKind::InstancePut) == 2 &&
+              static_cast<int>(dex::MethodHandleKind::InstanceGet) == 3 &&
+              static_cast<int>(dex::MethodHandleKind::InvokeStatic) == 4 &&
+              static_cast<int>(dex::MethodHandleKind::InvokeInstance) == 5 &&
+              static_cast<int>(dex::MethodHandleKind::InvokeConstructor) == 6 &&
+              static_cast<int>(dex::MethodHandleKind::InvokeDirect) == 7 &&
+              static_cast<int>(dex::MethodHandleKind::InvokeInterface) == 8);
 static_assert(static_cast<int>(dex::OperandWidth::Single) == 0 &&
               static_cast<int>(dex::OperandWidth::Pair) == 1);
 static_assert(static_cast<int>(dex::AnnotationVisibility::Build) == 0 &&
@@ -172,6 +195,7 @@ DEXPP_PY_ENUM(dex::EdgeOrigin, "EdgeOrigin");
 DEXPP_PY_ENUM(dex::CallNodeKind, "CallNodeKind");
 DEXPP_PY_ENUM(dex::CfgEdgeKind, "CfgEdgeKind");
 DEXPP_PY_ENUM(dex::TypeUseKind, "TypeUseKind");
+DEXPP_PY_ENUM(dex::MethodHandleKind, "MethodHandleKind");
 DEXPP_PY_ENUM(dex::OperandWidth, "OperandWidth");
 DEXPP_PY_ENUM(dex::AnnotationVisibility, "AnnotationVisibility");
 DEXPP_PY_ENUM(dex::apk::Component::Kind, "ComponentKind");
@@ -251,6 +275,10 @@ template <> class type_caster<dex::CfgEdgeKind> : public dexpp_py::EnumCaster<de
 {
 };
 template <> class type_caster<dex::TypeUseKind> : public dexpp_py::EnumCaster<dex::TypeUseKind>
+{
+};
+template <>
+class type_caster<dex::MethodHandleKind> : public dexpp_py::EnumCaster<dex::MethodHandleKind>
 {
 };
 template <> class type_caster<dex::OperandWidth> : public dexpp_py::EnumCaster<dex::OperandWidth>

@@ -18,11 +18,13 @@
 #include <string>
 #include <string_view>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "../raw/test_utils.hpp"
 #include "../raw/zip_builder.hpp"
 #include "dex.hpp"
+#include "raw/constants.hpp"
 #include "raw/parser.hpp"
 
 using namespace dex;
@@ -104,7 +106,7 @@ TEST(AnnotationsTest, MethodAnnotationWithClassLiteral)
 
     const AnnotationValue *target = marker->find("target");
     ASSERT_NE(target, nullptr);
-    EXPECT_EQ(std::get<AnnotationValue::TypeRef>(target->value).descriptor, "Ljava/lang/String;");
+    EXPECT_EQ(std::get<AnnotationValue::TypeValue>(target->value).descriptor, "Ljava/lang/String;");
 }
 
 TEST(AnnotationsTest, DeprecatedOnMethod)
@@ -321,6 +323,74 @@ Seen seen_in(const std::vector<uint8_t> &dex_bytes)
 }
 
 } // namespace
+
+// ---- Method handle and method type values (handles.dex) ----
+//
+// handles.dex (built by tests/model/handles_fixture_test.cc) annotates its
+// class with @HandleMarker(getter = <static-get Handles.counter>,
+// invoker = <invoke-static Handles.target(I)I>, type = <method type (I)I>).
+
+namespace {
+
+// The value of element @p name of @HandleMarker; a null value when it is missing.
+AnnotationValue handle_marker_element(const AnalysisContext &ctx, std::string_view name)
+{
+    auto cls = ctx.find_class("LHandles;");
+    if (!cls.has_value())
+        throw std::runtime_error("LHandles; not found");
+    for (const auto &a : cls->annotations())
+        if (a.type_descriptor == "LHandleMarker;")
+            if (const AnnotationValue *v = a.find(name))
+                return *v;
+    return AnnotationValue{};
+}
+
+} // namespace
+
+TEST(AnnotationsTest, MethodHandleAndMethodTypeValues)
+{
+    auto ctx = AnalysisContext::from_dex("tests/data/handles.dex");
+    ASSERT_TRUE(ctx.has_value()) << ctx.error().message;
+
+    using Handle = AnnotationValue::MethodHandleValue;
+    const auto getter = handle_marker_element(*ctx, "getter").value;
+    ASSERT_TRUE(std::holds_alternative<Handle>(getter));
+    EXPECT_EQ(std::get<Handle>(getter),
+              (Handle{MethodHandleKind::StaticGet, FieldId{"LHandles;", "counter", "I"}}));
+
+    const auto invoker = handle_marker_element(*ctx, "invoker").value;
+    ASSERT_TRUE(std::holds_alternative<Handle>(invoker));
+    EXPECT_EQ(std::get<Handle>(invoker),
+              (Handle{MethodHandleKind::InvokeStatic, MethodId{"LHandles;", "target", "(I)I"}}));
+
+    const auto type = handle_marker_element(*ctx, "type").value;
+    ASSERT_TRUE(std::holds_alternative<AnnotationValue::MethodTypeValue>(type));
+    EXPECT_EQ(std::get<AnnotationValue::MethodTypeValue>(type).proto, "(I)I");
+}
+
+TEST(AnnotationsTest, DamagedMethodHandleGivesAnEmptyMember)
+{
+    // Give every method handle a type the format does not define (9).
+    auto bytes = load_buf("tests/data/handles.dex");
+    auto dex = raw::parser::parse_buffer(bytes);
+    ASSERT_TRUE(dex.has_value()) << dex.error().message;
+    std::size_t patched = 0;
+    for (const raw::MapItem &item : dex->map_list().items) {
+        if (item.type != raw::TYPE_METHOD_HANDLE_ITEM)
+            continue;
+        for (uint32_t i = 0; i < item.size; ++i, ++patched)
+            put_u16(bytes, item.offset + i * 8, 9); // method_handle_item is 8 bytes, type first
+    }
+    ASSERT_GT(patched, 0u);
+
+    auto ctx = load_dex_bytes(bytes);
+    const AnnotationValue::MethodHandleValue empty{MethodHandleKind::InvokeStatic, MethodId{}};
+    for (const char *name : {"getter", "invoker"}) {
+        const auto v = handle_marker_element(ctx, name).value;
+        ASSERT_TRUE(std::holds_alternative<AnnotationValue::MethodHandleValue>(v)) << name;
+        EXPECT_EQ(std::get<AnnotationValue::MethodHandleValue>(v), empty) << name;
+    }
+}
 
 TEST(ClassDefLookupTest, UnpatchedFileFindsEverything)
 {

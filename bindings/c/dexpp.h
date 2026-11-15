@@ -242,6 +242,21 @@ typedef enum DexppAnnotationVisibility {
     DEXPP_VISIBILITY_SYSTEM = 2
 } DexppAnnotationVisibility;
 
+/** What a method handle does: the method_handle_type codes of the DEX format.
+ *  The four field kinds read or write a field; the five invoke kinds call a
+ *  method. */
+typedef enum DexppMethodHandleKind {
+    DEXPP_METHOD_HANDLE_STATIC_PUT = 0,         /**< Writes a static field. */
+    DEXPP_METHOD_HANDLE_STATIC_GET = 1,         /**< Reads a static field. */
+    DEXPP_METHOD_HANDLE_INSTANCE_PUT = 2,       /**< Writes an instance field. */
+    DEXPP_METHOD_HANDLE_INSTANCE_GET = 3,       /**< Reads an instance field. */
+    DEXPP_METHOD_HANDLE_INVOKE_STATIC = 4,      /**< Calls a static method. */
+    DEXPP_METHOD_HANDLE_INVOKE_INSTANCE = 5,    /**< Calls an instance method, with dispatch. */
+    DEXPP_METHOD_HANDLE_INVOKE_CONSTRUCTOR = 6, /**< Creates an object with a constructor. */
+    DEXPP_METHOD_HANDLE_INVOKE_DIRECT = 7,      /**< Calls an instance method without dispatch. */
+    DEXPP_METHOD_HANDLE_INVOKE_INTERFACE = 8    /**< Calls an interface method. */
+} DexppMethodHandleKind;
+
 /** The kind of a manifest component. */
 typedef enum DexppComponentKind {
     DEXPP_COMPONENT_ACTIVITY = 0,
@@ -328,7 +343,7 @@ typedef enum DexppValueKind {
     DEXPP_VALUE_FIELD = 7,          /**< field. */
     DEXPP_VALUE_METHOD = 8,         /**< method. */
     DEXPP_VALUE_METHOD_TYPE = 9,    /**< proto. */
-    DEXPP_VALUE_METHOD_HANDLE = 10, /**< method_handle_index (a raw table index). */
+    DEXPP_VALUE_METHOD_HANDLE = 10, /**< method_handle_kind, and field or method. */
     DEXPP_VALUE_ARRAY = 11,         /**< elements and element_count. */
     DEXPP_VALUE_ANNOTATION = 12     /**< annotation: a nested annotation. */
 } DexppValueKind;
@@ -339,16 +354,18 @@ struct DexppAnnotation;
  *  Only the members named by `kind` are set; the others are 0 or NULL. */
 typedef struct DexppValue
 {
-    DexppValueKind kind;                /**< Which members below are meaningful. */
-    int bool_value;                     /**< BOOL: 1 or 0. */
-    int64_t int_value;                  /**< INT. */
-    double float_value;                 /**< FLOAT. */
-    DexppText string_value;             /**< STRING. */
-    char *type_descriptor;              /**< TYPE. */
-    char *proto;                        /**< METHOD_TYPE. */
-    DexppFieldId field;                 /**< ENUM and FIELD. */
-    DexppMethodId method;               /**< METHOD. */
-    uint32_t method_handle_index;       /**< METHOD_HANDLE. */
+    DexppValueKind kind;    /**< Which members below are meaningful. */
+    int bool_value;         /**< BOOL: 1 or 0. */
+    int64_t int_value;      /**< INT. */
+    double float_value;     /**< FLOAT. */
+    DexppText string_value; /**< STRING. */
+    char *type_descriptor;  /**< TYPE. */
+    char *proto;            /**< METHOD_TYPE. */
+    DexppFieldId field;     /**< ENUM, FIELD, and METHOD_HANDLE of a field kind. */
+    DexppMethodId method;   /**< METHOD, and METHOD_HANDLE of an invoke kind. */
+    /** METHOD_HANDLE: what the handle does. A damaged handle gives INVOKE_STATIC and an
+     *  empty method. */
+    DexppMethodHandleKind method_handle_kind;
     struct DexppValue *elements;        /**< ARRAY: the elements. */
     size_t element_count;               /**< ARRAY: the number of elements. */
     struct DexppAnnotation *annotation; /**< ANNOTATION: the nested annotation. */

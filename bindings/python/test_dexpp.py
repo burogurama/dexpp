@@ -531,6 +531,24 @@ def test_annotations():
     assert fmarker.elements["name"] == "fld"
 
 
+def test_method_handle_and_method_type_values():
+    # handles.dex: @HandleMarker(getter = <static-get Handles.counter>,
+    # invoker = <invoke-static Handles.target(I)I>, type = <method type (I)I>)
+    handles = dexpp.AnalysisContext.from_dex("tests/data/handles.dex").find_class("LHandles;")
+    marker = next(a for a in handles.annotations if a.type_descriptor == "LHandleMarker;")
+    getter = marker.elements["getter"]
+    assert isinstance(getter, dexpp.MethodHandleValue)
+    assert getter.kind is dexpp.MethodHandleKind.STATIC_GET
+    assert getter.member == dexpp.FieldId("LHandles;", "counter", "I")
+    invoker = marker.elements["invoker"]
+    assert isinstance(invoker, dexpp.MethodHandleValue)
+    assert invoker.kind is dexpp.MethodHandleKind.INVOKE_STATIC
+    assert invoker.member == dexpp.MethodId("LHandles;", "target", "(I)I")
+    method_type = marker.elements["type"]
+    assert isinstance(method_type, dexpp.MethodTypeValue) and method_type.proto == "(I)I"
+    assert isinstance(getter, dexpp.AnnotationValue)
+
+
 def test_initial_values():
     ctx = dexpp.AnalysisContext.from_dex("tests/data/annotated.dex")
     cls = ctx.find_class("LAnnotated;")
@@ -787,7 +805,7 @@ def test_every_class_with_equality_is_hashable():
         method = next(m for m in annotated.find_class("LAnnotated;").methods if m.name == method_name)
         return next(a for a in method.annotations if a.type_descriptor == "LMarker;")
     target = element("greet").elements["target"]
-    assert isinstance(target, dexpp.TypeRef)
+    assert isinstance(target, dexpp.TypeValue)
     assert target == element("greet").elements["target"]
     assert len({target, element("greet").elements["target"]}) == 1
 
@@ -796,8 +814,18 @@ def test_every_class_with_equality_is_hashable():
         if a.type_descriptor == "Ljava/lang/annotation/Retention;"
     )
     policy = retention.elements["value"]
-    assert isinstance(policy, dexpp.EnumRef) and policy.constant.name == "RUNTIME"
+    assert isinstance(policy, dexpp.EnumValue) and policy.constant.name == "RUNTIME"
     assert hash(policy) == hash(retention.elements["value"])
+
+    handles = dexpp.AnalysisContext.from_dex("tests/data/handles.dex").find_class("LHandles;")
+    def marker_element(name):
+        return next(
+            a for a in handles.annotations if a.type_descriptor == "LHandleMarker;"
+        ).elements[name]
+    invoker = marker_element("invoker")
+    assert invoker == marker_element("invoker") and invoker != marker_element("getter")
+    assert len({invoker, marker_element("invoker"), marker_element("getter")}) == 2
+    assert hash(marker_element("type")) == hash(marker_element("type"))
 
     resources = dexpp.Apk.open("tests/data/sample.apk").resources
     app_name = resources.id_of("string", "app_name")
@@ -1542,6 +1570,10 @@ ENUMS = {
     dexpp.TypeUseKind: [
         "CONST_CLASS", "CHECK_CAST", "INSTANCE_OF", "NEW_INSTANCE", "NEW_ARRAY",
         "FILLED_NEW_ARRAY",
+    ],
+    dexpp.MethodHandleKind: [
+        "STATIC_PUT", "STATIC_GET", "INSTANCE_PUT", "INSTANCE_GET", "INVOKE_STATIC",
+        "INVOKE_INSTANCE", "INVOKE_CONSTRUCTOR", "INVOKE_DIRECT", "INVOKE_INTERFACE",
     ],
     dexpp.OperandWidth: ["SINGLE", "PAIR"],
     dexpp.AnnotationVisibility: ["BUILD", "RUNTIME", "SYSTEM"],

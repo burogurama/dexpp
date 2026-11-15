@@ -704,6 +704,20 @@ FieldId AnalysisContextImpl::field_id_of(std::size_t dex_idx, uint32_t field_ind
     };
 }
 
+AnnotationValue::MethodHandleValue
+AnalysisContextImpl::method_handle_of(std::size_t dex_idx, uint32_t handle_index) const
+{
+    const auto handles = dex_files_vec[dex_idx].method_handles();
+    constexpr auto kLastKind = static_cast<uint16_t>(MethodHandleKind::InvokeInterface);
+    if (handle_index >= handles.size() || handles[handle_index].method_handle_type > kLastKind)
+        return {MethodHandleKind::InvokeStatic, MethodId{}};
+    const raw::MethodHandleItem &h = handles[handle_index];
+    const auto kind = static_cast<MethodHandleKind>(h.method_handle_type);
+    if (kind <= MethodHandleKind::InstanceGet)
+        return {kind, field_id_of(dex_idx, h.field_or_method_id)};
+    return {kind, method_id_of(dex_idx, h.field_or_method_id)};
+}
+
 } // namespace detail
 
 const CallGraph &AnalysisContext::call_graph() const { return impl_->get_call_graph(); }

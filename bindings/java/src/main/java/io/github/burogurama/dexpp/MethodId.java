@@ -11,7 +11,7 @@ import java.util.Objects;
  * @param name the method name, such as {@code "toString"}; a constructor is {@code "<init>"}
  * @param proto the prototype, such as {@code "()Ljava/lang/String;"}
  */
-public record MethodId(String classDescriptor, String name, String proto) {
+public record MethodId(String classDescriptor, String name, String proto) implements MemberId {
     /** Checks that every part is given. */
     public MethodId {
         Objects.requireNonNull(classDescriptor, "classDescriptor");

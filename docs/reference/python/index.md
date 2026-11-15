@@ -8,7 +8,7 @@ type checker see.
 | ---- | ---------- |
 | [APK, manifest, resources, signing](apk.md) | `Apk`, `Manifest`, `Component`, `IntentFilter`, `ComponentKind`, `ResourceTable` and more |
 | [Context, classes, methods, fields](analysis.md) | `AnalysisContext`, `Class`, `ClassRef`, `Method`, `Field`, `MethodId` and more |
-| [Annotations and values](annotations.md) | `Annotation`, `AnnotationVisibility`, `AnnotationValue`, `TypeRef`, `EnumRef`, `FieldRef` and more |
+| [Annotations and values](annotations.md) | `Annotation`, `AnnotationVisibility`, `AnnotationValue`, `TypeValue`, `EnumValue`, `FieldValue` and more |
 | [Instructions](instructions.md) | `opcode_name`, `to_string`, `Instruction`, `InstructionBase`, `OperandWidth`, `NopInstruction` and more |
 | [Control-flow graph](cfg.md) | `Cfg`, `BasicBlock`, `CfgEdge`, `CfgEdgeKind`, `BasicBlockView` |
 | [Call graph](call-graph.md) | `CallGraph`, `CallNode`, `CallEdge`, `InvokeKind`, `EdgeOrigin`, `CallNodeView` and more |
@@ -48,7 +48,7 @@ type checker see.
   they work as dictionary keys and in sets. One analysis is one
   `AnalysisContext`, or every result of `Apk.analysis()` on one `Apk`. The same
   file loaded twice gives two analyses, and their objects are not equal.
-  Identities (`MethodId`, `FieldId`) and the small value classes (`TypeRef`,
+  Identities (`MethodId`, `FieldId`) and the small value classes (`TypeValue`,
   `ResourceName` and the like) are equal when their content is equal.
 - **Lifetime.** Every object keeps the analysis it came from alive. You never
   have to keep the `AnalysisContext` or `Apk` around yourself.

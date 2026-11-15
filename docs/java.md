@@ -142,10 +142,12 @@ method's code refers to, with names instead of indices:
 
 Annotations are copied into records. An element value is an
 `AnnotationValue`: a sealed interface whose records are `NullValue`,
-`BooleanValue`, `IntValue`, `FloatValue`, `StringValue`, the references
-`TypeRef`, `EnumRef`, `FieldRef`, `MethodRef`, `MethodTypeRef` and
-`MethodHandleRef`, `ArrayValue`, and a nested `Annotation`. Record patterns
-take a value apart:
+`BooleanValue`, `IntValue`, `FloatValue`, `StringValue`, `TypeValue`,
+`EnumValue`, `FieldValue`, `MethodValue`, `MethodTypeValue`,
+`MethodHandleValue`, `ArrayValue`, and a nested `Annotation`. A
+`MethodHandleValue` has a `MethodHandleKind` and a `member`, which is a
+`MethodId` or a `FieldId`: both implement the sealed interface `MemberId`.
+Record patterns take a value apart:
 
 ```java
 --8<-- "bindings/java/src/test/java/io/github/burogurama/dexpp/ExamplesTest.java:annotations"

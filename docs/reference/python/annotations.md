@@ -8,14 +8,16 @@ Annotations on classes, methods and fields, and the values of their elements. Se
 
 ::: dexpp.AnnotationValue
 
-::: dexpp.TypeRef
+::: dexpp.TypeValue
 
-::: dexpp.EnumRef
+::: dexpp.EnumValue
 
-::: dexpp.FieldRef
+::: dexpp.FieldValue
 
-::: dexpp.MethodRef
+::: dexpp.MethodValue
 
-::: dexpp.MethodTypeRef
+::: dexpp.MethodTypeValue
 
-::: dexpp.MethodHandleRef
+::: dexpp.MethodHandleValue
+
+::: dexpp.MethodHandleKind

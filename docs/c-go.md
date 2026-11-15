@@ -214,8 +214,8 @@ code refers to, with names instead of indices:
 
 Annotations are copied into Go values. An element value has one of the types
 listed for `dexpp.AnnotationValue`: `nil`, `bool`, `int64`, `float64`,
-`string`, a reference type such as `dexpp.TypeRef`, a slice, or a nested
-`dexpp.Annotation`.
+`string`, a value type such as `dexpp.TypeValue` or `dexpp.MethodHandleValue`,
+a slice, or a nested `dexpp.Annotation`.
 
 ```go
 --8<-- "bindings/go/dexpp/example_test.go:annotations"

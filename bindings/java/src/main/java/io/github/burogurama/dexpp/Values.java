@@ -23,15 +23,24 @@ final class Values {
             case 4 ->
                     new AnnotationValue.StringValue(Mem.text(m, base + Layouts.Value.STRING_VALUE));
             case 5 ->
-                    new AnnotationValue.TypeRef(
+                    new AnnotationValue.TypeValue(
                             Mem.string(m, base + Layouts.Value.TYPE_DESCRIPTOR));
-            case 6 -> new AnnotationValue.EnumRef(Mem.fieldId(m, base + Layouts.Value.FIELD));
-            case 7 -> new AnnotationValue.FieldRef(Mem.fieldId(m, base + Layouts.Value.FIELD));
-            case 8 -> new AnnotationValue.MethodRef(Mem.methodId(m, base + Layouts.Value.METHOD));
-            case 9 -> new AnnotationValue.MethodTypeRef(Mem.string(m, base + Layouts.Value.PROTO));
-            case 10 ->
-                    new AnnotationValue.MethodHandleRef(
-                            Mem.i32(m, base + Layouts.Value.METHOD_HANDLE_INDEX));
+            case 6 -> new AnnotationValue.EnumValue(Mem.fieldId(m, base + Layouts.Value.FIELD));
+            case 7 -> new AnnotationValue.FieldValue(Mem.fieldId(m, base + Layouts.Value.FIELD));
+            case 8 ->
+                    new AnnotationValue.MethodValue(Mem.methodId(m, base + Layouts.Value.METHOD));
+            case 9 ->
+                    new AnnotationValue.MethodTypeValue(
+                            Mem.string(m, base + Layouts.Value.PROTO));
+            case 10 -> {
+                MethodHandleKind handle =
+                        MethodHandleKind.of(Mem.i32(m, base + Layouts.Value.METHOD_HANDLE_KIND));
+                MemberId member =
+                        handle.worksOnField()
+                                ? Mem.fieldId(m, base + Layouts.Value.FIELD)
+                                : Mem.methodId(m, base + Layouts.Value.METHOD);
+                yield new AnnotationValue.MethodHandleValue(handle, member);
+            }
             case 11 ->
                     new AnnotationValue.ArrayValue(
                             Mem.array(

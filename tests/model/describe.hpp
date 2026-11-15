@@ -45,18 +45,23 @@ inline std::string render(const dex::AnnotationValue &v)
                 return std::format("{}", std::bit_cast<uint64_t>(x));
             else if constexpr (std::is_same_v<T, std::string>)
                 return "\"" + x + "\"";
-            else if constexpr (std::is_same_v<T, V::TypeRef>)
+            else if constexpr (std::is_same_v<T, V::TypeValue>)
                 return x.descriptor;
-            else if constexpr (std::is_same_v<T, V::EnumRef>)
+            else if constexpr (std::is_same_v<T, V::EnumValue>)
                 return "enum " + x.constant.class_descriptor + x.constant.name;
-            else if constexpr (std::is_same_v<T, V::FieldRef>)
+            else if constexpr (std::is_same_v<T, V::FieldValue>)
                 return "field " + x.field.class_descriptor + x.field.name + x.field.type;
-            else if constexpr (std::is_same_v<T, V::MethodRef>)
+            else if constexpr (std::is_same_v<T, V::MethodValue>)
                 return "method " + x.method.class_descriptor + x.method.name + x.method.proto;
-            else if constexpr (std::is_same_v<T, V::MethodTypeRef>)
+            else if constexpr (std::is_same_v<T, V::MethodTypeValue>)
                 return "methodtype " + x.proto;
-            else if constexpr (std::is_same_v<T, V::MethodHandleRef>)
-                return "methodhandle"; // a pool index: differs between files
+            else if constexpr (std::is_same_v<T, V::MethodHandleValue>) {
+                std::string out = std::format("methodhandle {} ", static_cast<int>(x.kind));
+                if (const auto *f = std::get_if<dex::FieldId>(&x.member))
+                    return out + f->class_descriptor + f->name + f->type;
+                const auto &m = std::get<dex::MethodId>(x.member);
+                return out + m.class_descriptor + m.name + m.proto;
+            }
             else if constexpr (std::is_same_v<T, std::vector<V>>) {
                 std::string out = "[";
                 for (const V &e : x)

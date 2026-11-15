@@ -481,7 +481,7 @@ func TestAnnotations(t *testing.T) {
 	}
 
 	greet := find(mustMethod(t, cls, "greet").Annotations(), "LMarker;")
-	if got := element(greet, "target"); got != (TypeRef{Descriptor: "Ljava/lang/String;"}) {
+	if got := element(greet, "target"); got != (TypeValue{Descriptor: "Ljava/lang/String;"}) {
 		t.Errorf("target = %#v", got)
 	}
 	find(mustMethod(t, cls, "old").Annotations(), "Ljava/lang/Deprecated;")
@@ -493,7 +493,7 @@ func TestAnnotations(t *testing.T) {
 	// and the defaults as a nested annotation with an empty array.
 	m := mustClass(t, ctx, "LMarker;")
 	retention := find(m.Annotations(), "Ljava/lang/annotation/Retention;")
-	want := EnumRef{Constant: FieldID{"Ljava/lang/annotation/RetentionPolicy;", "RUNTIME",
+	want := EnumValue{Constant: FieldID{"Ljava/lang/annotation/RetentionPolicy;", "RUNTIME",
 		"Ljava/lang/annotation/RetentionPolicy;"}}
 	if got := element(retention, "value"); got != want {
 		t.Errorf("Retention.value = %#v", got)
@@ -503,7 +503,7 @@ func TestAnnotations(t *testing.T) {
 	if !ok || len(kinds) != 3 {
 		t.Fatalf("Target.value = %#v", element(target, "value"))
 	}
-	if e, ok := kinds[1].(EnumRef); !ok || e.Constant.Name != "METHOD" {
+	if e, ok := kinds[1].(EnumValue); !ok || e.Constant.Name != "METHOD" {
 		t.Errorf("Target.value[1] = %#v", kinds[1])
 	}
 	defaults := find(m.Annotations(), "Ldalvik/annotation/AnnotationDefault;")
@@ -520,8 +520,44 @@ func TestAnnotations(t *testing.T) {
 	if got, ok := element(nested, "tags").([]AnnotationValue); !ok || got == nil || len(got) != 0 {
 		t.Errorf("default tags = %#v, want an empty array", element(nested, "tags"))
 	}
-	if got := element(nested, "target"); got != (TypeRef{Descriptor: "Ljava/lang/Object;"}) {
+	if got := element(nested, "target"); got != (TypeValue{Descriptor: "Ljava/lang/Object;"}) {
 		t.Errorf("default target = %#v", got)
+	}
+}
+
+func TestMethodHandleAndMethodTypeValues(t *testing.T) {
+	// handles.dex: @HandleMarker(getter = <static-get Handles.counter>,
+	// invoker = <invoke-static Handles.target(I)I>, type = <method type (I)I>).
+	ctx := mustDEX(t, "handles.dex")
+	annotations := mustClass(t, ctx, "LHandles;").Annotations()
+	if len(annotations) != 1 || annotations[0].TypeDescriptor != "LHandleMarker;" {
+		t.Fatalf("annotations = %#v", annotations)
+	}
+	marker := annotations[0]
+	getter := MethodHandleValue{Kind: MethodHandleStaticGet,
+		Member: FieldID{"LHandles;", "counter", "I"}}
+	if got, _ := marker.Element("getter"); got != getter {
+		t.Errorf("getter = %#v", got)
+	}
+	invoker := MethodHandleValue{Kind: MethodHandleInvokeStatic,
+		Member: MethodID{"LHandles;", "target", "(I)I"}}
+	if got, _ := marker.Element("invoker"); got != invoker {
+		t.Errorf("invoker = %#v", got)
+	}
+	if got, _ := marker.Element("type"); got != (MethodTypeValue{Proto: "(I)I"}) {
+		t.Errorf("type = %#v", got)
+	}
+	if got := MethodHandleInvokeStatic.String(); got != "invoke-static" {
+		t.Errorf("MethodHandleInvokeStatic.String() = %q", got)
+	}
+	var member MemberID = invoker.Member
+	switch id := member.(type) {
+	case MethodID:
+		if id.Name != "target" {
+			t.Errorf("member = %v", id)
+		}
+	default:
+		t.Errorf("member has type %T", member)
 	}
 }
 
@@ -531,8 +567,8 @@ func TestEveryAnnotationValueHasADocumentedType(t *testing.T) {
 	var check func(v AnnotationValue)
 	check = func(v AnnotationValue) {
 		switch v := v.(type) {
-		case nil, bool, int64, float64, string, TypeRef, EnumRef, FieldRef, MethodRef,
-			MethodTypeRef, MethodHandleRef:
+		case nil, bool, int64, float64, string, TypeValue, EnumValue, FieldValue, MethodValue,
+			MethodTypeValue, MethodHandleValue:
 		case []AnnotationValue:
 			for _, e := range v {
 				check(e)
@@ -546,7 +582,7 @@ func TestEveryAnnotationValueHasADocumentedType(t *testing.T) {
 		}
 	}
 	for _, name := range []string{"annotated.dex", "inherit.dex", "polymorphic.dex", "shapes.dex",
-		"classes.dex", "fibonacci.dex", "trycatch.dex", "multistring.dex"} {
+		"classes.dex", "fibonacci.dex", "trycatch.dex", "multistring.dex", "handles.dex"} {
 		ctx := mustDEX(t, name)
 		for _, cls := range ctx.Classes() {
 			for _, a := range cls.Annotations() {

@@ -516,46 +516,52 @@ func (a Annotation) Element(name string) (AnnotationValue, bool) {
 //   - int64, for every integer type (byte, short, char, int, long);
 //   - float64, for float and double;
 //   - string;
-//   - TypeRef, EnumRef, FieldRef, MethodRef, MethodTypeRef or
-//     MethodHandleRef, for a value that refers to something;
+//   - TypeValue, EnumValue, FieldValue, MethodValue, MethodTypeValue or
+//     MethodHandleValue, for a value that names a type, a member, a
+//     prototype or a method handle;
 //   - []AnnotationValue, for an array;
 //   - Annotation, for a nested annotation.
 //
 // The original width of a number is not kept.
 type AnnotationValue = any
 
-// TypeRef is a class literal as a value, such as String.class.
-type TypeRef struct {
+// TypeValue is a class literal as a value, such as String.class.
+type TypeValue struct {
 	Descriptor string // the type, such as "Ljava/lang/String;"
 }
 
-// EnumRef is an enum constant as a value.
-type EnumRef struct {
+// EnumValue is an enum constant as a value.
+type EnumValue struct {
 	Constant FieldID // the static field that holds the enum constant
 }
 
-// FieldRef is a reference to a field as a value. It is rare outside system
-// annotations.
-type FieldRef struct {
+// FieldValue is a field as a value. It is rare outside system annotations.
+type FieldValue struct {
 	Field FieldID
 }
 
-// MethodRef is a reference to a method as a value. It is rare outside system
-// annotations.
-type MethodRef struct {
+// MethodValue is a method as a value. It is rare outside system annotations.
+type MethodValue struct {
 	Method MethodID
 }
 
-// MethodTypeRef is a method prototype as a value.
-type MethodTypeRef struct {
+// MethodTypeValue is a method prototype as a value: a
+// java.lang.invoke.MethodType constant.
+type MethodTypeValue struct {
 	Proto string // the prototype, such as "(I)V"
 }
 
-// MethodHandleRef is a method handle as a value.
-type MethodHandleRef struct {
-	// Index is the position of the handle in the DEX file's method handle
-	// table. It is not resolved further.
-	Index uint32
+// MethodHandleValue is a method handle as a value: a
+// java.lang.invoke.MethodHandle constant, which reads or writes a field, or
+// calls a method.
+type MethodHandleValue struct {
+	Kind MethodHandleKind // what the handle does with its member
+	// Member is the member the handle works on: a FieldID for the four field
+	// kinds (MethodHandleStaticPut to MethodHandleInstanceGet), a MethodID
+	// for the five invoke kinds. In a damaged file, where the handle cannot
+	// be read, the kind is MethodHandleInvokeStatic and the member is a
+	// MethodID of empty strings.
+	Member MemberID
 }
 
 // goValue converts a C value to Go. It does not free the C value.
@@ -572,17 +578,21 @@ func goValue(v *C.DexppValue) AnnotationValue {
 	case C.DEXPP_VALUE_STRING:
 		return goText(v.string_value)
 	case C.DEXPP_VALUE_TYPE:
-		return TypeRef{Descriptor: C.GoString(v.type_descriptor)}
+		return TypeValue{Descriptor: C.GoString(v.type_descriptor)}
 	case C.DEXPP_VALUE_ENUM:
-		return EnumRef{Constant: goFieldID(v.field)}
+		return EnumValue{Constant: goFieldID(v.field)}
 	case C.DEXPP_VALUE_FIELD:
-		return FieldRef{Field: goFieldID(v.field)}
+		return FieldValue{Field: goFieldID(v.field)}
 	case C.DEXPP_VALUE_METHOD:
-		return MethodRef{Method: goMethodID(v.method)}
+		return MethodValue{Method: goMethodID(v.method)}
 	case C.DEXPP_VALUE_METHOD_TYPE:
-		return MethodTypeRef{Proto: C.GoString(v.proto)}
+		return MethodTypeValue{Proto: C.GoString(v.proto)}
 	case C.DEXPP_VALUE_METHOD_HANDLE:
-		return MethodHandleRef{Index: uint32(v.method_handle_index)}
+		kind := MethodHandleKind(v.method_handle_kind)
+		if kind.worksOnField() {
+			return MethodHandleValue{Kind: kind, Member: goFieldID(v.field)}
+		}
+		return MethodHandleValue{Kind: kind, Member: goMethodID(v.method)}
 	case C.DEXPP_VALUE_ARRAY:
 		out := make([]AnnotationValue, int(v.element_count))
 		if v.elements != nil {

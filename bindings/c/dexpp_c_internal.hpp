@@ -307,6 +307,31 @@ inline DexppAnnotationVisibility visibility(dex::AnnotationVisibility v)
     return DEXPP_VISIBILITY_BUILD;
 }
 
+inline DexppMethodHandleKind method_handle_kind(dex::MethodHandleKind k)
+{
+    switch (k) {
+    case dex::MethodHandleKind::StaticPut:
+        return DEXPP_METHOD_HANDLE_STATIC_PUT;
+    case dex::MethodHandleKind::StaticGet:
+        return DEXPP_METHOD_HANDLE_STATIC_GET;
+    case dex::MethodHandleKind::InstancePut:
+        return DEXPP_METHOD_HANDLE_INSTANCE_PUT;
+    case dex::MethodHandleKind::InstanceGet:
+        return DEXPP_METHOD_HANDLE_INSTANCE_GET;
+    case dex::MethodHandleKind::InvokeStatic:
+        return DEXPP_METHOD_HANDLE_INVOKE_STATIC;
+    case dex::MethodHandleKind::InvokeInstance:
+        return DEXPP_METHOD_HANDLE_INVOKE_INSTANCE;
+    case dex::MethodHandleKind::InvokeConstructor:
+        return DEXPP_METHOD_HANDLE_INVOKE_CONSTRUCTOR;
+    case dex::MethodHandleKind::InvokeDirect:
+        return DEXPP_METHOD_HANDLE_INVOKE_DIRECT;
+    case dex::MethodHandleKind::InvokeInterface:
+        return DEXPP_METHOD_HANDLE_INVOKE_INTERFACE;
+    }
+    return DEXPP_METHOD_HANDLE_INVOKE_STATIC;
+}
+
 inline DexppComponentKind component_kind(dex::apk::Component::Kind k)
 {
     switch (k) {

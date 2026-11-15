@@ -137,7 +137,7 @@ final class Layouts {
         static final long PROTO = B.ptr("proto");
         static final long FIELD = B.add("field", FieldId.LAYOUT);
         static final long METHOD = B.add("method", MethodId.LAYOUT);
-        static final long METHOD_HANDLE_INDEX = B.i32("method_handle_index");
+        static final long METHOD_HANDLE_KIND = B.i32("method_handle_kind");
         static final long ELEMENTS = B.ptr("elements");
         static final long ELEMENT_COUNT = B.size("element_count");
         static final long ANNOTATION = B.ptr("annotation");

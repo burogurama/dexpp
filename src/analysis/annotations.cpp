@@ -80,27 +80,27 @@ AnnotationValue resolve_encoded_value(const AnalysisContextImpl &impl, std::size
         out.value = std::string(impl.string_of(dex_idx, std::get<uint32_t>(value.value)));
         break;
     case T::Type:
-        out.value = AnnotationValue::TypeRef{
+        out.value = AnnotationValue::TypeValue{
             std::string(impl.type_descriptor_of(dex_idx, std::get<uint32_t>(value.value)))};
         break;
     case T::Enum:
         out.value =
-            AnnotationValue::EnumRef{impl.field_id_of(dex_idx, std::get<uint32_t>(value.value))};
+            AnnotationValue::EnumValue{impl.field_id_of(dex_idx, std::get<uint32_t>(value.value))};
         break;
     case T::Field:
         out.value =
-            AnnotationValue::FieldRef{impl.field_id_of(dex_idx, std::get<uint32_t>(value.value))};
+            AnnotationValue::FieldValue{impl.field_id_of(dex_idx, std::get<uint32_t>(value.value))};
         break;
     case T::Method:
-        out.value =
-            AnnotationValue::MethodRef{impl.method_id_of(dex_idx, std::get<uint32_t>(value.value))};
+        out.value = AnnotationValue::MethodValue{
+            impl.method_id_of(dex_idx, std::get<uint32_t>(value.value))};
         break;
     case T::MethodType:
-        out.value = AnnotationValue::MethodTypeRef{
+        out.value = AnnotationValue::MethodTypeValue{
             impl.proto_descriptor_of(dex_idx, std::get<uint32_t>(value.value))};
         break;
     case T::MethodHandle:
-        out.value = AnnotationValue::MethodHandleRef{std::get<uint32_t>(value.value)};
+        out.value = impl.method_handle_of(dex_idx, std::get<uint32_t>(value.value));
         break;
     case T::Null:
         out.value = nullptr;

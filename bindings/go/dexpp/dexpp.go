@@ -553,6 +553,42 @@ func (k TypeUseKind) String() string {
 		"new-array", "filled-new-array")
 }
 
+// MethodHandleKind is what a method handle does. The values are the method
+// handle type codes of the DEX format.
+type MethodHandleKind int
+
+// The method handle kinds. The first four work on a field, the other five
+// call a method.
+const (
+	MethodHandleStaticPut         MethodHandleKind = C.DEXPP_METHOD_HANDLE_STATIC_PUT         // writes a static field
+	MethodHandleStaticGet         MethodHandleKind = C.DEXPP_METHOD_HANDLE_STATIC_GET         // reads a static field
+	MethodHandleInstancePut       MethodHandleKind = C.DEXPP_METHOD_HANDLE_INSTANCE_PUT       // writes an instance field
+	MethodHandleInstanceGet       MethodHandleKind = C.DEXPP_METHOD_HANDLE_INSTANCE_GET       // reads an instance field
+	MethodHandleInvokeStatic      MethodHandleKind = C.DEXPP_METHOD_HANDLE_INVOKE_STATIC      // calls a static method
+	MethodHandleInvokeInstance    MethodHandleKind = C.DEXPP_METHOD_HANDLE_INVOKE_INSTANCE    // calls an instance method, with dispatch
+	MethodHandleInvokeConstructor MethodHandleKind = C.DEXPP_METHOD_HANDLE_INVOKE_CONSTRUCTOR // creates an object with a constructor
+	MethodHandleInvokeDirect      MethodHandleKind = C.DEXPP_METHOD_HANDLE_INVOKE_DIRECT      // calls an instance method without dispatch
+	MethodHandleInvokeInterface   MethodHandleKind = C.DEXPP_METHOD_HANDLE_INVOKE_INTERFACE   // calls an interface method
+)
+
+// String names the kind, such as "invoke-static".
+func (k MethodHandleKind) String() string {
+	return enumName(int(k), "static-put", "static-get", "instance-put", "instance-get",
+		"invoke-static", "invoke-instance", "invoke-constructor", "invoke-direct",
+		"invoke-interface")
+}
+
+// worksOnField reports whether a handle of this kind reads or writes a field
+// rather than calling a method.
+func (k MethodHandleKind) worksOnField() bool {
+	switch k {
+	case MethodHandleStaticPut, MethodHandleStaticGet, MethodHandleInstancePut,
+		MethodHandleInstanceGet:
+		return true
+	}
+	return false
+}
+
 // OperandWidth is how many registers a value takes.
 type OperandWidth int
 
@@ -636,6 +672,17 @@ type FieldID struct {
 // String writes the identity as "Lcls;->name:type", such as
 // "Ljava/lang/System;->out:Ljava/io/PrintStream;".
 func (id FieldID) String() string { return id.ClassDescriptor + "->" + id.Name + ":" + id.Type }
+
+// MemberID is the identity of a method or a field: its dynamic type is
+// MethodID or FieldID. MethodHandleValue.Member holds one; use a type switch
+// to tell them apart. No other type can be a MemberID.
+type MemberID interface {
+	String() string
+	isMemberID()
+}
+
+func (MethodID) isMemberID() {}
+func (FieldID) isMemberID()  {}
 
 func goMethodID(id C.DexppMethodId) MethodID {
 	return MethodID{C.GoString(id.class_descriptor), C.GoString(id.name), C.GoString(id.proto)}

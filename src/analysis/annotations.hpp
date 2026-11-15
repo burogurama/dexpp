@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "common/annotation_visibility.hpp"
+#include "common/method_handle_kind.hpp"
 #include "xrefs.hpp" // MethodId, FieldId
 
 namespace dex {
@@ -21,50 +22,59 @@ struct Annotation;
  *  method references become MethodId.  All integral primitives (byte, short,
  *  char, int, long) widen to int64_t and float widens to double — the source
  *  primitive width is not preserved at this layer.  Values are owned and
- *  independent of the AnalysisContext's lifetime. */
+ *  independent of the AnalysisContext's lifetime.
+ *
+ *  The nested types are plain values, named after the DEX encoded_value kind
+ *  they hold.  They are not handles: none of them refers to the context. */
 struct AnnotationValue
 {
-    /** Class literal, e.g. `target = String.class`. */
-    struct TypeRef
+    /** Class literal, e.g. `target = String.class` (VALUE_TYPE). */
+    struct TypeValue
     {
         std::string descriptor;
-        bool operator==(const TypeRef &) const = default;
+        bool operator==(const TypeValue &) const = default;
     };
-    /** Enum constant, identified by its static field. */
-    struct EnumRef
+    /** Enum constant, identified by its static field (VALUE_ENUM). */
+    struct EnumValue
     {
         FieldId constant;
-        bool operator==(const EnumRef &) const = default;
+        bool operator==(const EnumValue &) const = default;
     };
-    /** Field reference (VALUE_FIELD; rare outside system annotations). */
-    struct FieldRef
+    /** A field as a value (VALUE_FIELD; rare outside system annotations). */
+    struct FieldValue
     {
         FieldId field;
-        bool operator==(const FieldRef &) const = default;
+        bool operator==(const FieldValue &) const = default;
     };
-    /** Method reference (VALUE_METHOD; rare outside system annotations). */
-    struct MethodRef
+    /** A method as a value (VALUE_METHOD; rare outside system annotations). */
+    struct MethodValue
     {
         MethodId method;
-        bool operator==(const MethodRef &) const = default;
+        bool operator==(const MethodValue &) const = default;
     };
     /** Method prototype (VALUE_METHOD_TYPE), as a full "(...)ret" descriptor. */
-    struct MethodTypeRef
+    struct MethodTypeValue
     {
         std::string proto;
-        bool operator==(const MethodTypeRef &) const = default;
+        bool operator==(const MethodTypeValue &) const = default;
     };
-    /** Method handle (VALUE_METHOD_HANDLE); kept as the raw pool index. */
-    struct MethodHandleRef
+    /** Method handle (VALUE_METHOD_HANDLE): what it does and the member it
+     *  does it to.  The four field kinds hold a FieldId, the five invoke kinds
+     *  a MethodId.  In a damaged file whose handle index is past the method
+     *  handle table, or whose handle type is not one of the nine kinds, the
+     *  kind is InvokeStatic and the member an empty MethodId (the "malformed
+     *  pool index gives an empty identity" rule). */
+    struct MethodHandleValue
     {
-        uint32_t index;
-        bool operator==(const MethodHandleRef &) const = default;
+        MethodHandleKind kind;
+        std::variant<MethodId, FieldId> member;
+        bool operator==(const MethodHandleValue &) const = default;
     };
 
     std::variant<std::nullptr_t,        ///< null literal
                  bool, int64_t, double, ///< widened primitives
                  std::string,           ///< string literal
-                 TypeRef, EnumRef, FieldRef, MethodRef, MethodTypeRef, MethodHandleRef,
+                 TypeValue, EnumValue, FieldValue, MethodValue, MethodTypeValue, MethodHandleValue,
                  std::vector<AnnotationValue>,     ///< array element
                  std::shared_ptr<const Annotation> ///< nested annotation (boxed)
                  >

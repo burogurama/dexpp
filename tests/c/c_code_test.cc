@@ -375,6 +375,49 @@ TEST(CApiCode, ReadsAnnotationsWithEveryValueShape)
     dexpp_context_free(ctx);
 }
 
+TEST(CApiCode, ReadsMethodHandleAndMethodTypeValues)
+{
+    // handles.dex: @HandleMarker(getter = <static-get Handles.counter>,
+    // invoker = <invoke-static Handles.target(I)I>, type = <method type (I)I>).
+    DexppContext *ctx = open_dex("tests/data/handles.dex");
+    ASSERT_NE(ctx, nullptr);
+    DexppClass *cls = dexpp_context_find_class(ctx, "LHandles;");
+    ASSERT_NE(cls, nullptr);
+    size_t count = 0;
+    DexppAnnotation *annotations = dexpp_class_annotations(cls, &count);
+    ASSERT_EQ(count, 1u);
+    std::map<std::string, const DexppValue *> elements;
+    for (size_t i = 0; i < annotations[0].element_count; ++i)
+        elements[annotations[0].elements[i].name] = &annotations[0].elements[i].value;
+
+    const DexppValue *getter = elements["getter"];
+    ASSERT_NE(getter, nullptr);
+    EXPECT_EQ(getter->kind, DEXPP_VALUE_METHOD_HANDLE);
+    EXPECT_EQ(getter->method_handle_kind, DEXPP_METHOD_HANDLE_STATIC_GET);
+    EXPECT_STREQ(getter->field.class_descriptor, "LHandles;");
+    EXPECT_STREQ(getter->field.name, "counter");
+    EXPECT_STREQ(getter->field.type, "I");
+    EXPECT_EQ(getter->method.name, nullptr);
+
+    const DexppValue *invoker = elements["invoker"];
+    ASSERT_NE(invoker, nullptr);
+    EXPECT_EQ(invoker->kind, DEXPP_VALUE_METHOD_HANDLE);
+    EXPECT_EQ(invoker->method_handle_kind, DEXPP_METHOD_HANDLE_INVOKE_STATIC);
+    EXPECT_STREQ(invoker->method.class_descriptor, "LHandles;");
+    EXPECT_STREQ(invoker->method.name, "target");
+    EXPECT_STREQ(invoker->method.proto, "(I)I");
+    EXPECT_EQ(invoker->field.name, nullptr);
+
+    const DexppValue *type = elements["type"];
+    ASSERT_NE(type, nullptr);
+    EXPECT_EQ(type->kind, DEXPP_VALUE_METHOD_TYPE);
+    EXPECT_STREQ(type->proto, "(I)I");
+
+    dexpp_annotation_array_free(annotations, count);
+    dexpp_class_free(cls);
+    dexpp_context_free(ctx);
+}
+
 TEST(CApiCode, ReadsSystemAnnotationsWithNestedValues)
 {
     // System annotations (dalvik.annotation.*) carry arrays, types and

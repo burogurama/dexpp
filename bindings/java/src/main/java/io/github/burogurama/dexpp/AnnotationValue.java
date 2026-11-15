@@ -25,12 +25,12 @@ public sealed interface AnnotationValue
                 AnnotationValue.IntValue,
                 AnnotationValue.FloatValue,
                 AnnotationValue.StringValue,
-                AnnotationValue.TypeRef,
-                AnnotationValue.EnumRef,
-                AnnotationValue.FieldRef,
-                AnnotationValue.MethodRef,
-                AnnotationValue.MethodTypeRef,
-                AnnotationValue.MethodHandleRef,
+                AnnotationValue.TypeValue,
+                AnnotationValue.EnumValue,
+                AnnotationValue.FieldValue,
+                AnnotationValue.MethodValue,
+                AnnotationValue.MethodTypeValue,
+                AnnotationValue.MethodHandleValue,
                 AnnotationValue.ArrayValue,
                 Annotation {
 
@@ -78,9 +78,9 @@ public sealed interface AnnotationValue
      *
      * @param descriptor the type, such as {@code "Ljava/lang/String;"}
      */
-    record TypeRef(String descriptor) implements AnnotationValue {
+    record TypeValue(String descriptor) implements AnnotationValue {
         /** Checks that the descriptor is given. */
-        public TypeRef {
+        public TypeValue {
             Objects.requireNonNull(descriptor, "descriptor");
         }
     }
@@ -90,56 +90,66 @@ public sealed interface AnnotationValue
      *
      * @param constant the static field that holds the enum constant
      */
-    record EnumRef(FieldId constant) implements AnnotationValue {
+    record EnumValue(FieldId constant) implements AnnotationValue {
         /** Checks that the field is given. */
-        public EnumRef {
+        public EnumValue {
             Objects.requireNonNull(constant, "constant");
         }
     }
 
     /**
-     * A reference to a field as a value. It is rare outside system annotations.
+     * A field as a value. It is rare outside system annotations.
      *
      * @param field the field
      */
-    record FieldRef(FieldId field) implements AnnotationValue {
+    record FieldValue(FieldId field) implements AnnotationValue {
         /** Checks that the field is given. */
-        public FieldRef {
+        public FieldValue {
             Objects.requireNonNull(field, "field");
         }
     }
 
     /**
-     * A reference to a method as a value. It is rare outside system annotations.
+     * A method as a value. It is rare outside system annotations.
      *
      * @param method the method
      */
-    record MethodRef(MethodId method) implements AnnotationValue {
+    record MethodValue(MethodId method) implements AnnotationValue {
         /** Checks that the method is given. */
-        public MethodRef {
+        public MethodValue {
             Objects.requireNonNull(method, "method");
         }
     }
 
     /**
-     * A method prototype as a value.
+     * A method prototype as a value: a {@code java.lang.invoke.MethodType} constant.
      *
      * @param proto the prototype, such as {@code "(I)V"}
      */
-    record MethodTypeRef(String proto) implements AnnotationValue {
+    record MethodTypeValue(String proto) implements AnnotationValue {
         /** Checks that the prototype is given. */
-        public MethodTypeRef {
+        public MethodTypeValue {
             Objects.requireNonNull(proto, "proto");
         }
     }
 
     /**
-     * A method handle as a value.
+     * A method handle as a value: a {@code java.lang.invoke.MethodHandle} constant, which reads or
+     * writes a field, or calls a method. In a damaged file, where the handle cannot be read, the
+     * kind is {@link MethodHandleKind#INVOKE_STATIC} and the member a {@link MethodId} of empty
+     * strings.
      *
-     * @param index the position of the handle in the DEX file's method handle table; it is not
-     *     resolved further
+     * @param kind what the handle does with its member
+     * @param member the member the handle works on: a {@link FieldId} for the four field kinds, a
+     *     {@link MethodId} for the five invoke kinds
      */
-    record MethodHandleRef(int index) implements AnnotationValue {}
+    record MethodHandleValue(MethodHandleKind kind, MemberId member) implements AnnotationValue {
+        /** Checks that the parts are given. */
+        public MethodHandleValue {
+            Objects.requireNonNull(kind, "kind");
+            Objects.requireNonNull(member, "member");
+        }
+    }
 
     /**
      * An array of values.

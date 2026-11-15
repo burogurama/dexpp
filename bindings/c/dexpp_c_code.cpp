@@ -343,29 +343,33 @@ DexppValue value(const dex::AnnotationValue &v)
                 out.kind = DEXPP_VALUE_STRING;
                 out.string_value = text(x);
             }
-            else if constexpr (std::is_same_v<T, dex::AnnotationValue::TypeRef>) {
+            else if constexpr (std::is_same_v<T, dex::AnnotationValue::TypeValue>) {
                 out.kind = DEXPP_VALUE_TYPE;
                 out.type_descriptor = cstr(x.descriptor);
             }
-            else if constexpr (std::is_same_v<T, dex::AnnotationValue::EnumRef>) {
+            else if constexpr (std::is_same_v<T, dex::AnnotationValue::EnumValue>) {
                 out.kind = DEXPP_VALUE_ENUM;
                 out.field = field_id(x.constant);
             }
-            else if constexpr (std::is_same_v<T, dex::AnnotationValue::FieldRef>) {
+            else if constexpr (std::is_same_v<T, dex::AnnotationValue::FieldValue>) {
                 out.kind = DEXPP_VALUE_FIELD;
                 out.field = field_id(x.field);
             }
-            else if constexpr (std::is_same_v<T, dex::AnnotationValue::MethodRef>) {
+            else if constexpr (std::is_same_v<T, dex::AnnotationValue::MethodValue>) {
                 out.kind = DEXPP_VALUE_METHOD;
                 out.method = method_id(x.method);
             }
-            else if constexpr (std::is_same_v<T, dex::AnnotationValue::MethodTypeRef>) {
+            else if constexpr (std::is_same_v<T, dex::AnnotationValue::MethodTypeValue>) {
                 out.kind = DEXPP_VALUE_METHOD_TYPE;
                 out.proto = cstr(x.proto);
             }
-            else if constexpr (std::is_same_v<T, dex::AnnotationValue::MethodHandleRef>) {
+            else if constexpr (std::is_same_v<T, dex::AnnotationValue::MethodHandleValue>) {
                 out.kind = DEXPP_VALUE_METHOD_HANDLE;
-                out.method_handle_index = x.index;
+                out.method_handle_kind = method_handle_kind(x.kind);
+                if (const auto *field = std::get_if<dex::FieldId>(&x.member))
+                    out.field = field_id(*field);
+                else
+                    out.method = method_id(std::get<dex::MethodId>(x.member));
             }
             else if constexpr (std::is_same_v<T, std::vector<dex::AnnotationValue>>) {
                 out.kind = DEXPP_VALUE_ARRAY;

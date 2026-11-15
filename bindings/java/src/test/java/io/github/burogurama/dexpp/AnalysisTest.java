@@ -395,7 +395,7 @@ class AnalysisTest {
 
             Annotation greet = find(method(cls, "greet").annotations(), "LMarker;");
             assertEquals(
-                    new AnnotationValue.TypeRef("Ljava/lang/String;"), element(greet, "target"));
+                    new AnnotationValue.TypeValue("Ljava/lang/String;"), element(greet, "target"));
             find(method(cls, "old").annotations(), "Ljava/lang/Deprecated;");
             assertEquals(
                     new AnnotationValue.StringValue("fld"),
@@ -406,7 +406,7 @@ class AnalysisTest {
             DexClass m = cls(ctx, "LMarker;");
             Annotation retention = find(m.annotations(), "Ljava/lang/annotation/Retention;");
             assertEquals(
-                    new AnnotationValue.EnumRef(
+                    new AnnotationValue.EnumValue(
                             new FieldId(
                                     "Ljava/lang/annotation/RetentionPolicy;",
                                     "RUNTIME",
@@ -416,8 +416,8 @@ class AnalysisTest {
             AnnotationValue.ArrayValue kinds =
                     assertInstanceOf(AnnotationValue.ArrayValue.class, element(target, "value"));
             assertEquals(3, kinds.elements().size());
-            AnnotationValue.EnumRef second =
-                    assertInstanceOf(AnnotationValue.EnumRef.class, kinds.elements().get(1));
+            AnnotationValue.EnumValue second =
+                    assertInstanceOf(AnnotationValue.EnumValue.class, kinds.elements().get(1));
             assertEquals("METHOD", second.constant().name());
             Annotation defaults = find(m.annotations(), "Ldalvik/annotation/AnnotationDefault;");
             assertEquals(AnnotationVisibility.SYSTEM, defaults.visibility());
@@ -426,7 +426,31 @@ class AnalysisTest {
             assertEquals(new AnnotationValue.IntValue(1), element(nested, "level"));
             assertEquals(new AnnotationValue.ArrayValue(List.of()), element(nested, "tags"));
             assertEquals(
-                    new AnnotationValue.TypeRef("Ljava/lang/Object;"), element(nested, "target"));
+                    new AnnotationValue.TypeValue("Ljava/lang/Object;"), element(nested, "target"));
+        }
+    }
+
+    @Test
+    void methodHandleAndMethodTypeValues() {
+        // handles.dex: @HandleMarker(getter = <static-get Handles.counter>,
+        // invoker = <invoke-static Handles.target(I)I>, type = <method type (I)I>).
+        try (AnalysisContext ctx = dex("handles.dex")) {
+            Annotation marker = find(cls(ctx, "LHandles;").annotations(), "LHandleMarker;");
+            assertEquals(
+                    new AnnotationValue.MethodHandleValue(
+                            MethodHandleKind.STATIC_GET, new FieldId("LHandles;", "counter", "I")),
+                    element(marker, "getter"));
+            AnnotationValue.MethodHandleValue invoker =
+                    assertInstanceOf(
+                            AnnotationValue.MethodHandleValue.class, element(marker, "invoker"));
+            assertEquals(MethodHandleKind.INVOKE_STATIC, invoker.kind());
+            String target =
+                    switch (invoker.member()) {
+                        case MethodId method -> method.name() + method.proto();
+                        case FieldId field -> field.name();
+                    };
+            assertEquals("target(I)I", target);
+            assertEquals(new AnnotationValue.MethodTypeValue("(I)I"), element(marker, "type"));
         }
     }
 
@@ -443,7 +467,8 @@ class AnalysisTest {
                         "classes.dex",
                         "fibonacci.dex",
                         "trycatch.dex",
-                        "multistring.dex")) {
+                        "multistring.dex",
+                        "handles.dex")) {
             try (AnalysisContext ctx = dex(name)) {
                 for (DexClass c : ctx.classes()) {
                     List<AnnotationValue> values = new ArrayList<>(c.annotations());
@@ -473,12 +498,12 @@ class AnalysisTest {
             case AnnotationValue.IntValue _ -> 1;
             case AnnotationValue.FloatValue _ -> 1;
             case AnnotationValue.StringValue _ -> 1;
-            case AnnotationValue.TypeRef _ -> 1;
-            case AnnotationValue.EnumRef _ -> 1;
-            case AnnotationValue.FieldRef _ -> 1;
-            case AnnotationValue.MethodRef _ -> 1;
-            case AnnotationValue.MethodTypeRef _ -> 1;
-            case AnnotationValue.MethodHandleRef _ -> 1;
+            case AnnotationValue.TypeValue _ -> 1;
+            case AnnotationValue.EnumValue _ -> 1;
+            case AnnotationValue.FieldValue _ -> 1;
+            case AnnotationValue.MethodValue _ -> 1;
+            case AnnotationValue.MethodTypeValue _ -> 1;
+            case AnnotationValue.MethodHandleValue _ -> 1;
         };
     }
 

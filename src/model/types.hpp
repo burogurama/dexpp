@@ -17,6 +17,7 @@
 #include "common/access_flags.hpp"
 #include "common/annotation_visibility.hpp"
 #include "common/ids.hpp"
+#include "common/method_handle_kind.hpp"
 
 /** An editable, in-memory model of one DEX file.
  *
@@ -154,20 +155,10 @@ struct Label
 // Values: annotation elements, static field values, call-site arguments
 // ===================================================================
 
-enum class MethodHandleKind : uint8_t {
-    StaticPut = 0x00,
-    StaticGet = 0x01,
-    InstancePut = 0x02,
-    InstanceGet = 0x03,
-    InvokeStatic = 0x04,
-    InvokeInstance = 0x05,
-    InvokeConstructor = 0x06,
-    InvokeDirect = 0x07,
-    InvokeInterface = 0x08,
-};
-
 /** A method handle (java.lang.invoke.MethodHandle constant).  The four field
- *  kinds take a FieldId, the five invoke kinds a MethodId. */
+ *  kinds take a FieldId, the five invoke kinds a MethodId.  The kind is
+ *  dex::MethodHandleKind (common/method_handle_kind.hpp), shared with the
+ *  analysis layer. */
 struct MethodHandle
 {
     MethodHandleKind kind = MethodHandleKind::InvokeStatic;

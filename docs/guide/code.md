@@ -218,9 +218,13 @@ a `type_descriptor`, a `visibility` and its `elements` as a dictionary.
 
 Element values are converted to plain Python values: `None`, `bool`, `int`,
 `float`, `str`, and `list` for arrays. Values that refer to something have
-their own small classes: `TypeRef` for a class literal, `EnumRef` for an enum
-constant, `FieldRef`, `MethodRef`, `MethodTypeRef` and `MethodHandleRef`. A
-nested annotation is an `Annotation`.
+their own small classes: `TypeValue` for a class literal, `EnumValue` for an
+enum constant, `FieldValue` for a field, `MethodValue` for a method,
+`MethodTypeValue` for a method prototype, and `MethodHandleValue` for a method
+handle. A method handle reads or writes a field or calls a method: its `kind`
+is a `MethodHandleKind` such as `STATIC_GET` or `INVOKE_STATIC`, and its
+`member` is the `FieldId` or `MethodId` it works on. A nested annotation is an
+`Annotation`.
 
 An element that the source left at its default value is **not** in the
 dictionary. The DEX format stores defaults on the annotation's own class, not
