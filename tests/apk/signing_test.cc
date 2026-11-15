@@ -7,7 +7,14 @@
 
 #include <gtest/gtest.h>
 
+#include <cstddef>
+#include <cstdint>
+#include <fstream>
+#include <iterator>
+#include <vector>
+
 #include "dex.hpp"
+#include "raw/zip.hpp"
 
 using namespace dex;
 using namespace dex::apk;
@@ -95,4 +102,88 @@ TEST(SigningTest, SignedApkStillAnalyzable)
     auto ctx = apk->analysis();
     ASSERT_TRUE(ctx.has_value());
     EXPECT_TRUE(ctx->find_class("LTestDex;").has_value());
+}
+
+// ===== damaged APK Signing Blocks =====
+//
+// The sizes in the signing block come from the file.  A huge size used to
+// wrap around in a bounds check written as `a + b > c`, and the parser then
+// read far outside the APK (found by the fuzz_signing harness).  These tests
+// patch signed.apk in memory; under ASan an out-of-bounds read fails them.
+
+namespace {
+
+std::vector<uint8_t> read_signed_apk()
+{
+    std::ifstream f("tests/data/signed.apk", std::ios::binary);
+    return std::vector<uint8_t>(std::istreambuf_iterator<char>(f), {});
+}
+
+void put_le64(std::vector<uint8_t> &buf, std::size_t pos, uint64_t value)
+{
+    for (int i = 0; i < 8; ++i)
+        buf[pos + static_cast<std::size_t>(i)] = static_cast<uint8_t>(value >> (8 * i));
+}
+
+uint64_t get_le64(const std::vector<uint8_t> &buf, std::size_t pos)
+{
+    uint64_t value = 0;
+    for (int i = 7; i >= 0; --i)
+        value = (value << 8) | buf[pos + static_cast<std::size_t>(i)];
+    return value;
+}
+
+/** Offsets in signed.apk: the central directory, and the signing block. */
+struct BlockLayout
+{
+    std::size_t cd_off;
+    std::size_t block_start; // the leading size field
+    std::size_t first_pair;  // the first id-value pair's length field
+};
+
+BlockLayout layout_of(const std::vector<uint8_t> &apk)
+{
+    auto cd = dex::raw::zip::central_directory_offset(apk);
+    EXPECT_TRUE(cd.has_value());
+    const std::size_t cd_off = *cd;
+    const uint64_t block_size = get_le64(apk, cd_off - 24);
+    const std::size_t block_start = cd_off - 8 - static_cast<std::size_t>(block_size);
+    return {cd_off, block_start, block_start + 8};
+}
+
+} // namespace
+
+TEST(SigningDamagedBlock, TheUnpatchedFixtureHasTheExpectedLayout)
+{
+    std::vector<uint8_t> apk = read_signed_apk();
+    ASSERT_FALSE(apk.empty());
+    const BlockLayout at = layout_of(apk);
+    EXPECT_EQ(get_le64(apk, at.block_start), get_le64(apk, at.cd_off - 24));
+    EXPECT_TRUE(dex::apk::parse_signing_info(apk).v2);
+}
+
+TEST(SigningDamagedBlock, AHugePairLengthIsRejected)
+{
+    std::vector<uint8_t> apk = read_signed_apk();
+    const BlockLayout at = layout_of(apk);
+    for (uint64_t huge : {UINT64_MAX, UINT64_MAX - 7, uint64_t{1} << 63}) {
+        std::vector<uint8_t> patched = apk;
+        put_le64(patched, at.first_pair, huge);
+        dex::apk::SigningInfo info = dex::apk::parse_signing_info(patched);
+        EXPECT_FALSE(info.v2) << huge; // the bad pair stops the walk
+        EXPECT_TRUE(info.v1) << huge;  // the JAR signature is still found
+    }
+}
+
+TEST(SigningDamagedBlock, AHugeBlockSizeIsRejected)
+{
+    std::vector<uint8_t> apk = read_signed_apk();
+    const BlockLayout at = layout_of(apk);
+    for (uint64_t huge : {UINT64_MAX, UINT64_MAX - 7, uint64_t{1} << 63}) {
+        std::vector<uint8_t> patched = apk;
+        put_le64(patched, at.cd_off - 24, huge);
+        dex::apk::SigningInfo info = dex::apk::parse_signing_info(patched);
+        EXPECT_FALSE(info.v2) << huge;
+        EXPECT_FALSE(info.v3) << huge;
+    }
 }

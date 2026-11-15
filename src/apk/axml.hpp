@@ -53,6 +53,12 @@ struct XmlAttribute
     std::string name;          ///< e.g. "exported".
     std::string raw_value;     ///< Resolved string value when the value is a string; else empty.
     TypedValue typed;
+    /** The attribute's resource id, from the document's resource map: for
+     *  example 0x01010010 for android:exported.  0 when the attribute has none
+     *  (the attribute is not a framework attribute, or the document has no
+     *  resource map).  Android identifies framework attributes by this id, not
+     *  by `name`. */
+    uint32_t resource_id = 0;
 
     /** The value as text, when it is one (TYPE_STRING or a raw value). */
     std::optional<std::string_view> as_string() const
@@ -92,11 +98,25 @@ struct XmlNode
     std::vector<XmlNode> children;
     std::string text; ///< Concatenated CDATA content, if any.
 
-    /** First attribute with this local name (namespace ignored), or nullptr. */
+    /** First attribute with this local name (namespace and resource id
+     *  ignored), or nullptr.  For a framework attribute such as
+     *  android:exported, Android goes by the resource id instead; see
+     *  attribute_by_id(). */
     const XmlAttribute *attribute(std::string_view attr_name) const
     {
         for (const auto &a : attributes)
             if (a.name == attr_name)
+                return &a;
+        return nullptr;
+    }
+    /** First attribute with this resource id, or nullptr.  An id of 0 matches
+     *  nothing. */
+    const XmlAttribute *attribute_by_id(uint32_t resource_id) const
+    {
+        if (resource_id == 0)
+            return nullptr;
+        for (const auto &a : attributes)
+            if (a.resource_id == resource_id)
                 return &a;
         return nullptr;
     }
@@ -122,6 +142,9 @@ struct XmlNode
 struct XmlDocument
 {
     XmlNode root;
+    /** True when the document has a resource map, which gives attribute names
+     *  their resource ids.  Every file aapt or aapt2 writes has one. */
+    bool has_resource_map = false;
 };
 
 /** Decode a binary-XML buffer into a tree.  The whole tree is owned strings —

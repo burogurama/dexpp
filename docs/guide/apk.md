@@ -34,6 +34,14 @@ Attributes that the manifest may leave out, such as `version_code`, `min_sdk`
 or `debuggable`, are `None` when they are not set. So `debuggable is None`
 means "not written in the manifest", which Android treats as false.
 
+dexpp reads the `android:` attributes the way Android does: by their resource
+id, not by their name. In the binary manifest, each attribute name is a string,
+and a table in the file gives the framework attributes their ids, such as
+`0x01010010` for `android:exported`. Android only looks at the id. So an app
+that renames the attribute strings cannot hide a value from dexpp, and an
+attribute that is only named like `android:exported`, without its id, is
+ignored, as Android ignores it.
+
 ## Components
 
 A component is an activity, a service, a broadcast receiver or a content
@@ -91,7 +99,8 @@ The low four bits are the base level: 0 normal, 1 dangerous, 2 signature,
 ## Resources
 
 `apk.resources` is the decoded `resources.arsc` table, or `None` when the APK
-has none. It resolves resource ids to names and to string values.
+has none or it cannot be decoded. It resolves resource ids to names and to
+string values.
 
 ```python
 --8<-- "apk_metadata.py:resources"

@@ -32,8 +32,8 @@
  *   - Class descriptors and names here are the model's strings. The DEX format
  *     allows them to differ from a strict identifier, but a type descriptor
  *     never contains a NUL byte, so plain C strings carry them faithfully.
- *   - dexpp_string_free and dexpp_buffer_free come from dexpp.h; include it
- *     too if you use only this header's allocations.
+ *   - dexpp_buffer_free is declared here; dexpp_string_free comes from
+ *     dexpp.h, so include that header too.
  */
 #ifndef DEXPP_MODEL_H
 #define DEXPP_MODEL_H

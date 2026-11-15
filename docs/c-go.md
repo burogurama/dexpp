@@ -78,8 +78,8 @@ The rules are the same for every function:
 - **Handles are opaque pointers**: `DexppContext`, `DexppClass`, `DexppMethod`,
   `DexppApk`, `DexppModelDex`. Free each one with its `_free` function.
 - **Errors.** A function that can fail takes a `char **err`. On failure it
-  returns `NULL` and sets `*err` to a message. Free the message with
-  `dexpp_string_free`.
+  returns `NULL` (or `0`, for a function that returns an `int`) and sets
+  `*err` to a message. Free the message with `dexpp_string_free`.
 - **Strings are copies.** Every string a function returns was allocated for
   you. Free it with `dexpp_string_free`.
 - **Arrays** are allocated too. Free an array with its matching

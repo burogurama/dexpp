@@ -335,15 +335,19 @@ SigningInfo parse_signing_info(std::span<const uint8_t> apk_bytes)
         if (cd_off >= 32 && cd_off <= apk_bytes.size() &&
             std::memcmp(apk_bytes.data() + cd_off - 16, SIG_BLOCK_MAGIC, 16) == 0) {
             uint64_t block_size = le64(apk_bytes, cd_off - 24);
-            // block_size excludes the leading size field; sanity-bound it.
-            if (block_size >= 24 && block_size + 8 <= cd_off) {
+            // block_size excludes the leading size field; sanity-bound it.  It
+            // comes from the file, so compare by subtraction: `block_size + 8`
+            // wraps around for a huge value and would pass.
+            if (block_size >= 24 && block_size <= cd_off - 8) {
                 std::size_t block_start = cd_off - 8 - static_cast<std::size_t>(block_size);
                 if (le64(apk_bytes, block_start) == block_size) {
                     std::size_t pos = block_start + 8;
                     std::size_t pairs_end = cd_off - 24;
                     while (pos + 12 <= pairs_end) {
                         uint64_t pair_len = le64(apk_bytes, pos);
-                        if (pair_len < 4 || pos + 8 + pair_len > pairs_end)
+                        // The loop condition keeps pairs_end - pos >= 12, so the
+                        // subtraction cannot wrap; `pos + 8 + pair_len` could.
+                        if (pair_len < 4 || pair_len > pairs_end - pos - 8)
                             break;
                         uint32_t id = le32(apk_bytes, pos + 8);
                         auto payload =

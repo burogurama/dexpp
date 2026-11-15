@@ -74,6 +74,31 @@
 
 ### Fixes
 
+- A damaged APK Signing Block could make `parse_signing_info` (and so
+  `Apk::signing()` / `Apk.signing`) read outside the APK's memory, or loop
+  forever. Two size checks were written as `a + b > c`, and a huge size taken
+  from the file wrapped around and passed them. The fuzzer found it; the checks
+  now compare by subtraction.
+- The manifest now reads the `android:` attributes by resource id, as Android
+  does, instead of by name. Before, an app could hide `android:exported` (and
+  so change `is_exported` and `is_reachable`) by renaming the attribute's name
+  string, or add an attribute that is only named `exported` and have dexpp
+  read it although Android ignores it. The binary-XML decoder now gives each
+  attribute its `resource_id` and each document `has_resource_map`, and
+  `XmlNode::attribute_by_id()` finds an attribute by id. For a document
+  without a resource map (not written by aapt or aapt2), the manifest falls
+  back to the attribute name in the android namespace.
+- Go: the short methods of `Class` and `Method` (`Name`, `Package`,
+  `Superclass`, `AccessFlags` and others), and the early-return paths of
+  `Classes`, `Strings`, `Interfaces`, `Methods` and `Components`, did not keep
+  their handle alive during the C call. In code such as
+  `ctx.FindClass(d).Name()`, the garbage collector could free the handle while
+  C was still using it. Every method now keeps its handle alive until it
+  returns.
+- `Model.read` in Python read the wrong memory when it got a buffer whose bytes
+  are not next to each other, such as a reversed or strided `memoryview`: it
+  read forward from the buffer's start and could go past its end. It now reads
+  the bytes in order, copying them first when the buffer is not contiguous.
 - Loading a path that is a directory no longer fails with an out-of-memory
   error. `AnalysisContext::from_dex`, `from_dex_files`, `from_apk`,
   `apk::Apk::open` and `raw::parser::parse_file` read the size of the
