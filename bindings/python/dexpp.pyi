@@ -76,14 +76,14 @@ class PoolOverflowError(ModelError):
     """A table of the written DEX file would have more entries than the format
     allows, for example more than 65,536 methods.
 
-    Move classes to another model and write two files. `Model.pool_stats` gives the
+    Move classes to another model and write two files. `Model.pool_stats()` gives the
     table sizes before writing.
     """
 
 class VersionTooLowError(ModelError):
     """The `Model` uses a feature that its DEX version does not have.
 
-    Set `Model.version` to `Model.required_version`, or higher, and write again.
+    Set `Model.version` to `Model.required_version()`, or higher, and write again.
     """
 
 # ===== enums =====
@@ -1559,11 +1559,14 @@ class Xrefs:
         """Only the writes of this field."""
     def string_refs(self, value: str) -> list[StringXref]:
         """The `const-string` instructions that load exactly this string. To search by
-        substring or pattern, filter `referenced_strings` first.
+        substring or pattern, filter `referenced_strings()` first.
         """
-    @property
     def referenced_strings(self) -> list[str]:
-        """Every distinct string that some `const-string` instruction loads."""
+        """Every distinct string that some `const-string` instruction loads.
+
+        Each call makes a new list of all of them, so keep the result when you need
+        it more than once.
+        """
     def type_refs(self, descriptor: str) -> list[TypeXref]:
         """The instructions that name this type: `const-class`, `check-cast`,
         `instance-of`, `new-instance`, `new-array` and `filled-new-array`.
@@ -1625,14 +1628,15 @@ class AnalysisContext:
     @property
     def classes(self) -> list[Class]:
         """Every class of every loaded DEX file, in file order."""
-    @property
     def strings(self) -> list[str]:
         """Every string of every loaded DEX file's string table.
 
         This includes names of classes, methods and fields, not only the strings the
-        code loads. A string that is in two DEX files appears twice. Reading this
-        decodes the whole table, so it is one of the more expensive calls. For only
-        the strings the code loads, use `xrefs.referenced_strings`.
+        code loads. A string that is in two DEX files appears twice. The first call
+        decodes the whole table, and every call copies all of it into a new list, so
+        it is one of the more expensive calls: keep the result when you need it more
+        than once. For only the strings the code loads, use
+        `xrefs.referenced_strings()`.
         """
     def find_class(self, descriptor: str) -> Optional[Class]:
         """The class with this descriptor, such as `Lcom/example/Foo;`, or `None` when
@@ -2051,14 +2055,20 @@ class Model:
         """A full copy of the model. Changing one does not change the other."""
     version: int
     """The DEX format version `write` uses. `write` never raises it by itself; set it
-    when `required_version` is higher.
+    when `required_version()` is higher.
     """
-    @property
     def required_version(self) -> int:
-        """The lowest DEX version that has every feature the model uses."""
-    @property
+        """The lowest DEX version that has every feature the model uses.
+
+        It runs the same checks as `validate`, so each call costs about as much.
+        """
     def pool_stats(self) -> PoolStats:
-        """How many entries each table of the written file would have."""
+        """How many entries each table of the written file would have.
+
+        It walks every class and every instruction of the model to collect the
+        strings, types, prototypes, fields and methods they use, so each call takes
+        time in proportion to the size of the model.
+        """
     def validate(self) -> list[Problem]:
         """Every rule of the DEX format the model breaks. An empty list means `write`
         can encode the model. Otherwise `write` raises `InvalidModelError` with the

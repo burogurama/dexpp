@@ -94,10 +94,13 @@ time you ask for them, and then cached in the context:
 | `ctx.call_graph` | the call graph of the whole program |
 | `ctx.class_hierarchy` | the hierarchy of the whole program |
 | `ctx.xrefs` | the cross-reference index of the whole program |
-| `ctx.strings` | every string of every DEX file, decoded |
 
 The first read of a whole-program structure can take a moment on a large app.
 Every later read returns the cached object.
+
+Everything in this table is a property: it is cheap, or built once and kept.
+Work that is done again on every call is a method instead, such as
+`ctx.strings()`, which copies every string of every DEX file into a new list.
 
 ## Resolved and external
 

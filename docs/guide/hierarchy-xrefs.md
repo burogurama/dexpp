@@ -92,14 +92,14 @@ ways to use it:
 ```
 
 `string_refs` matches the whole string exactly. To search by substring or
-pattern, go through `referenced_strings` first, then look up the ones that
+pattern, go through `referenced_strings()` first, then look up the ones that
 match:
 
 ```python
 import re
 
 url: re.Pattern[str] = re.compile(r"https?://")
-for value in xrefs.referenced_strings:
+for value in xrefs.referenced_strings():
     if url.search(value) is not None:
         for site in xrefs.string_refs(value):
             loader: dexpp.MethodId = xrefs.referrers[site.referrer]

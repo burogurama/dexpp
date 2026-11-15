@@ -109,11 +109,11 @@ Rename an inner class together with its outer class.
 - `validate()` lists every rule of the format the model breaks. Each
   `Problem` has a `where` and a `message`. An empty list means `write` can
   encode the model.
-- `pool_stats` says how many entries each table of the written file would
+- `pool_stats()` says how many entries each table of the written file would
   have. A DEX file can hold at most 65,535 types and prototypes, and 65,536
   fields and methods. Use this to decide when a file is full and classes must
   go to another one.
-- `required_version` is the lowest DEX version that has every feature the
+- `required_version()` is the lowest DEX version that has every feature the
   model uses. `write` never raises the version by itself. Set `model.version`
   when a higher one is needed.
 
@@ -200,7 +200,7 @@ list `validate()` returns.
 
 `PoolOverflowError` means the classes do not fit in one DEX file. A file holds
 at most 65,536 methods and 65,536 fields. Move some classes to another model
-and write two files. To avoid the error, check `pool_stats` while you fill a
+and write two files. To avoid the error, check `pool_stats()` while you fill a
 model, before you write it.
 
 ### A version that is too low

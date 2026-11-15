@@ -48,9 +48,10 @@ print(model.class_descriptors)
 problems: list[dexpp.Problem] = model.validate()
 print("problems:", problems)
 
-stats: dexpp.PoolStats = model.pool_stats
+stats: dexpp.PoolStats = model.pool_stats()
 print(stats.strings, "strings,", stats.types, "types,", stats.methods, "methods")
-print("needs DEX version", model.required_version)
+needed: int = model.required_version()
+print("needs DEX version", needed)
 # --8<-- [end:validate]
 
 # --8<-- [start:write]
@@ -85,6 +86,6 @@ try:
 except dexpp.VersionTooLowError as error:
     print("VersionTooLowError:", error)
 
-defaults.version = defaults.required_version
+defaults.version = defaults.required_version()
 print("written with version", defaults.version, "-", len(defaults.write()), "bytes")
 # --8<-- [end:version]

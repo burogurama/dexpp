@@ -102,6 +102,6 @@ print(magic, repr(greeting))
 
 # --8<-- [start:strings]
 hello_ctx: dexpp.AnalysisContext = dexpp.AnalysisContext.from_dex("tests/data/classes.dex")
-strings: list[str] = hello_ctx.strings
+strings: list[str] = hello_ctx.strings()
 print(len(strings), "strings;", "Hello Dex++!!" in strings)
 # --8<-- [end:strings]

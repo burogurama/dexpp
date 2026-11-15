@@ -997,11 +997,11 @@ PYBIND11_MODULE(dexpp, m)
                 return std::vector<StringXref>(v.begin(), v.end());
             },
             py::arg("value"))
-        .def_property_readonly("referenced_strings",
-                               [](const Xrefs &x) {
-                                   auto v = x.referenced_strings();
-                                   return std::vector<std::string>(v.begin(), v.end());
-                               })
+        .def("referenced_strings",
+             [](const Xrefs &x) {
+                 auto v = x.referenced_strings();
+                 return std::vector<std::string>(v.begin(), v.end());
+             })
         .def(
             "type_refs",
             [](const Xrefs &x, std::string_view descriptor) {
@@ -1046,11 +1046,11 @@ PYBIND11_MODULE(dexpp, m)
             "(extra threads only when at least 3 DEX entries are deflated) and "
             "later to build the call graph (one thread per DEX file).")
         .def_property_readonly("classes", &AnalysisContext::classes)
-        .def_property_readonly("strings",
-                               [](const AnalysisContext &ctx) {
-                                   auto v = ctx.strings();
-                                   return std::vector<std::string>(v.begin(), v.end());
-                               })
+        .def("strings",
+             [](const AnalysisContext &ctx) {
+                 auto v = ctx.strings();
+                 return std::vector<std::string>(v.begin(), v.end());
+             })
         .def(
             "find_class",
             [](const AnalysisContext &ctx, std::string_view descriptor) -> py::object {

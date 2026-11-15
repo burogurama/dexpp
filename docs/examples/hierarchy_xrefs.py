@@ -33,7 +33,7 @@ for target, sites in matches:
 # --8<-- [end:method_refs]
 
 # --8<-- [start:strings]
-loaded: list[str] = xrefs.referenced_strings
+loaded: list[str] = xrefs.referenced_strings()
 print(loaded)
 
 string_sites: list[dexpp.StringXref] = xrefs.string_refs("Hello Dex++!!")

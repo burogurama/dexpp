@@ -325,7 +325,7 @@ def test_xrefs():
     assert len(sites) == 1
     assert x.referrer_id(sites[0].referrer).name == "helloDex"
     assert x.referrer_method(sites[0].referrer).name == "helloDex"
-    assert "Hello Dex++!!" in x.referenced_strings
+    assert "Hello Dex++!!" in x.referenced_strings()
     # referrers is a zero-copy view: indexing it per site is cheap.
     assert x.referrers[sites[0].referrer] == x.referrer_id(sites[0].referrer)
     assert len(x.referrers) == len(list(x.referrers))
@@ -358,11 +358,13 @@ def test_mnemonics():
 
 def test_strings_enumeration():
     ctx = dexpp.AnalysisContext.from_dex("tests/data/classes.dex")
-    strings = ctx.strings
+    strings = ctx.strings()
     assert "Hello Dex++!!" in strings
     assert "LTestDex;" in strings  # type name, not bytecode-loaded
-    for ref in ctx.xrefs.referenced_strings:
+    for ref in ctx.xrefs.referenced_strings():
         assert ref in strings
+    # A method makes a new list on each call.
+    assert ctx.strings() == strings and ctx.strings() is not strings
 
 
 def test_forward_refs():
@@ -749,9 +751,9 @@ def test_model_rename_types():
 def test_model_validate_and_stats():
     m = dexpp.Model.read_file("tests/data/shapes.dex")
     assert m.validate() == []
-    stats = m.pool_stats
+    stats = m.pool_stats()
     assert stats.strings > 0 and stats.types > 0 and stats.methods > 0
-    assert m.required_version >= 35
+    assert m.required_version() >= 35
 
 
 def test_model_new_and_version():
@@ -931,7 +933,7 @@ def test_pool_overflow_error():
         part.rename_types({d: f"Lcopy{copy}/{d[1:]}" for d in part.class_descriptors})
         for descriptor in part.class_descriptors:
             merged.move_class(part, descriptor)
-    assert merged.pool_stats.fields > 65536
+    assert merged.pool_stats().fields > 65536
 
     error = _error_from(merged.write)
     assert type(error) is dexpp.PoolOverflowError
@@ -941,11 +943,11 @@ def test_pool_overflow_error():
 def test_version_too_low_error():
     # inherit.dex has default interface methods, which need DEX version 37.
     model = dexpp.Model.read_file("tests/data/inherit.dex")
-    assert model.required_version == 37
+    assert model.required_version() == 37
     model.version = 35
     assert type(_error_from(model.write)) is dexpp.VersionTooLowError
 
-    model.version = model.required_version
+    model.version = model.required_version()
     assert len(model.write()) > 0
 
 
@@ -1033,6 +1035,8 @@ def _stub_class_problems(class_node):
         stub_members.add(member)
         if not hasattr(runtime_class, member):
             problems.append(f"the module has no {name}.{member}")
+        elif isinstance(item, ast.FunctionDef):
+            problems.extend(_property_problems(name, item, runtime_class))
         if documented is False:
             problems.append(f"{name}.{member} has no docstring")
 
@@ -1070,6 +1074,22 @@ def _stub_enum_problems(class_node, runtime_class):
     if stub_values != runtime_values:
         problems.append(f"{name} has members {runtime_values}, the stub says {stub_values}")
     return problems
+
+
+def _property_problems(class_name, function_node, runtime_class):
+    """Whether a member is a property in the stub exactly when it is one in the module.
+
+    The rule of the reference: a property is cheap or cached, a method computes.
+    A stub that shows a property where the module has a method (or the other
+    way round) would make every call written from the docs fail.
+    """
+    member = function_node.name
+    in_stub = "property" in _decorators(function_node)
+    in_module = isinstance(inspect.getattr_static(runtime_class, member), property)
+    if in_stub == in_module:
+        return []
+    kinds = {True: "a property", False: "a method"}
+    return [f"{class_name}.{member} is {kinds[in_module]} in the module, {kinds[in_stub]} in the stub"]
 
 
 def test_stub_matches_module_and_is_documented():

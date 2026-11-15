@@ -221,12 +221,14 @@ void register_model(py::module_ &m)
             "version", [](const Dex &dex) { return dex.version; },
             [](Dex &dex, uint32_t version) { dex.version = version; },
             "The DEX format version write() will use.")
-        .def_property_readonly(
+        .def(
             "required_version", [](const Dex &dex) { return dex::model::required_version(dex); },
-            "The lowest DEX version with every feature the model uses.")
-        .def_property_readonly(
+            "The lowest DEX version with every feature the model uses.  It runs the whole "
+            "validator on each call.")
+        .def(
             "pool_stats", [](const Dex &dex) { return dex::model::pool_stats(dex); },
-            "The pool sizes the model would write (see PoolStats).")
+            "The pool sizes the model would write (see PoolStats).  It walks the whole model on "
+            "each call.")
         .def(
             "validate", [](const Dex &dex) { return dex::model::validate(dex); },
             "Every rule of the format the model breaks, as a list of Problem; empty if write() can "

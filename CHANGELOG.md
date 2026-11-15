@@ -62,6 +62,12 @@
   `MethodHandleRef` and `ResourceName` could be compared but not hashed, so
   they could not be dictionary keys or set members. They now have a hash that
   matches their equality.
+- Breaking: four properties that do a lot of work on every read are now
+  methods, so they need `()`: `AnalysisContext.strings()` (copies every string
+  of every DEX file), `Xrefs.referenced_strings()`, `Model.required_version()`
+  (runs the whole validator) and `Model.pool_stats()` (walks the whole model).
+  The rule, written in the Python reference, is that a property is cheap or
+  cached and a method computes.
 - `Method.instructions` is now a `dexpp.InstructionView`, a read-only
   sequence over the decoded bytecode, like `Cfg.blocks`. It copies nothing up
   front; before, every read of the property built a new list of every

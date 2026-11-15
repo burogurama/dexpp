@@ -202,7 +202,9 @@ type's default: zero or null.
 --8<-- "output/code.strings.txt"
 ```
 
-`ctx.strings` is the whole string table of every loaded file. It includes
-names of classes, methods and fields, not only the strings the code loads. It
-decodes the whole table, so it is one of the more expensive calls. For only
-the strings that the code loads, use `ctx.xrefs.referenced_strings`.
+`ctx.strings()` returns the whole string table of every loaded file. It
+includes names of classes, methods and fields, not only the strings the code
+loads. The first call decodes the whole table, and every call copies all of it
+into a new list, so it is one of the more expensive calls: keep the result when
+you need it more than once. For only the strings that the code loads, use
+`ctx.xrefs.referenced_strings()`.
