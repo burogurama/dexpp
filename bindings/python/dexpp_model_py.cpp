@@ -33,36 +33,6 @@ namespace {
 
 using dex::model::Dex;
 
-/** Raise the Python exception for a model Error that is not about a file:
- *  one exception class per kind.  InvalidModelError carries the problems
- *  validate() found, as a list of Problem. */
-[[noreturn]] void raise(const dex::model::Error &error)
-{
-    using Kind = dex::model::Error::Kind;
-    switch (error.kind) {
-    case Kind::Malformed:
-        dexpp_py::raise_error("InvalidDexError", error.message);
-    case Kind::Unsupported:
-        dexpp_py::raise_error("UnsupportedDexError", error.message);
-    case Kind::TooLarge:
-        dexpp_py::raise_error("PoolOverflowError", error.message);
-    case Kind::VersionTooLow:
-        dexpp_py::raise_error("VersionTooLowError", error.message);
-    case Kind::Invalid: {
-        py::object type = py::module_::import("dexpp").attr("InvalidModelError");
-        py::object exception = type(error.message, py::cast(error.problems));
-        PyErr_SetObject(type.ptr(), exception.ptr());
-        throw py::error_already_set();
-    }
-    case Kind::FileNotFound:
-        dexpp_py::raise_file_not_found(error.message);
-    case Kind::CannotRead:
-    case Kind::CannotWrite:
-        dexpp_py::raise_os_error(error.message);
-    }
-    dexpp_py::raise_error("ModelError", error.message);
-}
-
 /** The bytes of a Python bytes-like object, in order, in one block of memory.
  *
  *  A buffer can be non-contiguous: a reversed or strided memoryview has its
@@ -134,13 +104,12 @@ struct ClassInfo
 
 void register_model(py::module_ &m)
 {
-    py::class_<dex::model::Problem>(m, "Problem",
-                                    "One rule of the DEX format a model breaks, and where.")
-        .def_readonly("where", &dex::model::Problem::where,
+    py::class_<dex::Problem>(m, "Problem", "One rule of the DEX format a model breaks, and where.")
+        .def_readonly("where", &dex::Problem::where,
                       "Where the problem is, e.g. \"Lcom/a/B;->run()V, item 12\"; empty for the "
                       "whole file.")
-        .def_readonly("message", &dex::model::Problem::message, "What is wrong.")
-        .def("__repr__", [](const dex::model::Problem &p) {
+        .def_readonly("message", &dex::Problem::message, "What is wrong.")
+        .def("__repr__", [](const dex::Problem &p) {
             return "Problem(where=" + py::repr(py::cast(p.where)).cast<std::string>() +
                    ", message=" + py::repr(py::cast(p.message)).cast<std::string>() + ")";
         });
@@ -202,7 +171,7 @@ void register_model(py::module_ &m)
                 options.debug_info = debug_info;
                 auto result = dex::model::read(bytes.bytes(), options);
                 if (!result)
-                    raise(result.error());
+                    dexpp_py::raise(result.error());
                 return std::move(*result);
             },
             py::arg("data"), py::arg("debug_info") = true,
@@ -214,7 +183,7 @@ void register_model(py::module_ &m)
                 options.debug_info = debug_info;
                 auto result = dex::model::read_file(path, options);
                 if (!result)
-                    raise(result.error());
+                    dexpp_py::raise(result.error());
                 return std::move(*result);
             },
             py::arg("path"), py::arg("debug_info") = true, "Read a DEX file into a model.")
@@ -336,7 +305,7 @@ void register_model(py::module_ &m)
                 options.debug_info = debug_info;
                 auto result = dex::model::write(dex, options);
                 if (!result)
-                    raise(result.error());
+                    dexpp_py::raise(result.error());
                 return py::bytes(reinterpret_cast<const char *>(result->data()), result->size());
             },
             py::arg("debug_info") = true,
@@ -350,7 +319,7 @@ void register_model(py::module_ &m)
                 options.debug_info = debug_info;
                 auto result = dex::model::write_file(dex, path, options);
                 if (!result)
-                    raise(result.error());
+                    dexpp_py::raise(result.error());
             },
             py::arg("path"), py::arg("debug_info") = true, "Write the model to a DEX file.")
         .def("__repr__", [](const Dex &dex) {

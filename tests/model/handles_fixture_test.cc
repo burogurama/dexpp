@@ -128,7 +128,7 @@ std::vector<uint8_t> write_ok(const Dex &dex)
     auto out = write(dex);
     if (!out) {
         ADD_FAILURE() << out.error().message;
-        for (const Problem &p : out.error().problems)
+        for (const dex::Problem &p : out.error().problems)
             ADD_FAILURE() << p.where << ": " << p.message;
         return {};
     }

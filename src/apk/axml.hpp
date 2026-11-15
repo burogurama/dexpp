@@ -12,12 +12,9 @@
 #include <string_view>
 #include <vector>
 
-namespace dex::axml {
+#include "common/error.hpp"
 
-struct AxmlError
-{
-    std::string message;
-};
+namespace dex::axml {
 
 /** A typed attribute value (Res_value).  `data` is interpreted per `type`. */
 struct TypedValue
@@ -148,7 +145,8 @@ struct XmlDocument
 };
 
 /** Decode a binary-XML buffer into a tree.  The whole tree is owned strings —
- *  no views into @p buf survive the call. */
-std::expected<XmlDocument, AxmlError> parse(std::span<const uint8_t> buf);
+ *  no views into @p buf survive the call.  Fails with ErrorCode::InvalidXml
+ *  when @p buf is not a binary XML document or is too damaged to read. */
+std::expected<XmlDocument, Error> parse(std::span<const uint8_t> buf);
 
 } // namespace dex::axml

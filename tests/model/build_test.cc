@@ -50,7 +50,7 @@ std::vector<uint8_t> write_ok(const Dex &dex, const WriteOptions &options = {})
     auto out = write(dex, options);
     if (!out) {
         ADD_FAILURE() << out.error().message;
-        for (const Problem &p : out.error().problems)
+        for (const dex::Problem &p : out.error().problems)
             ADD_FAILURE() << p.where << ": " << p.message;
         return {};
     }
@@ -491,7 +491,7 @@ TEST(ModelBuild, CallSitesShareByKey)
     dex.version = 37;
     auto low = write(dex);
     ASSERT_FALSE(low.has_value());
-    EXPECT_EQ(low.error().kind, Error::Kind::VersionTooLow);
+    EXPECT_EQ(low.error().code, dex::ErrorCode::VersionTooLow);
 }
 
 TEST(ModelBuild, SupertypesAreWrittenFirst)

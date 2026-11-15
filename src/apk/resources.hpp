@@ -19,16 +19,13 @@
 #include <unordered_map>
 #include <vector>
 
+#include "common/error.hpp"
+
 namespace dex::apk {
 
 namespace detail {
 struct StringPool;
 } // namespace detail
-
-struct ResourceError
-{
-    std::string message;
-};
 
 /** The fully-qualified name of a resource: package:type/entry. */
 struct ResourceName
@@ -43,8 +40,10 @@ struct ResourceName
 class ResourceTable
 {
   public:
-    /** Decode a resources.arsc image. */
-    static std::expected<ResourceTable, ResourceError> parse(std::span<const uint8_t> buf);
+    /** Decode a resources.arsc image.  Fails with ErrorCode::InvalidResources
+     *  when @p buf is not a resource table, or holds neither a package nor a
+     *  string. */
+    static std::expected<ResourceTable, Error> parse(std::span<const uint8_t> buf);
 
     /** Name of the resource with id @p id, or nullopt if not present. */
     std::optional<ResourceName> name_of(uint32_t id) const;

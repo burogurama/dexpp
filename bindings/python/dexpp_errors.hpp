@@ -17,12 +17,18 @@
  *
  *  Error is a ValueError, so code that catches ValueError keeps working.  A
  *  file that cannot be opened is not a dexpp error: it raises the built-in
- *  FileNotFoundError or OSError. */
+ *  FileNotFoundError or OSError.
+ *
+ *  raise() turns a C++ dex::Error into one of these: one exception per
+ *  dex::ErrorCode. */
 
 #include <pybind11/eval.h>
 #include <pybind11/pybind11.h>
+#include <pybind11/stl.h>
 
 #include <string>
+
+#include "common/error.hpp"
 
 namespace dexpp_py {
 
@@ -100,6 +106,46 @@ class VersionTooLowError(ModelError):
 {
     PyErr_SetString(PyExc_OSError, message.c_str());
     throw py::error_already_set();
+}
+
+/** Raise the Python exception for a C++ error: FileNotFoundError for a path
+ *  that does not exist, OSError for one that cannot be read or written, and
+ *  dexpp's own class for everything else.  InvalidModelError carries the
+ *  problems validate() found, as a list of Problem (bound in
+ *  dexpp_model_py.cpp).  The switch has no default on purpose: a new code
+ *  then makes the compiler warn here until it gets its own exception. */
+[[noreturn]] inline void raise(const dex::Error &error)
+{
+    switch (error.code) {
+    case dex::ErrorCode::FileNotFound:
+        raise_file_not_found(error.message);
+    case dex::ErrorCode::CannotRead:
+    case dex::ErrorCode::CannotWrite:
+        raise_os_error(error.message);
+    case dex::ErrorCode::InvalidApk:
+        raise_error("InvalidApkError", error.message);
+    case dex::ErrorCode::InvalidDex:
+        raise_error("InvalidDexError", error.message);
+    case dex::ErrorCode::UnsupportedDex:
+        raise_error("UnsupportedDexError", error.message);
+    case dex::ErrorCode::InvalidModel: {
+        py::object type = py::module_::import("dexpp").attr("InvalidModelError");
+        py::object exception = type(error.message, py::cast(error.problems));
+        PyErr_SetObject(type.ptr(), exception.ptr());
+        throw py::error_already_set();
+    }
+    case dex::ErrorCode::PoolOverflow:
+        raise_error("PoolOverflowError", error.message);
+    case dex::ErrorCode::VersionTooLow:
+        raise_error("VersionTooLowError", error.message);
+    case dex::ErrorCode::InvalidXml:
+    case dex::ErrorCode::InvalidResources:
+        // The module never calls the binary XML or resource table parsers
+        // directly: Apk.manifest and Apk.resources are None when they fail.
+        // So these have no exception class of their own.
+        raise_error("Error", error.message);
+    }
+    raise_error("Error", error.message); // a value outside the enum
 }
 
 } // namespace dexpp_py

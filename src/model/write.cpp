@@ -31,9 +31,9 @@ struct WriteFailure
     Error error;
 };
 
-[[noreturn]] void fail(Error::Kind kind, std::string message)
+[[noreturn]] void fail(ErrorCode code, std::string message)
 {
-    throw WriteFailure{Error{kind, std::move(message), {}}};
+    throw WriteFailure{Error{code, std::move(message), {}}};
 }
 
 // ===================================================================
@@ -303,7 +303,7 @@ class Pools
         // Types: by their descriptor's string index.
         sort_by_key(type_list_, types_, [&](const std::string &t) { return string_index_.at(t); });
         if (type_list_.size() > 65535)
-            fail(Error::Kind::TooLarge,
+            fail(ErrorCode::PoolOverflow,
                  std::format("{} types; a DEX file holds at most 65535", type_list_.size()));
         for (uint32_t i = 0; i < type_list_.size(); ++i)
             type_index_.emplace(type_list_[i], i);
@@ -324,7 +324,7 @@ class Pools
                       return std::tie(a.return_type, a.params) < std::tie(b.return_type, b.params);
                   });
         if (proto_list_.size() > 65535)
-            fail(Error::Kind::TooLarge,
+            fail(ErrorCode::PoolOverflow,
                  std::format("{} prototypes; a DEX file holds at most 65535", proto_list_.size()));
         for (uint32_t i = 0; i < proto_list_.size(); ++i)
             proto_index_.emplace(proto_list_[i].descriptor, i);
@@ -335,7 +335,7 @@ class Pools
                                    type_index_.at(f.type));
         });
         if (field_list_.size() > 65536)
-            fail(Error::Kind::TooLarge,
+            fail(ErrorCode::PoolOverflow,
                  std::format("{} field references; a DEX file holds at most 65536",
                              field_list_.size()));
         for (uint32_t i = 0; i < field_list_.size(); ++i)
@@ -347,7 +347,7 @@ class Pools
                                    proto_index_.at(m.proto));
         });
         if (method_list_.size() > 65536)
-            fail(Error::Kind::TooLarge,
+            fail(ErrorCode::PoolOverflow,
                  std::format("{} method references; a DEX file holds at most 65536",
                              method_list_.size()));
         for (uint32_t i = 0; i < method_list_.size(); ++i)
@@ -366,7 +366,7 @@ class Pools
             return std::make_pair(static_cast<uint32_t>(h.kind), member);
         });
         if (handle_list_.size() > 65536)
-            fail(Error::Kind::TooLarge,
+            fail(ErrorCode::PoolOverflow,
                  std::format("{} method handles; a DEX file holds at most 65536",
                              handle_list_.size()));
         for (uint32_t i = 0; i < handle_list_.size(); ++i)
@@ -482,7 +482,8 @@ class Pools
     {
         auto it = map.find(key);
         if (it == map.end())
-            fail(Error::Kind::Invalid, std::format("internal error: a {} was not collected", what));
+            fail(ErrorCode::InvalidModel,
+                 std::format("internal error: a {} was not collected", what));
         return it->second;
     }
 
@@ -830,7 +831,7 @@ class CodeEncoder
 
     [[noreturn]] void fail_at(uint32_t item, std::string_view message) const
     {
-        fail(Error::Kind::Invalid, std::format("{}, item {}: {}", where_, item, message));
+        fail(ErrorCode::InvalidModel, std::format("{}, item {}: {}", where_, item, message));
     }
 
     raw::InsnFields fields_of(const Insn &insn, uint32_t item);
@@ -1213,7 +1214,7 @@ CodeOut CodeEncoder::encode(const MethodDef &method, const Code &code, bool debu
                 at += slots[slot_of[i]].units;
         }
         if (at > UINT32_MAX / 2)
-            fail(Error::Kind::TooLarge, std::format("{}: the code is too long", where_));
+            fail(ErrorCode::PoolOverflow, std::format("{}: the code is too long", where_));
         addr[items.size()] = static_cast<uint32_t>(at);
     };
     auto label_addr = [&](Label l) { return addr[label_item.at(l.id)]; };
@@ -1362,7 +1363,7 @@ CodeOut CodeEncoder::encode(const MethodDef &method, const Code &code, bool debu
             fail_at(s.item, "the instruction's operands do not fit its encoding");
     }
     if (out.insns.size() != main_size)
-        fail(Error::Kind::Invalid, std::format("{}: internal error laying out code", where_));
+        fail(ErrorCode::InvalidModel, std::format("{}: internal error laying out code", where_));
     out.insns.insert(out.insns.end(), payloads.begin(), payloads.end());
 
     // Try ranges.  Ranges may overlap; split the code at every range
@@ -1427,7 +1428,8 @@ CodeOut CodeEncoder::encode(const MethodDef &method, const Code &code, bool debu
         list.uleb128(static_cast<uint32_t>(handlers.size()));
         for (const Handler &h : handlers) {
             if (list.size() > 0xFFFF)
-                fail(Error::Kind::TooLarge, std::format("{}: too many exception handlers", where_));
+                fail(ErrorCode::PoolOverflow,
+                     std::format("{}: too many exception handlers", where_));
             handler_offsets.push_back(static_cast<uint16_t>(list.size()));
             int32_t count = static_cast<int32_t>(h.catches.size());
             list.sleb128(h.catch_all ? -count : count);
@@ -1449,7 +1451,7 @@ CodeOut CodeEncoder::encode(const MethodDef &method, const Code &code, bool debu
             }
         }
         if (out.tries.size() > 0xFFFF)
-            fail(Error::Kind::TooLarge, std::format("{}: too many try ranges", where_));
+            fail(ErrorCode::PoolOverflow, std::format("{}: too many try ranges", where_));
     }
 
     // Debug info: replay the markers through the state machine.
@@ -1678,7 +1680,7 @@ std::vector<uint8_t> Writer::run()
     }
 
     if (sites_.list().size() > 65536)
-        fail(Error::Kind::TooLarge,
+        fail(ErrorCode::PoolOverflow,
              std::format("{} call sites; a DEX file holds at most 65536", sites_.list().size()));
 
     // ----- id sections: sizes are known, contents are filled at the end -----
@@ -2258,7 +2260,7 @@ std::expected<std::vector<uint8_t>, Error> write(const Dex &dex, const WriteOpti
     const bool known_version = dex.version >= 35 && dex.version <= 40 && dex.version != 36;
     if (known_version && checked.needed_version > dex.version)
         return std::unexpected(
-            Error{Error::Kind::VersionTooLow,
+            Error{ErrorCode::VersionTooLow,
                   std::format("the model needs DEX {:03} ({}), but its version is {:03}",
                               checked.needed_version, checked.needed_reason, dex.version),
                   {}});
@@ -2270,7 +2272,7 @@ std::expected<std::vector<uint8_t>, Error> write(const Dex &dex, const WriteOpti
         if (problems.size() > 1)
             message += std::format(" (and {} more)", problems.size() - 1);
         return std::unexpected(
-            Error{Error::Kind::Invalid, std::move(message), std::move(problems)});
+            Error{ErrorCode::InvalidModel, std::move(message), std::move(problems)});
     }
     try {
         return Writer(dex, options).run();
@@ -2288,7 +2290,7 @@ std::expected<void, Error> write_file(const Dex &dex, const std::string &path,
         return std::unexpected(std::move(bytes.error()));
     auto written = raw::write_whole_file(path, *bytes);
     if (!written)
-        return std::unexpected(Error{Error::Kind::CannotWrite, written.error().message, {}});
+        return std::unexpected(std::move(written.error()));
     return {};
 }
 

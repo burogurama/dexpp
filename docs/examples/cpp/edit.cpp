@@ -20,7 +20,7 @@ int main(int argc, char **argv)
     std::filesystem::create_directories(out_dir);
 
     // --8<-- [start:read]
-    std::expected<dex::model::Dex, dex::model::Error> read = dex::model::read_file(input_path);
+    std::expected<dex::model::Dex, dex::Error> read = dex::model::read_file(input_path);
     if (!read) {
         std::cerr << read.error().message << '\n';
         return 1;
@@ -51,7 +51,7 @@ int main(int argc, char **argv)
     // --8<-- [end:edit]
 
     // --8<-- [start:validate]
-    for (const dex::model::Problem &problem : dex::model::validate(input))
+    for (const dex::Problem &problem : dex::model::validate(input))
         std::cerr << problem.where << ": " << problem.message << '\n';
     // --8<-- [end:validate]
 
@@ -61,7 +61,7 @@ int main(int argc, char **argv)
     for (std::size_t i = 0; i < input.classes.size(); ++i) {
         dex::model::Dex one{input.version, {input.classes[i]}};
         const std::string path = (out_dir / ("class" + std::to_string(i) + ".dex")).string();
-        std::expected<void, dex::model::Error> written = dex::model::write_file(one, path);
+        std::expected<void, dex::Error> written = dex::model::write_file(one, path);
         if (!written) {
             std::cerr << written.error().message << '\n';
             return 1;

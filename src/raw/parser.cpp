@@ -1127,7 +1127,7 @@ std::expected<DexFile, ParseError> parse_file(const std::string &path, ParseOpti
 {
     auto buffer = read_whole_file(path);
     if (!buffer) {
-        const ParseError::Code code = buffer.error().kind == FileError::Kind::NotFound
+        const ParseError::Code code = buffer.error().code == ErrorCode::FileNotFound
                                           ? ParseError::Code::FileNotFound
                                           : ParseError::Code::CannotRead;
         return std::unexpected(ParseError{code, buffer.error().message, 0});

@@ -52,26 +52,6 @@ void register_model(py::module_ &m);
 
 namespace {
 
-/** Raise the Python exception for an AnalysisError: FileNotFoundError for a
- *  path that does not exist, OSError for one that exists but cannot be read,
- *  InvalidApkError / InvalidDexError for a file that is not what it should
- *  be.  The switch has no default on purpose: a new code then makes the
- *  compiler warn here until it gets its own exception. */
-[[noreturn]] void raise(const AnalysisError &error)
-{
-    switch (error.code) {
-    case AnalysisError::Code::FileNotFound:
-        dexpp_py::raise_file_not_found(error.message);
-    case AnalysisError::Code::CannotRead:
-        dexpp_py::raise_os_error(error.message);
-    case AnalysisError::Code::InvalidApk:
-        dexpp_py::raise_error("InvalidApkError", error.message);
-    case AnalysisError::Code::InvalidDexFile:
-        dexpp_py::raise_error("InvalidDexError", error.message);
-    }
-    dexpp_py::raise_error("Error", error.message); // a value outside the enum
-}
-
 /** Convert a possibly-null handle to a Python object (None when invalid). */
 py::object class_or_none(Class cls)
 {
@@ -1077,7 +1057,7 @@ PYBIND11_MODULE(dexpp, m)
             [](const std::string &path) {
                 auto result = AnalysisContext::from_dex(path);
                 if (!result.has_value())
-                    raise(result.error());
+                    dexpp_py::raise(result.error());
                 return std::move(result.value());
             },
             py::arg("path"), "Parse a single DEX file from disk.")
@@ -1086,7 +1066,7 @@ PYBIND11_MODULE(dexpp, m)
             [](const std::vector<std::string> &paths) {
                 auto result = AnalysisContext::from_dex_files(paths);
                 if (!result.has_value())
-                    raise(result.error());
+                    dexpp_py::raise(result.error());
                 return std::move(result.value());
             },
             py::arg("paths"), "Parse multiple DEX files (e.g. multi-dex splits) in one context.")
@@ -1095,7 +1075,7 @@ PYBIND11_MODULE(dexpp, m)
             [](const std::string &path, unsigned threads) {
                 auto result = AnalysisContext::from_apk(path, {.threads = threads});
                 if (!result.has_value())
-                    raise(result.error());
+                    dexpp_py::raise(result.error());
                 return std::move(result.value());
             },
             py::arg("path"), py::arg("threads") = 0,
@@ -1254,7 +1234,7 @@ PYBIND11_MODULE(dexpp, m)
             [](const std::string &path) {
                 auto result = Apk::open(path);
                 if (!result.has_value())
-                    raise(result.error());
+                    dexpp_py::raise(result.error());
                 return std::move(result.value());
             },
             py::arg("path"), "Open an APK (ZIP) from disk.")
@@ -1280,7 +1260,7 @@ PYBIND11_MODULE(dexpp, m)
              [](const Apk &apk) {
                  auto result = apk.analysis();
                  if (!result.has_value())
-                     raise(result.error());
+                     dexpp_py::raise(result.error());
                  return std::move(result.value());
              })
         .def_property_readonly("resources",

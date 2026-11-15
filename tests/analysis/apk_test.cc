@@ -94,21 +94,21 @@ TEST(FromApkTest, MissingFileIsFileNotFound)
 {
     auto ctx = AnalysisContext::from_apk("tests/data/nonexistent.apk");
     ASSERT_FALSE(ctx.has_value());
-    EXPECT_EQ(ctx.error().code, AnalysisError::Code::FileNotFound);
+    EXPECT_EQ(ctx.error().code, ErrorCode::FileNotFound);
 }
 
 TEST(FromApkTest, NonZipIsInvalidApk)
 {
     auto ctx = AnalysisContext::from_apk("tests/data/classes.dex");
     ASSERT_FALSE(ctx.has_value());
-    EXPECT_EQ(ctx.error().code, AnalysisError::Code::InvalidApk);
+    EXPECT_EQ(ctx.error().code, ErrorCode::InvalidApk);
 }
 
 TEST(FromApkTest, ZipWithoutDexIsInvalidApk)
 {
     auto ctx = AnalysisContext::from_apk("tests/data/nodex.apk");
     ASSERT_FALSE(ctx.has_value());
-    EXPECT_EQ(ctx.error().code, AnalysisError::Code::InvalidApk);
+    EXPECT_EQ(ctx.error().code, ErrorCode::InvalidApk);
     EXPECT_NE(ctx.error().message.find("no classes.dex"), std::string::npos);
 }
 
@@ -153,7 +153,7 @@ TEST(FromApkTest, ParallelLoadReportsFirstFailureInMultidexOrder)
     for (unsigned threads : {1u, 4u}) {
         auto ctx = AnalysisContext::from_apk_buffer(zip, "test.apk", {.threads = threads});
         ASSERT_FALSE(ctx.has_value());
-        EXPECT_EQ(ctx.error().code, AnalysisError::Code::InvalidDexFile) << threads;
+        EXPECT_EQ(ctx.error().code, ErrorCode::InvalidDex) << threads;
         EXPECT_EQ(ctx.error().message.rfind("test.apk: classes2.dex: ", 0), 0u)
             << threads << ": " << ctx.error().message;
     }
@@ -167,7 +167,7 @@ TEST(FromApkTest, ParallelLoadReportsDecompressionFailureAsInvalidApk)
     for (unsigned threads : {1u, 4u}) {
         auto ctx = AnalysisContext::from_apk_buffer(zip, "test.apk", {.threads = threads});
         ASSERT_FALSE(ctx.has_value());
-        EXPECT_EQ(ctx.error().code, AnalysisError::Code::InvalidApk) << threads;
+        EXPECT_EQ(ctx.error().code, ErrorCode::InvalidApk) << threads;
         EXPECT_EQ(ctx.error().message.rfind("test.apk: classes3.dex: ", 0), 0u)
             << threads << ": " << ctx.error().message;
     }

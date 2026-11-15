@@ -21,8 +21,8 @@ INPUT                  = docs/cpp-mainpage.md \
                          src/common/ids.hpp \
                          src/common/access_flags.hpp \
                          src/common/annotation_visibility.hpp \
+                         src/common/error.hpp \
                          src/analysis/analysis_context.hpp \
-                         src/analysis/analysis_error.hpp \
                          src/analysis/annotations.hpp \
                          src/analysis/call_graph.hpp \
                          src/analysis/cfg.hpp \

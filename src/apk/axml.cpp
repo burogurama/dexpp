@@ -31,12 +31,13 @@ constexpr uint32_t NO_ENTRY = 0xFFFFFFFF;
 
 } // namespace
 
-std::expected<XmlDocument, AxmlError> parse(std::span<const uint8_t> buf)
+std::expected<XmlDocument, Error> parse(std::span<const uint8_t> buf)
 {
     if (buf.size() < 8)
-        return std::unexpected(AxmlError{"buffer too small to be binary XML"});
+        return std::unexpected(Error{ErrorCode::InvalidXml, "buffer too small to be binary XML"});
     if (rd16(buf, 0) != RES_XML_TYPE)
-        return std::unexpected(AxmlError{"not a binary XML document (bad chunk type)"});
+        return std::unexpected(
+            Error{ErrorCode::InvalidXml, "not a binary XML document (bad chunk type)"});
 
     std::size_t end = std::min<std::size_t>(buf.size(), rd32(buf, 4));
     std::size_t pos = rd16(buf, 2); // file header size
@@ -58,7 +59,7 @@ std::expected<XmlDocument, AxmlError> parse(std::span<const uint8_t> buf)
         uint16_t header_size = rd16(buf, pos + 2);
         uint32_t chunk_size = rd32(buf, pos + 4);
         if (chunk_size < 8 || pos + chunk_size > end)
-            return std::unexpected(AxmlError{"malformed chunk size"});
+            return std::unexpected(Error{ErrorCode::InvalidXml, "malformed chunk size"});
         std::size_t next = pos + chunk_size;
         std::size_t ext = pos + header_size; // element payload after node header
         if (ctype >= RES_XML_FIRST_CHUNK_TYPE && ctype <= RES_XML_LAST_CHUNK_TYPE)
@@ -71,7 +72,8 @@ std::expected<XmlDocument, AxmlError> parse(std::span<const uint8_t> buf)
 
         case RES_XML_START_ELEMENT_TYPE: {
             if (ext + 16 > end)
-                return std::unexpected(AxmlError{"truncated start-element chunk"});
+                return std::unexpected(
+                    Error{ErrorCode::InvalidXml, "truncated start-element chunk"});
             XmlNode node;
             node.name = std::string(pool.get(rd32(buf, ext + 4)));
 
@@ -137,7 +139,7 @@ std::expected<XmlDocument, AxmlError> parse(std::span<const uint8_t> buf)
     }
 
     if (virtual_root.children.empty())
-        return std::unexpected(AxmlError{"document has no root element"});
+        return std::unexpected(Error{ErrorCode::InvalidXml, "document has no root element"});
 
     XmlDocument doc;
     doc.root = std::move(virtual_root.children.front());

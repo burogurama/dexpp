@@ -10,37 +10,10 @@
 #include <string_view>
 #include <vector>
 
+#include "common/error.hpp"
 #include "model/types.hpp"
 
 namespace dex::model {
-
-/** One problem with a model, and where it is. */
-struct Problem
-{
-    std::string where;   ///< e.g. "Lcom/a/B;->run()V, item 12"; empty for the whole file.
-    std::string message; ///< What is wrong.
-};
-
-/** Why read() or write() failed. */
-struct Error
-{
-    enum class Kind : uint8_t {
-        FileNotFound,  ///< read_file(): the path does not exist.
-        CannotRead,    ///< read_file(): the path exists but cannot be read (a directory, no
-                       ///< permission).
-        CannotWrite,   ///< write_file(): the file cannot be created or written (a missing
-                       ///< folder, no permission, a full disk).
-        Malformed,     ///< read(): the input is not a valid DEX file.
-        Unsupported,   ///< read(): a DEX feature the model does not support (DEX 041 containers).
-        Invalid,       ///< write(): the model breaks a rule of the format; see `problems`.
-        TooLarge,      ///< write(): a pool has more entries than the format can index.
-        VersionTooLow, ///< write(): the model uses a feature its version does not have.
-    };
-    Kind kind;
-    std::string message;
-    /** For Invalid: every problem validate() found. */
-    std::vector<Problem> problems;
-};
 
 struct ReadOptions
 {
@@ -59,6 +32,11 @@ struct ReadOptions
  *  the middle of an instruction, a malformed string — is an error.  Rules the
  *  model *can* represent (names, access flags, ...) are not checked here;
  *  validate() and write() check those.
+ *
+ *  Errors: ErrorCode::InvalidDex for input that is not a valid DEX file,
+ *  UnsupportedDex for a DEX 041 container or a big-endian file.  read_file()
+ *  also gives FileNotFound when the path does not exist and CannotRead when
+ *  it cannot be read (a directory, no permission).
  *
  *  What is not kept: hidden-API flags (boot class path DEX files only) and
  *  the link section are dropped; debug positions past the end of the code
@@ -81,7 +59,13 @@ struct WriteOptions
  *  supertypes come first, members and annotation elements sorted, labels
  *  renumbered in code order, switch cases that only fall through removed,
  *  overlapping try ranges flattened and neighbouring ones with the same
- *  handlers joined.  Writing that model again gives the same bytes. */
+ *  handlers joined.  Writing that model again gives the same bytes.
+ *
+ *  Errors: ErrorCode::InvalidModel when the model breaks rules of the format
+ *  (Error::problems lists every one), PoolOverflow when part of the file
+ *  would be bigger than the format can encode, VersionTooLow when the model
+ *  uses a feature its version does not have.  write_file() also gives
+ *  CannotWrite when the file cannot be created or written. */
 [[nodiscard]] std::expected<std::vector<uint8_t>, Error> write(const Dex &dex,
                                                                const WriteOptions &options = {});
 [[nodiscard]] std::expected<void, Error> write_file(const Dex &dex, const std::string &path,

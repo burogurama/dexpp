@@ -41,7 +41,7 @@ TEST(AnalysisContextTest, FromDexReturnsFileNotFoundForMissingFile)
 {
     auto ctx = AnalysisContext::from_dex("tests/data/nonexistent.dex");
     ASSERT_FALSE(ctx.has_value());
-    EXPECT_EQ(ctx.error().code, AnalysisError::Code::FileNotFound);
+    EXPECT_EQ(ctx.error().code, ErrorCode::FileNotFound);
 }
 
 TEST(AnalysisContextTest, ClassesYieldsCorrectCount)

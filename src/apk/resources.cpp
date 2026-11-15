@@ -86,10 +86,11 @@ bool is_default_config(std::span<const uint8_t> buf, std::size_t cfg_pos, std::s
 
 } // namespace
 
-std::expected<ResourceTable, ResourceError> ResourceTable::parse(std::span<const uint8_t> buf)
+std::expected<ResourceTable, Error> ResourceTable::parse(std::span<const uint8_t> buf)
 {
     if (buf.size() < 12 || rd16(buf, 0) != RES_TABLE_TYPE)
-        return std::unexpected(ResourceError{"not a resource table (bad chunk type)"});
+        return std::unexpected(
+            Error{ErrorCode::InvalidResources, "not a resource table (bad chunk type)"});
 
     std::size_t total = std::min<std::size_t>(buf.size(), rd32(buf, 4));
     ResourceTable table;
@@ -115,7 +116,8 @@ std::expected<ResourceTable, ResourceError> ResourceTable::parse(std::span<const
 
     table.value_pool_ = std::move(value_pool.strings);
     if (table.entries_.empty() && table.value_pool_.empty())
-        return std::unexpected(ResourceError{"resource table has no packages or strings"});
+        return std::unexpected(
+            Error{ErrorCode::InvalidResources, "resource table has no packages or strings"});
     return table;
 }
 

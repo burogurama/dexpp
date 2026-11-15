@@ -539,21 +539,42 @@ aliases.
 
 ### C++ API (breaking)
 
-- `AnalysisError::Code` lost four values that the library never produced:
-  `MalformedBytecode`, `UnresolvedReference`, `UnsupportedInstruction` and
-  `InvalidDescriptor`. The remaining values are `FileNotFound`, `CannotRead`,
-  `InvalidDexFile` and `InvalidApk`. Code that named one of the removed values
-  no longer compiles; it could never have received one.
+- One error type for the whole C++ library. `dex::AnalysisError`,
+  `dex::model::Error`, `dex::axml::AxmlError` and `dex::apk::ResourceError`
+  are replaced by `dex::Error` (in `common/error.hpp`), with three fields:
+  `code`, a `dex::ErrorCode`; `message`; and `problems`, which lists the
+  broken rules for an invalid model and is empty otherwise. It comes back from
+  every function that can fail: the analysis and APK loaders
+  (`AnalysisContext::from_*`, `apk::Apk::open`, `apk::Apk::analysis`), the
+  binary XML and resource table parsers (`axml::parse`,
+  `apk::ResourceTable::parse`) and the model (`model::read`, `read_file`,
+  `write`, `write_file`). So one function can load an APK and write a model
+  and return a single `std::expected`. The code names match the Python
+  exceptions and the C error codes. Before, the same failure had three
+  names, and the AXML and resource errors had no code at all.
+    - `AnalysisError::Code` becomes `ErrorCode`: `FileNotFound` and
+      `InvalidApk` keep their names, `InvalidDexFile` is now `InvalidDex`,
+      and `CannotRead` is new (a path that exists but cannot be read, such as
+      a directory). `MalformedBytecode`, `UnresolvedReference`,
+      `UnsupportedInstruction` and `InvalidDescriptor` are gone: the library
+      never produced them.
+    - `model::Error::kind` is now `code`, and the kinds are renamed:
+      `Malformed` is `InvalidDex`, `Unsupported` is `UnsupportedDex`,
+      `Invalid` is `InvalidModel` and `TooLarge` is `PoolOverflow`.
+      `VersionTooLow` keeps its name. `Io` is split into `FileNotFound`
+      (`read_file`: the path does not exist), `CannotRead` (`read_file`: the
+      path exists but cannot be read) and `CannotWrite` (`write_file`: the
+      file cannot be created or written).
+    - `axml::parse` now fails with the code `InvalidXml`, and
+      `apk::ResourceTable::parse` with `InvalidResources`.
+    - `model::Problem` is now `dex::Problem`, since `dex::Error` holds the
+      list. `model::validate()` returns `std::vector<dex::Problem>`.
+    - The header `analysis/analysis_error.hpp` is removed; `dex.hpp` includes
+      `common/error.hpp`.
 - `dex::build_cfg` is no longer public. It took a `raw::CodeItem`, a type of
   the internal parser layer, so it was the one public function that tied users
   to that layer. `Method::cfg()` is the way to get a control-flow graph. The
   public headers no longer include any `raw/` header.
-- `model::Error::Kind::Io` is replaced by three kinds, so a caller can tell the
-  cases apart without reading the message: `FileNotFound` (`read_file`: the
-  path does not exist), `CannotRead` (`read_file`: the path exists but cannot
-  be read, for example a directory) and `CannotWrite` (`write_file`: the file
-  cannot be created or written). These match the analysis side's
-  `AnalysisError::Code::FileNotFound` and `CannotRead`.
 - In the parser layer, `raw::ParseError::Code::NullPointer`, which
   `raw::parser::parse_file` used for a file it could not open, is replaced by
   `FileNotFound` and `CannotRead`.

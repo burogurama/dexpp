@@ -349,40 +349,34 @@ inline DexppComponentKind component_kind(dex::apk::Component::Kind k)
 
 // ===== errors ================================================================
 
-inline DexppErrorCode error_code(dex::AnalysisError::Code c)
+inline DexppErrorCode error_code(dex::ErrorCode c)
 {
     switch (c) {
-    case dex::AnalysisError::Code::FileNotFound:
+    case dex::ErrorCode::FileNotFound:
         return DEXPP_ERROR_FILE_NOT_FOUND;
-    case dex::AnalysisError::Code::CannotRead:
+    case dex::ErrorCode::CannotRead:
         return DEXPP_ERROR_CANNOT_READ;
-    case dex::AnalysisError::Code::InvalidDexFile:
-        return DEXPP_ERROR_INVALID_DEX;
-    case dex::AnalysisError::Code::InvalidApk:
-        return DEXPP_ERROR_INVALID_APK;
-    }
-    return DEXPP_ERROR_INTERNAL;
-}
-
-inline DexppErrorCode error_code(dex::model::Error::Kind k)
-{
-    switch (k) {
-    case dex::model::Error::Kind::FileNotFound:
-        return DEXPP_ERROR_FILE_NOT_FOUND;
-    case dex::model::Error::Kind::CannotRead:
-        return DEXPP_ERROR_CANNOT_READ;
-    case dex::model::Error::Kind::CannotWrite:
+    case dex::ErrorCode::CannotWrite:
         return DEXPP_ERROR_CANNOT_WRITE;
-    case dex::model::Error::Kind::Malformed:
+    case dex::ErrorCode::InvalidApk:
+        return DEXPP_ERROR_INVALID_APK;
+    case dex::ErrorCode::InvalidDex:
         return DEXPP_ERROR_INVALID_DEX;
-    case dex::model::Error::Kind::Unsupported:
+    case dex::ErrorCode::UnsupportedDex:
         return DEXPP_ERROR_UNSUPPORTED_DEX;
-    case dex::model::Error::Kind::Invalid:
+    case dex::ErrorCode::InvalidModel:
         return DEXPP_ERROR_INVALID_MODEL;
-    case dex::model::Error::Kind::TooLarge:
+    case dex::ErrorCode::PoolOverflow:
         return DEXPP_ERROR_POOL_OVERFLOW;
-    case dex::model::Error::Kind::VersionTooLow:
+    case dex::ErrorCode::VersionTooLow:
         return DEXPP_ERROR_VERSION_TOO_LOW;
+    case dex::ErrorCode::InvalidXml:
+    case dex::ErrorCode::InvalidResources:
+        // The shim never reports a failure of axml::parse or
+        // ResourceTable::parse: dexpp_apk_manifest gives 0 and
+        // dexpp_apk_has_resources gives 0 when they fail.  So neither code
+        // can reach C, and the API has no code for them.
+        return DEXPP_ERROR_INTERNAL;
     }
     return DEXPP_ERROR_INTERNAL;
 }
@@ -395,16 +389,11 @@ inline void set_error(DexppError **err, DexppErrorCode code, std::string message
     *err = new (std::nothrow) DexppError{code, std::move(message), {}};
 }
 
-inline void set_error(DexppError **err, const dex::AnalysisError &e)
-{
-    set_error(err, error_code(e.code), e.message);
-}
-
-inline void set_error(DexppError **err, const dex::model::Error &e)
+inline void set_error(DexppError **err, const dex::Error &e)
 {
     if (err == nullptr)
         return;
-    auto *error = new (std::nothrow) DexppError{error_code(e.kind), e.message, {}};
+    auto *error = new (std::nothrow) DexppError{error_code(e.code), e.message, {}};
     if (error != nullptr)
         for (const auto &p : e.problems)
             error->problems.emplace_back(p.where, p.message);

@@ -140,7 +140,7 @@ DexppPoolStats dexpp_model_pool_stats(const DexppModelDex *dex)
 
 DexppProblem *dexpp_model_validate(const DexppModelDex *dex, size_t *count)
 {
-    std::vector<dex::model::Problem> problems = dex::model::validate(dex->dex);
+    std::vector<dex::Problem> problems = dex::model::validate(dex->dex);
     *count = problems.size();
     if (problems.empty()) {
         return nullptr;

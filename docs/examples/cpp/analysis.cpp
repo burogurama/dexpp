@@ -14,7 +14,7 @@ int main(int argc, char **argv)
     const char *path = argc > 1 ? argv[1] : "tests/data/sample.apk";
 
     // --8<-- [start:open]
-    std::expected<dex::apk::Apk, dex::AnalysisError> apk = dex::apk::Apk::open(path);
+    std::expected<dex::apk::Apk, dex::Error> apk = dex::apk::Apk::open(path);
     if (!apk) {
         std::cerr << apk.error().message << '\n';
         return 1;
@@ -30,7 +30,7 @@ int main(int argc, char **argv)
     // --8<-- [end:open]
 
     // --8<-- [start:code]
-    std::expected<dex::AnalysisContext, dex::AnalysisError> ctx = apk->analysis();
+    std::expected<dex::AnalysisContext, dex::Error> ctx = apk->analysis();
     if (!ctx) {
         std::cerr << ctx.error().message << '\n';
         return 1;

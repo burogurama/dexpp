@@ -62,7 +62,7 @@ class Reader
     {
         std::string text =
             where_.empty() ? std::string(message) : std::format("{}: {}", where_, message);
-        throw ReadFailure{Error{Error::Kind::Malformed, std::move(text), {}}};
+        throw ReadFailure{Error{ErrorCode::InvalidDex, std::move(text), {}}};
     }
 
     template <class T> T check(std::expected<T, raw::ParseError> r) const
@@ -929,21 +929,21 @@ std::expected<Dex, Error> read(std::span<const uint8_t> bytes, const ReadOptions
 {
     std::optional<uint32_t> version = version_of(bytes);
     if (!version)
-        return std::unexpected(Error{Error::Kind::Malformed, "not a DEX file (bad magic)", {}});
+        return std::unexpected(Error{ErrorCode::InvalidDex, "not a DEX file (bad magic)", {}});
     if (*version >= 41)
         return std::unexpected(
-            Error{Error::Kind::Unsupported,
+            Error{ErrorCode::UnsupportedDex,
                   std::format("DEX version {:03} (containers) is not supported", *version),
                   {}});
     if (*version != 35 && *version != 37 && *version != 38 && *version != 39 && *version != 40)
         return std::unexpected(
-            Error{Error::Kind::Malformed, std::format("unknown DEX version {:03}", *version), {}});
+            Error{ErrorCode::InvalidDex, std::format("unknown DEX version {:03}", *version), {}});
     auto file = raw::parser::parse_buffer(bytes, {.decode_strings = false});
     if (!file)
-        return std::unexpected(Error{Error::Kind::Malformed, file.error().message, {}});
+        return std::unexpected(Error{ErrorCode::InvalidDex, file.error().message, {}});
     if (file->header().endian_tag != raw::ENDIAN_CONSTANT)
         return std::unexpected(
-            Error{Error::Kind::Unsupported, "big-endian DEX files are not supported", {}});
+            Error{ErrorCode::UnsupportedDex, "big-endian DEX files are not supported", {}});
     try {
         return Reader(bytes, *file, options).run(*version);
     }
@@ -955,12 +955,8 @@ std::expected<Dex, Error> read(std::span<const uint8_t> bytes, const ReadOptions
 std::expected<Dex, Error> read_file(const std::string &path, const ReadOptions &options)
 {
     auto bytes = raw::read_whole_file(path);
-    if (!bytes) {
-        const Error::Kind kind = bytes.error().kind == raw::FileError::Kind::NotFound
-                                     ? Error::Kind::FileNotFound
-                                     : Error::Kind::CannotRead;
-        return std::unexpected(Error{kind, bytes.error().message, {}});
-    }
+    if (!bytes)
+        return std::unexpected(std::move(bytes.error()));
     return read(*bytes, options);
 }
 

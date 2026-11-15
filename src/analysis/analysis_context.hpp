@@ -9,10 +9,10 @@
 #include <string_view>
 #include <vector>
 
-#include "analysis_error.hpp"
 #include "call_graph.hpp"
 #include "class.hpp"
 #include "class_hierarchy.hpp"
+#include "common/error.hpp"
 #include "xrefs.hpp"
 
 namespace dex {
@@ -48,29 +48,35 @@ class AnalysisContext
 {
   public:
     /** Parse a single DEX file from disk.
-     *  @return AnalysisContext on success, or FileNotFound / InvalidDexFile on error. */
-    static std::expected<AnalysisContext, AnalysisError> from_dex(const std::string &path);
+     *  @return AnalysisContext on success.  On failure, an Error with code
+     *          FileNotFound if the path does not exist, CannotRead if it
+     *          cannot be read (a directory, no permission), or InvalidDex if
+     *          the file is not a DEX file it can parse. */
+    static std::expected<AnalysisContext, Error> from_dex(const std::string &path);
 
     /** Parse multiple DEX files (e.g. multi-dex splits) in one context.
-     *  Returns on the first failure. */
-    static std::expected<AnalysisContext, AnalysisError>
+     *  Returns on the first failure, with the same error codes as from_dex(). */
+    static std::expected<AnalysisContext, Error>
     from_dex_files(const std::vector<std::string> &paths);
 
     /** Open an APK (ZIP) and load every classes*.dex inside it, in multidex
      *  order (classes.dex, classes2.dex, classes3.dex, ...).  If a name
      *  appears more than once in the archive, only its first entry is loaded.
-     *  @return AnalysisContext on success; FileNotFound if the path cannot be
-     *          opened, InvalidApk if it is not a ZIP or contains no
-     *          classes.dex, InvalidDexFile if an embedded DEX is malformed.
-     *          With several bad entries, the error is the one for the first
-     *          in multidex order, whatever @p options.threads is. */
-    static std::expected<AnalysisContext, AnalysisError>
-    from_apk(const std::string &path, const ApkLoadOptions &options = {});
+     *  @return AnalysisContext on success.  On failure, an Error with code
+     *          FileNotFound if the path does not exist, CannotRead if it
+     *          cannot be read, InvalidApk if it is not a ZIP, an entry is
+     *          damaged or there is no classes.dex, and InvalidDex if an
+     *          embedded DEX is malformed.  With several bad entries, the error
+     *          is the one for the first in multidex order, whatever
+     *          @p options.threads is. */
+    static std::expected<AnalysisContext, Error> from_apk(const std::string &path,
+                                                          const ApkLoadOptions &options = {});
 
     /** Build a context from an in-memory APK (ZIP) image.  Used by the apk
      *  layer (dex::apk::Apk) so an already-loaded archive is not re-read from
-     *  disk.  @p label only prefixes error messages. */
-    static std::expected<AnalysisContext, AnalysisError>
+     *  disk.  @p label only prefixes error messages.  The error codes are
+     *  those of from_apk(), without the file ones. */
+    static std::expected<AnalysisContext, Error>
     from_apk_buffer(std::span<const uint8_t> apk_bytes, const std::string &label = "<apk>",
                     const ApkLoadOptions &options = {});
 

@@ -116,6 +116,19 @@ TEST(ResourcesTest, NoResourcesWhenAbsent)
     EXPECT_FALSE(apk->resolve_string(0x7f010000).has_value());
 }
 
+TEST(ResourcesTest, NotAResourceTableIsInvalidResources)
+{
+    // The manifest is binary XML, not a resource table.
+    auto apk = Apk::open("tests/data/sample.apk");
+    ASSERT_TRUE(apk.has_value());
+    std::optional<std::vector<uint8_t>> manifest = apk->read("AndroidManifest.xml");
+    ASSERT_TRUE(manifest.has_value());
+    auto table = ResourceTable::parse(*manifest);
+    ASSERT_FALSE(table.has_value());
+    EXPECT_EQ(table.error().code, ErrorCode::InvalidResources);
+    EXPECT_TRUE(table.error().problems.empty());
+}
+
 // ===== booleans and integers, against tests/data/refs.apk =====
 //
 // refs.apk's resources (sources: RefsValues.xml for res/values and

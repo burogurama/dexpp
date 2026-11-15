@@ -108,31 +108,18 @@ AnalysisContext::AnalysisContext(std::shared_ptr<AnalysisContextImpl> impl) : im
 {
 }
 
-static std::expected<std::vector<uint8_t>, AnalysisError> read_file(const std::string &path)
-{
-    auto bytes = raw::read_whole_file(path);
-    if (!bytes) {
-        const AnalysisError::Code code = bytes.error().kind == raw::FileError::Kind::NotFound
-                                             ? AnalysisError::Code::FileNotFound
-                                             : AnalysisError::Code::CannotRead;
-        return std::unexpected(AnalysisError{code, bytes.error().message});
-    }
-    return std::move(*bytes);
-}
-
 // The analysis layer never eagerly decodes the string pool; string_of()
 // decodes and caches each string on first use.
 constexpr raw::parser::ParseOptions kLazyParse{.decode_strings = false};
 
 // Parse a DEX out of an already-owned buffer, moving it into a new slot on
 // success.  @p context prefixes any parse-error message (path / entry name).
-static std::expected<void, AnalysisError> add_slot(AnalysisContextImpl &impl, ManagedBuffer buffer,
-                                                   const std::string &context)
+static std::expected<void, Error> add_slot(AnalysisContextImpl &impl, ManagedBuffer buffer,
+                                           const std::string &context)
 {
     auto dex_result = raw::parser::parse_buffer(buffer.bytes(), kLazyParse);
     if (!dex_result.has_value()) {
-        return std::unexpected(AnalysisError{AnalysisError::Code::InvalidDexFile,
-                                             context + dex_result.error().message});
+        return std::unexpected(Error{ErrorCode::InvalidDex, context + dex_result.error().message});
     }
     impl.dex_files_vec.push_back(std::move(dex_result.value()));
     impl.slots.push_back(std::make_unique<AnalysisContextImpl::DexSlot>(std::move(buffer)));
@@ -140,13 +127,12 @@ static std::expected<void, AnalysisError> add_slot(AnalysisContextImpl &impl, Ma
 }
 
 // Load a standalone .dex from disk, preferring an mmap over a heap copy.
-static std::expected<void, AnalysisError> load_dex_file(AnalysisContextImpl &impl,
-                                                        const std::string &path)
+static std::expected<void, Error> load_dex_file(AnalysisContextImpl &impl, const std::string &path)
 {
     if (auto mapped = ManagedBuffer::map_file(path); mapped.has_value())
         return add_slot(impl, std::move(*mapped), path + ": ");
 
-    auto buffer = read_file(path);
+    auto buffer = raw::read_whole_file(path);
     if (!buffer.has_value())
         return std::unexpected(buffer.error());
     return add_slot(impl, ManagedBuffer(std::move(*buffer)), path + ": ");
@@ -168,7 +154,7 @@ static std::optional<uint32_t> multidex_index(std::string_view name)
     return n;
 }
 
-std::expected<AnalysisContext, AnalysisError> AnalysisContext::from_dex(const std::string &path)
+std::expected<AnalysisContext, Error> AnalysisContext::from_dex(const std::string &path)
 {
     auto impl = std::make_shared<AnalysisContextImpl>();
     if (auto r = load_dex_file(*impl, path); !r.has_value())
@@ -176,7 +162,7 @@ std::expected<AnalysisContext, AnalysisError> AnalysisContext::from_dex(const st
     return AnalysisContext(std::move(impl));
 }
 
-std::expected<AnalysisContext, AnalysisError>
+std::expected<AnalysisContext, Error>
 AnalysisContext::from_dex_files(const std::vector<std::string> &paths)
 {
     auto impl = std::make_shared<AnalysisContextImpl>();
@@ -196,21 +182,19 @@ struct LoadedDex
 
 // Decompress and parse one DEX entry.  Touches nothing but its arguments, so
 // it is safe to run on several threads at once.
-static std::expected<LoadedDex, AnalysisError> load_apk_entry(std::span<const uint8_t> apk_bytes,
-                                                              const raw::zip::Entry &entry,
-                                                              const std::string &label)
+static std::expected<LoadedDex, Error> load_apk_entry(std::span<const uint8_t> apk_bytes,
+                                                      const raw::zip::Entry &entry,
+                                                      const std::string &label)
 {
     auto buf = raw::zip::read_entry(apk_bytes, entry);
     if (!buf.has_value()) {
         return std::unexpected(
-            AnalysisError{AnalysisError::Code::InvalidApk,
-                          label + ": " + entry.name + ": " + buf.error().message});
+            Error{ErrorCode::InvalidApk, label + ": " + entry.name + ": " + buf.error().message});
     }
     auto dex = raw::parser::parse_buffer(*buf, kLazyParse);
     if (!dex.has_value()) {
         return std::unexpected(
-            AnalysisError{AnalysisError::Code::InvalidDexFile,
-                          label + ": " + entry.name + ": " + dex.error().message});
+            Error{ErrorCode::InvalidDex, label + ": " + entry.name + ": " + dex.error().message});
     }
     return LoadedDex{std::move(*buf), std::move(*dex)};
 }
@@ -242,7 +226,7 @@ static std::size_t apk_load_threads(unsigned requested,
 struct EntryResult
 {
     /// Unset when the entry was skipped because an earlier entry failed.
-    std::optional<std::expected<LoadedDex, AnalysisError>> dex;
+    std::optional<std::expected<LoadedDex, Error>> dex;
     std::exception_ptr exception;
 };
 
@@ -309,15 +293,15 @@ load_apk_entries_parallel(std::span<const uint8_t> apk_bytes,
     return results;
 }
 
-std::expected<AnalysisContext, AnalysisError>
-AnalysisContext::from_apk(const std::string &path, const ApkLoadOptions &options)
+std::expected<AnalysisContext, Error> AnalysisContext::from_apk(const std::string &path,
+                                                                const ApkLoadOptions &options)
 {
     // The APK is mapped (or read) once; from_apk_buffer decompresses each
     // classes*.dex out of it, then the archive mapping is released here.
     auto apk = ManagedBuffer::map_file(path);
     std::optional<std::vector<uint8_t>> apk_heap;
     if (!apk.has_value()) {
-        auto buf = read_file(path);
+        auto buf = raw::read_whole_file(path);
         if (!buf.has_value())
             return std::unexpected(buf.error());
         apk_heap = std::move(*buf);
@@ -326,14 +310,14 @@ AnalysisContext::from_apk(const std::string &path, const ApkLoadOptions &options
     return from_apk_buffer(apk_bytes, path, options);
 }
 
-std::expected<AnalysisContext, AnalysisError>
+std::expected<AnalysisContext, Error>
 AnalysisContext::from_apk_buffer(std::span<const uint8_t> apk_bytes, const std::string &label,
                                  const ApkLoadOptions &options)
 {
     auto all_entries = raw::zip::entries(apk_bytes);
     if (!all_entries.has_value()) {
-        return std::unexpected(AnalysisError{AnalysisError::Code::InvalidApk,
-                                             label + ": " + all_entries.error().message});
+        return std::unexpected(
+            Error{ErrorCode::InvalidApk, label + ": " + all_entries.error().message});
     }
 
     // A name repeated in the central directory loads only its first entry,
@@ -346,8 +330,8 @@ AnalysisContext::from_apk_buffer(std::span<const uint8_t> apk_bytes, const std::
             dex_entries.emplace_back(*idx, &entry);
     }
     if (dex_entries.empty()) {
-        return std::unexpected(AnalysisError{AnalysisError::Code::InvalidApk,
-                                             label + ": APK contains no classes.dex"});
+        return std::unexpected(
+            Error{ErrorCode::InvalidApk, label + ": APK contains no classes.dex"});
     }
     // Ties on the index ("classes2.dex" vs "classes02.dex") are broken by name.
     std::sort(dex_entries.begin(), dex_entries.end(), [](const auto &a, const auto &b) {

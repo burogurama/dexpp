@@ -18,8 +18,8 @@ struct ApkImpl
     mutable std::optional<Manifest> manifest_cache;
 
     mutable std::once_flag analysis_flag;
-    mutable std::expected<AnalysisContext, AnalysisError> analysis_cache =
-        std::unexpected(AnalysisError{AnalysisError::Code::InvalidApk, "uninitialized"});
+    mutable std::expected<AnalysisContext, Error> analysis_cache =
+        std::unexpected(Error{ErrorCode::InvalidApk, "uninitialized"});
 
     mutable std::once_flag resources_flag;
     mutable std::optional<ResourceTable> resources_cache;
@@ -36,15 +36,11 @@ using detail::ApkImpl;
 
 Apk::Apk(std::shared_ptr<ApkImpl> impl) : impl_(std::move(impl)) {}
 
-std::expected<Apk, AnalysisError> Apk::open(const std::string &path)
+std::expected<Apk, Error> Apk::open(const std::string &path)
 {
     auto bytes = raw::read_whole_file(path);
-    if (!bytes) {
-        const AnalysisError::Code code = bytes.error().kind == raw::FileError::Kind::NotFound
-                                             ? AnalysisError::Code::FileNotFound
-                                             : AnalysisError::Code::CannotRead;
-        return std::unexpected(AnalysisError{code, bytes.error().message});
-    }
+    if (!bytes)
+        return std::unexpected(std::move(bytes.error()));
 
     auto impl = std::make_shared<ApkImpl>();
     impl->bytes = std::move(*bytes);
@@ -53,8 +49,7 @@ std::expected<Apk, AnalysisError> Apk::open(const std::string &path)
     // rather than at first entry access.
     auto names = raw::zip::entry_names(impl->span());
     if (!names.has_value()) {
-        return std::unexpected(
-            AnalysisError{AnalysisError::Code::InvalidApk, path + ": " + names.error().message});
+        return std::unexpected(Error{ErrorCode::InvalidApk, path + ": " + names.error().message});
     }
 
     return Apk(std::move(impl));
@@ -90,7 +85,7 @@ const Manifest *Apk::manifest() const
     return impl_->manifest_cache.has_value() ? &*impl_->manifest_cache : nullptr;
 }
 
-std::expected<AnalysisContext, AnalysisError> Apk::analysis() const
+std::expected<AnalysisContext, Error> Apk::analysis() const
 {
     std::call_once(impl_->analysis_flag, [this] {
         impl_->analysis_cache = AnalysisContext::from_apk_buffer(impl_->span());

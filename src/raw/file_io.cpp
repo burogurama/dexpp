@@ -16,21 +16,21 @@ struct FileCloser
     void operator()(std::FILE *file) const noexcept { std::fclose(file); }
 };
 
-std::unexpected<FileError> cannot_write(const std::string &path, const char *reason)
+std::unexpected<Error> cannot_write(const std::string &path, const char *reason)
 {
     return std::unexpected(
-        FileError{FileError::Kind::CannotWrite, "Cannot write file: " + path + ": " + reason});
+        Error{ErrorCode::CannotWrite, "Cannot write file: " + path + ": " + reason});
 }
 
-std::unexpected<FileError> cannot_read(const std::string &path, const char *reason)
+std::unexpected<Error> cannot_read(const std::string &path, const char *reason)
 {
     return std::unexpected(
-        FileError{FileError::Kind::CannotRead, "Cannot read file: " + path + ": " + reason});
+        Error{ErrorCode::CannotRead, "Cannot read file: " + path + ": " + reason});
 }
 
 } // namespace
 
-std::expected<std::vector<uint8_t>, FileError> read_whole_file(const std::string &path)
+std::expected<std::vector<uint8_t>, Error> read_whole_file(const std::string &path)
 {
     // A directory can be opened for reading on Linux, and only the first read
     // fails.  Say what is wrong up front.
@@ -44,8 +44,7 @@ std::expected<std::vector<uint8_t>, FileError> read_whole_file(const std::string
     std::unique_ptr<std::FILE, FileCloser> file(std::fopen(path.c_str(), "rb"));
     if (file == nullptr) {
         if (errno == ENOENT || errno == ENOTDIR)
-            return std::unexpected(
-                FileError{FileError::Kind::NotFound, "Cannot open file: " + path});
+            return std::unexpected(Error{ErrorCode::FileNotFound, "Cannot open file: " + path});
         return cannot_read(path, std::strerror(errno));
     }
 
@@ -71,8 +70,7 @@ std::expected<std::vector<uint8_t>, FileError> read_whole_file(const std::string
     return bytes;
 }
 
-std::expected<void, FileError> write_whole_file(const std::string &path,
-                                                std::span<const uint8_t> bytes)
+std::expected<void, Error> write_whole_file(const std::string &path, std::span<const uint8_t> bytes)
 {
     errno = 0;
     std::FILE *file = std::fopen(path.c_str(), "wb");

@@ -12,10 +12,10 @@
 #include <vector>
 
 #include "analysis/analysis_context.hpp"
-#include "analysis/analysis_error.hpp"
 #include "apk/manifest.hpp"
 #include "apk/resources.hpp"
 #include "apk/signing.hpp"
+#include "common/error.hpp"
 
 namespace dex::apk {
 
@@ -30,9 +30,11 @@ class Apk
 {
   public:
     /** Open an APK (ZIP) from disk.
-     *  @return FileNotFound if the path cannot be opened, InvalidApk if it is
-     *          not a ZIP. */
-    static std::expected<Apk, AnalysisError> open(const std::string &path);
+     *  @return The Apk on success.  On failure, an Error with code
+     *          FileNotFound if the path does not exist, CannotRead if it
+     *          cannot be read (a directory, no permission), or InvalidApk if
+     *          it is not a ZIP archive. */
+    static std::expected<Apk, Error> open(const std::string &path);
 
     /** Names of every entry in the archive, in central-directory order. */
     std::vector<std::string> entries() const;
@@ -61,9 +63,10 @@ class Apk
     const SigningInfo &signing() const;
 
     /** A code-analysis context over every classes*.dex in the APK, in multidex
-     *  order.  Built once on first call and cached; InvalidApk if the APK has
-     *  no DEX, InvalidDexFile if one is malformed. */
-    std::expected<AnalysisContext, AnalysisError> analysis() const;
+     *  order.  Built once on first call and cached.  On failure, an Error
+     *  with code InvalidApk if the APK has no classes.dex or an entry is
+     *  damaged, or InvalidDex if a DEX file is malformed. */
+    std::expected<AnalysisContext, Error> analysis() const;
 
   private:
     explicit Apk(std::shared_ptr<detail::ApkImpl> impl);

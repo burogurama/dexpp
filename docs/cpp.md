@@ -75,8 +75,38 @@ version as a string.
 --8<-- "cpp/analysis.cpp:open"
 ```
 
-Functions that can fail return `std::expected`. The error has a `code` and a
-`message`. The library does not throw for bad input.
+Functions that can fail return `std::expected<T, dex::Error>`. The library
+does not throw for bad input.
+
+`dex::Error` is the same type in every part of the library: the analysis and
+APK loaders, the binary XML and resource table parsers, and the model. So one
+function can open an APK, read a DEX file into a model and write it, and
+return a single `std::expected`. The error has three fields:
+
+- `code`, a `dex::ErrorCode`. It says what went wrong (see the table below).
+- `message`, which says the same in words, with the path or the archive entry
+  when there is one.
+- `problems`, the list of broken rules when `code` is `InvalidModel`. It is
+  empty for every other code.
+
+| `dex::ErrorCode` | When |
+| ---------------- | ---- |
+| `FileNotFound` | The path does not exist. |
+| `CannotRead` | The path exists but cannot be read, for example a directory. |
+| `CannotWrite` | The file cannot be created or written. |
+| `InvalidApk` | Not a ZIP archive, a damaged entry, or an APK with no `classes.dex`. |
+| `InvalidDex` | A DEX file that cannot be parsed. |
+| `UnsupportedDex` | A DEX file the model does not read, such as a DEX 041 container. |
+| `InvalidModel` | The model breaks rules of the format; `problems` lists them. |
+| `PoolOverflow` | Part of the file to write would be bigger than the format allows. |
+| `VersionTooLow` | The model uses a feature its DEX version does not have. |
+| `InvalidXml` | `dex::axml::parse` got something that is not binary XML. |
+| `InvalidResources` | `dex::apk::ResourceTable::parse` got something that is not a resource table. |
+
+The names match the Python exceptions (`InvalidDex` is
+`dexpp.InvalidDexError`) and the C error codes (`DEXPP_ERROR_INVALID_DEX`).
+A lookup that finds nothing is not an error: it returns `std::nullopt`, a null
+pointer or an empty list.
 
 The examples write every type in full, so you can see what each call returns.
 In your own code `auto` works as well.

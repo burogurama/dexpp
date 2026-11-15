@@ -51,8 +51,21 @@ TEST(ApkTest, OpenAndEntries)
 
 TEST(ApkTest, OpenErrors)
 {
-    EXPECT_EQ(Apk::open("tests/data/missing.apk").error().code, AnalysisError::Code::FileNotFound);
-    EXPECT_EQ(Apk::open("tests/data/classes.dex").error().code, AnalysisError::Code::InvalidApk);
+    EXPECT_EQ(Apk::open("tests/data/missing.apk").error().code, ErrorCode::FileNotFound);
+    EXPECT_EQ(Apk::open("tests/data/classes.dex").error().code, ErrorCode::InvalidApk);
+}
+
+TEST(AxmlTest, NotBinaryXmlIsInvalidXml)
+{
+    // A DEX file is not a binary XML document: its first chunk type is wrong.
+    auto doc = axml::parse(load_buf("tests/data/classes.dex"));
+    ASSERT_FALSE(doc.has_value());
+    EXPECT_EQ(doc.error().code, ErrorCode::InvalidXml);
+    EXPECT_TRUE(doc.error().problems.empty());
+
+    auto tiny = axml::parse(std::vector<uint8_t>{0x03, 0x00});
+    ASSERT_FALSE(tiny.has_value());
+    EXPECT_EQ(tiny.error().code, ErrorCode::InvalidXml);
 }
 
 TEST(ApkTest, AnalysisBridge)

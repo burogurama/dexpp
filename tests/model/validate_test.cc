@@ -41,7 +41,7 @@ Code &code(Dex &dex) { return *dex.classes[0].methods[0].code; }
 /** True if validate() reports a problem whose message contains @p text. */
 bool reports(const Dex &dex, std::string_view text)
 {
-    for (const Problem &p : validate(dex))
+    for (const dex::Problem &p : validate(dex))
         if (p.message.find(text) != std::string::npos)
             return true;
     return false;
@@ -172,7 +172,7 @@ TEST(ModelValidate, InterfacesFollowArtFromVersion37)
     EXPECT_EQ(required_version(dex), 37u);
     auto low = write(dex);
     ASSERT_FALSE(low.has_value());
-    EXPECT_EQ(low.error().kind, Error::Kind::VersionTooLow);
+    EXPECT_EQ(low.error().code, dex::ErrorCode::VersionTooLow);
     dex.version = 37;
     EXPECT_TRUE(validate(dex).empty());
     // A static interface method is fine in 035 files (ART loads them).
@@ -274,7 +274,7 @@ TEST(ModelWriteErrors, InvalidModelListsEveryProblem)
     cls(dex).interfaces = {"bad"};
     auto out = write(dex);
     ASSERT_FALSE(out.has_value());
-    EXPECT_EQ(out.error().kind, Error::Kind::Invalid);
+    EXPECT_EQ(out.error().code, dex::ErrorCode::InvalidModel);
     EXPECT_GE(out.error().problems.size(), 2u);
 }
 
@@ -298,7 +298,7 @@ TEST(ModelWriteErrors, TooManyTypes)
     c.items.push_back(Insn{ReturnVoid{}});
     auto out = write(dex);
     ASSERT_FALSE(out.has_value());
-    EXPECT_EQ(out.error().kind, Error::Kind::TooLarge);
+    EXPECT_EQ(out.error().code, dex::ErrorCode::PoolOverflow);
     EXPECT_GT(pool_stats(dex).types, 65535u);
 }
 
@@ -319,7 +319,7 @@ TEST(ModelRead, RejectsWhatItCannotWriteBack)
     patched[insns_at] = 0x3e;
     auto bad = read(patched);
     ASSERT_FALSE(bad.has_value());
-    EXPECT_EQ(bad.error().kind, Error::Kind::Malformed);
+    EXPECT_EQ(bad.error().code, dex::ErrorCode::InvalidDex);
     EXPECT_NE(bad.error().message.find("LT;->m()V"), std::string::npos) << bad.error().message;
 }
 
@@ -328,7 +328,7 @@ TEST(ModelRead, RejectsOtherVersionsAndBadInput)
     std::vector<uint8_t> junk = {'n', 'o', 't', ' ', 'd', 'e', 'x', 0};
     auto r = read(junk);
     ASSERT_FALSE(r.has_value());
-    EXPECT_EQ(r.error().kind, Error::Kind::Malformed);
+    EXPECT_EQ(r.error().code, dex::ErrorCode::InvalidDex);
 
     auto bytes = write(valid());
     ASSERT_TRUE(bytes.has_value());
@@ -338,9 +338,9 @@ TEST(ModelRead, RejectsOtherVersionsAndBadInput)
     v41[6] = '1';
     r = read(v41);
     ASSERT_FALSE(r.has_value());
-    EXPECT_EQ(r.error().kind, Error::Kind::Unsupported);
+    EXPECT_EQ(r.error().code, dex::ErrorCode::UnsupportedDex);
 
     auto file = read_file("does/not/exist.dex");
     ASSERT_FALSE(file.has_value());
-    EXPECT_EQ(file.error().kind, Error::Kind::FileNotFound);
+    EXPECT_EQ(file.error().code, dex::ErrorCode::FileNotFound);
 }

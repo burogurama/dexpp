@@ -71,7 +71,7 @@ TEST(ReadWholeFile, MissingPathIsNotFound)
 {
     auto bytes = dex::raw::read_whole_file(kMissing);
     ASSERT_FALSE(bytes.has_value());
-    EXPECT_EQ(bytes.error().kind, dex::raw::FileError::Kind::NotFound);
+    EXPECT_EQ(bytes.error().code, dex::ErrorCode::FileNotFound);
     EXPECT_NE(bytes.error().message.find(kMissing), std::string::npos);
 }
 
@@ -79,7 +79,7 @@ TEST(ReadWholeFile, DirectoryIsCannotRead)
 {
     auto bytes = dex::raw::read_whole_file(kDirectory);
     ASSERT_FALSE(bytes.has_value());
-    EXPECT_EQ(bytes.error().kind, dex::raw::FileError::Kind::CannotRead);
+    EXPECT_EQ(bytes.error().code, dex::ErrorCode::CannotRead);
     EXPECT_NE(bytes.error().message.find("directory"), std::string::npos);
 }
 
@@ -99,44 +99,44 @@ TEST(LoadersGivenADirectory, AnalysisContextReturnsCannotRead)
 {
     auto from_dex = dex::AnalysisContext::from_dex(kDirectory);
     ASSERT_FALSE(from_dex.has_value());
-    EXPECT_EQ(from_dex.error().code, dex::AnalysisError::Code::CannotRead);
+    EXPECT_EQ(from_dex.error().code, dex::ErrorCode::CannotRead);
 
     auto from_files = dex::AnalysisContext::from_dex_files({"tests/data/classes.dex", kDirectory});
     ASSERT_FALSE(from_files.has_value());
-    EXPECT_EQ(from_files.error().code, dex::AnalysisError::Code::CannotRead);
+    EXPECT_EQ(from_files.error().code, dex::ErrorCode::CannotRead);
 
     auto from_apk = dex::AnalysisContext::from_apk(kDirectory);
     ASSERT_FALSE(from_apk.has_value());
-    EXPECT_EQ(from_apk.error().code, dex::AnalysisError::Code::CannotRead);
+    EXPECT_EQ(from_apk.error().code, dex::ErrorCode::CannotRead);
 }
 
 TEST(LoadersGivenADirectory, ApkOpenReturnsCannotRead)
 {
     auto apk = dex::apk::Apk::open(kDirectory);
     ASSERT_FALSE(apk.has_value());
-    EXPECT_EQ(apk.error().code, dex::AnalysisError::Code::CannotRead);
+    EXPECT_EQ(apk.error().code, dex::ErrorCode::CannotRead);
 }
 
 TEST(LoadersGivenADirectory, ModelReadFileReturnsCannotReadWithoutThrowing)
 {
     auto model = dex::model::read_file(kDirectory);
     ASSERT_FALSE(model.has_value());
-    EXPECT_EQ(model.error().kind, dex::model::Error::Kind::CannotRead);
+    EXPECT_EQ(model.error().code, dex::ErrorCode::CannotRead);
 }
 
 TEST(LoadersGivenAMissingPath, StillReportFileNotFound)
 {
     auto ctx = dex::AnalysisContext::from_dex(kMissing);
     ASSERT_FALSE(ctx.has_value());
-    EXPECT_EQ(ctx.error().code, dex::AnalysisError::Code::FileNotFound);
+    EXPECT_EQ(ctx.error().code, dex::ErrorCode::FileNotFound);
 
     auto apk = dex::apk::Apk::open(kMissing);
     ASSERT_FALSE(apk.has_value());
-    EXPECT_EQ(apk.error().code, dex::AnalysisError::Code::FileNotFound);
+    EXPECT_EQ(apk.error().code, dex::ErrorCode::FileNotFound);
 
     auto model = dex::model::read_file(kMissing);
     ASSERT_FALSE(model.has_value());
-    EXPECT_EQ(model.error().kind, dex::model::Error::Kind::FileNotFound);
+    EXPECT_EQ(model.error().code, dex::ErrorCode::FileNotFound);
 }
 
 // write_whole_file() and model::write_file().  A failed write must be reported,
@@ -159,7 +159,7 @@ TEST(WriteWholeFile, ADirectoryOrAMissingFolderIsCannotWrite)
     for (const std::string &path : {kDirectory, std::string("tests/data/no/such/folder/out.bin")}) {
         auto written = dex::raw::write_whole_file(path, content);
         ASSERT_FALSE(written.has_value()) << path;
-        EXPECT_EQ(written.error().kind, dex::raw::FileError::Kind::CannotWrite) << path;
+        EXPECT_EQ(written.error().code, dex::ErrorCode::CannotWrite) << path;
         EXPECT_NE(written.error().message.find(path), std::string::npos);
     }
 }
@@ -173,7 +173,7 @@ TEST(WriteWholeFile, AFullDiskIsReported)
         GTEST_SKIP() << "/dev/full is not available here";
     auto written = dex::raw::write_whole_file("/dev/full", std::vector<uint8_t>(100, 0x2a));
     ASSERT_FALSE(written.has_value());
-    EXPECT_EQ(written.error().kind, dex::raw::FileError::Kind::CannotWrite);
+    EXPECT_EQ(written.error().code, dex::ErrorCode::CannotWrite);
 }
 
 TEST(ModelWriteFile, ReportsCannotWrite)
@@ -186,6 +186,6 @@ TEST(ModelWriteFile, ReportsCannotWrite)
     for (const std::string &path : paths) {
         auto written = dex::model::write_file(*model, path);
         ASSERT_FALSE(written.has_value()) << path;
-        EXPECT_EQ(written.error().kind, dex::model::Error::Kind::CannotWrite) << path;
+        EXPECT_EQ(written.error().code, dex::ErrorCode::CannotWrite) << path;
     }
 }
