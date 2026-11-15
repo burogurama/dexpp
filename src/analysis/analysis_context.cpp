@@ -18,6 +18,7 @@
 #endif
 
 #include "analysis_context_impl.hpp"
+#include "joining_threads.hpp"
 #include "raw/file_io.hpp"
 #include "raw/parser.hpp"
 #include "raw/zip.hpp"
@@ -292,11 +293,11 @@ load_apk_entries_parallel(std::span<const uint8_t> apk_bytes,
     };
 
     {
-        std::vector<std::jthread> pool;
+        detail::JoiningThreads pool;
         try {
             pool.reserve(threads - 1);
             for (std::size_t t = 1; t < threads; ++t)
-                pool.emplace_back(work);
+                pool.start(work);
         }
         catch (const std::exception &) {
             // Could not start every thread (resource limits): the threads

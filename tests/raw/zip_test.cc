@@ -10,6 +10,7 @@
 #include <thread>
 #include <vector>
 
+#include "analysis/joining_threads.hpp"
 #include "raw/zip.hpp"
 #include "test_utils.hpp"
 #include "zip_builder.hpp"
@@ -214,9 +215,9 @@ TEST(ZipReadEntry, ConcurrentReadsAgreeWithSerial)
     constexpr int kThreads = 8;
     std::vector<std::vector<uint8_t>> outs(kThreads);
     {
-        std::vector<std::jthread> threads;
+        dex::detail::JoiningThreads threads;
         for (int t = 0; t < kThreads; ++t) {
-            threads.emplace_back([&, t] {
+            threads.start([&, t] {
                 auto out = zip::read_entry(zip, (*entries)[0]);
                 if (out.has_value())
                     outs[t] = std::move(*out);

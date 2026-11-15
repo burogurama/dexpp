@@ -18,6 +18,7 @@
 #include <thread>
 #include <vector>
 
+#include "analysis/joining_threads.hpp"
 #include "dex.hpp"
 
 using namespace dex;
@@ -79,15 +80,15 @@ TEST(ThreadedStress, ConcurrentLazyInitAndReads)
         std::vector<Observed> seen(kThreads);
         {
             std::latch start(kThreads);
-            std::vector<std::jthread> threads;
+            dex::detail::JoiningThreads threads;
             threads.reserve(kThreads);
             for (int t = 0; t < kThreads; ++t) {
-                threads.emplace_back([&, t] {
+                threads.start([&, t] {
                     start.arrive_and_wait(); // release all threads together
                     seen[t] = walk(*ctx);    // each writes its own slot
                 });
             }
-        } // jthreads join here
+        } // the threads join here
 
         for (int t = 1; t < kThreads; ++t)
             EXPECT_EQ(seen[t], seen[0]) << "thread " << t << " disagrees on iteration " << iter
@@ -121,10 +122,10 @@ TEST(ThreadedStress, SameMethodCachesAreStableUnderContention)
     std::vector<const Cfg *> cfg_ptr(kThreads);
     {
         std::latch start(kThreads);
-        std::vector<std::jthread> threads;
+        dex::detail::JoiningThreads threads;
         threads.reserve(kThreads);
         for (int t = 0; t < kThreads; ++t) {
-            threads.emplace_back([&, t] {
+            threads.start([&, t] {
                 start.arrive_and_wait();
                 insn_ptr[t] = target->instructions().data();
                 cfg_ptr[t] = &target->cfg();

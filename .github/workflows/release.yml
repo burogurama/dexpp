@@ -16,17 +16,23 @@ on:
 
 jobs:
   wheels:
-    name: wheels
-    # Linux x86_64, manylinux and musllinux.  Which Python versions are built,
-    # and the test run on each wheel, are set in pyproject.toml under
-    # [tool.cibuildwheel].
-    runs-on: ubuntu-24.04
+    name: wheels (${{ matrix.os }})
+    # One runner per platform: Linux x86_64 (manylinux and musllinux), macOS
+    # arm64, macOS x86_64 and Windows x64.  Each macOS runner builds wheels for
+    # its own architecture, so every wheel is tested on the machine it targets.
+    # Which Python versions are built, and the test run on each wheel, are set
+    # in pyproject.toml under [tool.cibuildwheel].
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15, macos-15-intel, windows-2025]
     steps:
       - uses: actions/checkout@v7
       - uses: pypa/cibuildwheel@v4.2.1
       - uses: actions/upload-artifact@v7
         with:
-          name: wheels
+          name: wheels-${{ matrix.os }}
           path: wheelhouse/*.whl
 
   sdist:

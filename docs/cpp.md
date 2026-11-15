@@ -10,10 +10,16 @@ organized. Every class and function is listed in the
 
 ## Requirements
 
-- A C++23 compiler: GCC 13 or newer, or Clang 19 or newer. Older Clang
-  versions cannot compile `<expected>` from libstdc++.
+- A C++23 compiler:
+    - Linux: GCC 13 or newer, or Clang 19 or newer. Older Clang versions
+      cannot compile `<expected>` from libstdc++.
+    - macOS: Apple Clang from Xcode 16 or newer, building for macOS 13.3 or
+      newer (`std::format` needs it).
+    - Windows: MSVC from Visual Studio 2022 or newer.
 - CMake 3.18 or newer.
-- Linux. Other platforms are not tested.
+
+CI builds and tests the library on Linux x86_64 (GCC and Clang), macOS
+(Apple Silicon and Intel) and Windows x64 (MSVC).
 
 ## Add it to a CMake project
 
@@ -163,6 +169,9 @@ cmake -S . -B build
 cmake --build build -j
 ctest --test-dir build --output-on-failure   # run from the repository root
 ```
+
+With Visual Studio, which builds several configurations, name one:
+`cmake --build build -j --config Debug` and `ctest --test-dir build -C Debug`.
 
 The examples on this page are in `docs/examples/cpp/`. The test run builds and
 runs them.

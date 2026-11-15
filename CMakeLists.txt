@@ -25,20 +25,41 @@ endif()
 
 # Sanitizer instrumentation is applied directory-wide (before any target is
 # declared) so the library and the fetched test frameworks are built
-# consistently.
+# consistently.  The flags are GCC / Clang ones.
 if(DEXPP_SANITIZE)
+    if(MSVC)
+        message(FATAL_ERROR "DEXPP_SANITIZE needs GCC or Clang; it is not supported with MSVC.")
+    endif()
     add_compile_options(-fsanitize=${DEXPP_SANITIZE}
                         -fno-sanitize-recover=all -fno-omit-frame-pointer -g)
     add_link_options(-fsanitize=${DEXPP_SANITIZE})
+endif()
+
+if(MSVC)
+    # For every target, fetched ones included:
+    #   /utf-8          the sources are UTF-8 (comments hold non-ASCII text)
+    #   /permissive-    standard C++ rules, like GCC and Clang
+    #   /Zc:__cplusplus __cplusplus reports the real language version
+    #   /bigobj         the std::variant-heavy files exceed the default section limit
+    add_compile_options("$<$<COMPILE_LANGUAGE:CXX>:/utf-8;/permissive-;/Zc:__cplusplus;/bigobj>")
 endif()
 
 # Warnings are turned on for dex++'s own sources only.  The fetched libdeflate,
 # googletest and pybind11 sources are not ours to fix, so they keep their own
 # flags.  -Werror is opt-in (CI sets it): a compiler newer than the ones CI
 # uses may warn about something new, and that must not break a user's build.
-set(DEXPP_WARNING_FLAGS -Wall -Wextra)
-if(DEXPP_WERROR)
-    list(APPEND DEXPP_WARNING_FLAGS -Werror)
+if(MSVC)
+    # /external:*: headers included with <...> (googletest, pybind11, the
+    # standard library) are not ours, so their warnings are not reported.
+    set(DEXPP_WARNING_FLAGS /W4 /external:anglebrackets /external:W0)
+    if(DEXPP_WERROR)
+        list(APPEND DEXPP_WARNING_FLAGS /WX)
+    endif()
+else()
+    set(DEXPP_WARNING_FLAGS -Wall -Wextra)
+    if(DEXPP_WERROR)
+        list(APPEND DEXPP_WARNING_FLAGS -Werror)
+    endif()
 endif()
 
 include(FetchContent)
@@ -61,7 +82,6 @@ set(LIBDEFLATE_SOURCES
     ${libdeflate_SOURCE_DIR}/lib/x86/cpu_features.c
     ${libdeflate_SOURCE_DIR}/lib/arm/cpu_features.c
 )
-set_source_files_properties(${LIBDEFLATE_SOURCES} PROPERTIES COMPILE_OPTIONS "-std=c11")
 
 set(DEXPP_CORE_SOURCES
     src/common/ids.cpp
@@ -101,6 +121,13 @@ set(DEXPP_CORE_SOURCES
 )
 # Per source file, not per target: dexpp_core also holds the libdeflate sources.
 set_source_files_properties(${DEXPP_CORE_SOURCES} PROPERTIES COMPILE_OPTIONS "${DEXPP_WARNING_FLAGS}")
+# file_io.cpp uses fopen and strerror, which are standard C.  MSVC calls them
+# unsafe and asks for its own fopen_s / strerror_s instead; this file keeps the
+# portable functions.
+if(MSVC)
+    set_source_files_properties(src/raw/file_io.cpp PROPERTIES COMPILE_DEFINITIONS
+                                _CRT_SECURE_NO_WARNINGS)
+endif()
 
 add_library(dexpp_core STATIC
     ${DEXPP_CORE_SOURCES}
@@ -109,6 +136,8 @@ add_library(dexpp_core STATIC
 
 target_include_directories(dexpp_core PUBLIC src)
 target_include_directories(dexpp_core PRIVATE ${libdeflate_SOURCE_DIR})
+# libdeflate is C11 (its C files are the only C sources in the project).
+set_target_properties(dexpp_core PROPERTIES C_STANDARD 11 C_EXTENSIONS OFF)
 # Required for linking into the Python shared module.
 set_target_properties(dexpp_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
@@ -127,6 +156,9 @@ if(DEXPP_BUILD_TESTS)
             googletest
             URL https://github.com/google/googletest/archive/52eb8108c5bdec04579160ae17225d66034bd723.zip
     )
+    # With MSVC, build googletest against the same C runtime (/MD) as the rest
+    # of the project; its default (/MT) does not link with it.
+    set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
     FetchContent_MakeAvailable(googletest)
 
     add_executable(main_test
@@ -186,6 +218,10 @@ if(DEXPP_BUILD_PYTHON)
     pybind11_add_module(dexpp bindings/python/dexpp_module.cpp bindings/python/dexpp_model_py.cpp)
     target_link_libraries(dexpp PRIVATE dexpp_core)
     target_compile_options(dexpp PRIVATE ${DEXPP_WARNING_FLAGS})
+    # Put the module at the top of the build directory with every generator.
+    # Multi-config generators (Visual Studio, Xcode) would otherwise use
+    # build/Release/, and `PYTHONPATH=build` would not find it.
+    set_target_properties(dexpp PROPERTIES LIBRARY_OUTPUT_DIRECTORY "$<1:${CMAKE_BINARY_DIR}>")
 
     if(SKBUILD)
         install(TARGETS dexpp DESTINATION .)

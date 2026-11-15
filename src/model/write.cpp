@@ -1175,13 +1175,13 @@ CodeOut CodeEncoder::encode(const MethodDef &method, const Code &code, bool debu
             s.form = Form::Goto8;
             s.target = g->target;
         }
-        else if (const If *x = std::get_if<If>(insn)) {
+        else if (const If *branch = std::get_if<If>(insn)) {
             s.form = Form::IfNear;
-            s.target = x->target;
+            s.target = branch->target;
         }
-        else if (const IfZero *x = std::get_if<IfZero>(insn)) {
+        else if (const IfZero *zero_branch = std::get_if<IfZero>(insn)) {
             s.form = Form::IfNear;
-            s.target = x->target;
+            s.target = zero_branch->target;
         }
         else if (std::holds_alternative<Switch>(*insn) ||
                  std::holds_alternative<FillArrayData>(*insn)) {
@@ -1190,12 +1190,12 @@ CodeOut CodeEncoder::encode(const MethodDef &method, const Code &code, bool debu
         }
         s.units = s.form == Form::Fixed ? (s.payload ? 3 : raw::opcode_info(s.fields.opcode).units)
                                         : form_units(s.form);
-        if (const Invoke *x = std::get_if<Invoke>(insn))
-            outs = std::max<uint32_t>(outs, static_cast<uint32_t>(x->args.size()));
-        else if (const InvokePolymorphic *x = std::get_if<InvokePolymorphic>(insn))
-            outs = std::max<uint32_t>(outs, static_cast<uint32_t>(x->args.size()));
-        else if (const InvokeCustom *x = std::get_if<InvokeCustom>(insn))
-            outs = std::max<uint32_t>(outs, static_cast<uint32_t>(x->args.size()));
+        if (const Invoke *call = std::get_if<Invoke>(insn))
+            outs = std::max<uint32_t>(outs, static_cast<uint32_t>(call->args.size()));
+        else if (const InvokePolymorphic *poly = std::get_if<InvokePolymorphic>(insn))
+            outs = std::max<uint32_t>(outs, static_cast<uint32_t>(poly->args.size()));
+        else if (const InvokeCustom *custom = std::get_if<InvokeCustom>(insn))
+            outs = std::max<uint32_t>(outs, static_cast<uint32_t>(custom->args.size()));
         slot_of[i] = static_cast<uint32_t>(slots.size());
         slots.push_back(s);
     }
@@ -1887,20 +1887,21 @@ std::vector<uint8_t> Writer::run()
             return out;
         };
         ca.class_set = ids(co.cls->annotations);
-        std::vector<std::pair<const FieldDef *, uint32_t>> fields = co.static_fields;
-        fields.insert(fields.end(), co.instance_fields.begin(), co.instance_fields.end());
-        std::sort(fields.begin(), fields.end(),
+        std::vector<std::pair<const FieldDef *, uint32_t>> class_fields = co.static_fields;
+        class_fields.insert(class_fields.end(), co.instance_fields.begin(),
+                            co.instance_fields.end());
+        std::sort(class_fields.begin(), class_fields.end(),
                   [](const auto &x, const auto &y) { return x.second < y.second; });
-        for (const auto &[f, idx] : fields)
+        for (const auto &[f, idx] : class_fields)
             if (!f->annotations.empty())
                 ca.fields.emplace_back(idx, ids(f->annotations));
-        std::vector<const MethodOut *> methods;
+        std::vector<const MethodOut *> class_methods;
         for (const auto *list : {&co.direct, &co.virtual_})
             for (const MethodOut &mo : *list)
-                methods.push_back(&mo);
-        std::sort(methods.begin(), methods.end(),
+                class_methods.push_back(&mo);
+        std::sort(class_methods.begin(), class_methods.end(),
                   [](const MethodOut *x, const MethodOut *y) { return x->index < y->index; });
-        for (const MethodOut *mo : methods) {
+        for (const MethodOut *mo : class_methods) {
             const MethodDef &m = *mo->method;
             if (!m.annotations.empty())
                 ca.methods.emplace_back(mo->index, ids(m.annotations));

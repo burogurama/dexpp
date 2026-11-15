@@ -6,7 +6,8 @@
 //	cmake -S . -B build && cmake --build build --target dexpp_c -j
 //
 // which produces build/libdexpp_c.a and build/libdexpp_core.a that the cgo
-// LDFLAGS below link against.
+// LDFLAGS below link against, with the platform's C++ runtime: libstdc++ on
+// Linux, libc++ on macOS. Windows is not supported by this package.
 //
 // Handles (Context, Apk, Class, Method) own a C-side object freed by a
 // finalizer on garbage collection; call Close to release eagerly. Strings are
@@ -15,7 +16,9 @@ package dexpp
 
 /*
 #cgo CFLAGS: -I${SRCDIR}/../../c
-#cgo LDFLAGS: ${SRCDIR}/../../../build/libdexpp_c.a ${SRCDIR}/../../../build/libdexpp_core.a -lstdc++
+#cgo LDFLAGS: ${SRCDIR}/../../../build/libdexpp_c.a ${SRCDIR}/../../../build/libdexpp_core.a
+#cgo linux LDFLAGS: -lstdc++
+#cgo darwin LDFLAGS: -lc++
 #include <stdlib.h>
 #include "dexpp.h"
 */

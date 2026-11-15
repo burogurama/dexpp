@@ -22,8 +22,11 @@ go test ./...                 # run the binding tests
 go run ./example app.apk      # demo: package, components, class/method summary
 ```
 
-The C++ runtime is linked statically into the resulting Go binary (`-lstdc++`),
-so it has no dexpp shared-library dependency at runtime — only libc. The DEFLATE
+The dexpp libraries are linked statically into the resulting Go binary, so it
+has no dexpp shared-library dependency at runtime. It uses the system's C++
+runtime: libstdc++ on Linux (`-lstdc++`), libc++ on macOS (`-lc++`). The
+package supports Linux and macOS; it does not support Windows (cgo there needs
+a MinGW toolchain, while the library is built with MSVC). The DEFLATE
 decoder ([libdeflate](https://github.com/ebiggers/libdeflate), MIT) is compiled
 into `libdexpp_core.a`.
 

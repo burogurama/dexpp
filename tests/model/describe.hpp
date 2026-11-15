@@ -102,11 +102,11 @@ inline std::vector<std::string> describe(const dex::AnalysisContext &ctx)
             for (const auto &p : m.parameters())
                 sig += p.descriptor();
             sig += ")" + std::string(m.return_type().descriptor());
-            std::string head =
+            std::string method_head =
                 std::format("{} method {} {:x}", cls, sig, static_cast<uint32_t>(m.access_flags()));
             for (const auto &a : m.annotations())
-                head += " " + render(a);
-            out.push_back(head);
+                method_head += " " + render(a);
+            out.push_back(method_head);
             for (const auto &call : m.calls())
                 out.push_back(std::format("{}.{} calls {}->{}{} {}", cls, sig,
                                           call.target.class_descriptor, call.target.name,

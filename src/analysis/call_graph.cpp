@@ -13,6 +13,7 @@
 #include "access_flags.hpp"
 #include "analysis_context_impl.hpp"
 #include "invoke_sites.hpp"
+#include "joining_threads.hpp"
 #include "method.hpp"
 #include "raw/parser.hpp"
 
@@ -178,10 +179,10 @@ void for_each_parallel(const std::vector<std::size_t> &order, std::size_t thread
         }
     };
     {
-        std::vector<std::jthread> pool;
+        detail::JoiningThreads pool;
         try {
             for (std::size_t t = 1; t < threads; ++t)
-                pool.emplace_back(work);
+                pool.start(work);
         }
         catch (const std::exception &) {
             // Could not start every thread (resource limits): the threads

@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
 
 # Cancel superseded runs on the same ref.
 concurrency:
@@ -50,6 +51,33 @@ jobs:
         run: cmake --build build -j
       - name: Test
         run: ctest --test-dir build --output-on-failure
+
+  build-test-other:
+    name: build & test (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Apple Clang from the runner's default Xcode (16.4): its libc++ has
+          # <expected>, <format> and std::jthread.
+          - name: macOS arm64
+            os: macos-15
+          - name: macOS x86_64
+            os: macos-15-intel
+          # MSVC from the runner's Visual Studio.  The Visual Studio generator
+          # builds several configurations; Debug is built and tested, like the
+          # unoptimized Linux builds, with MSVC's checked iterators on.
+          - name: Windows x64 MSVC
+            os: windows-2025
+    steps:
+      - uses: actions/checkout@v7
+      - name: Configure
+        run: cmake -S . -B build -DDEXPP_WERROR=ON
+      - name: Build
+        run: cmake --build build -j --config Debug
+      - name: Test
+        run: ctest --test-dir build -C Debug --output-on-failure
 
   sanitizers:
     name: ASan + UBSan
@@ -110,49 +138,68 @@ jobs:
           TSAN_OPTIONS: halt_on_error=1:second_deadlock_stack=1
 
   python:
-    name: python bindings + wheel
-    runs-on: ubuntu-24.04
-    env:
-      CC: gcc-13
-      CXX: g++-13
+    name: python bindings + wheel (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15, windows-2025]
+    defaults:
+      run:
+        # The same commands on every system (Git Bash on Windows).
+        shell: bash
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
         with:
           python-version: "3.14"
       - name: Install toolchain
-        run: sudo apt-get update && sudo apt-get install -y g++-13
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update && sudo apt-get install -y g++-13
+          echo "CC=gcc-13" >> "$GITHUB_ENV"
+          echo "CXX=g++-13" >> "$GITHUB_ENV"
       - name: Build extension in place
-        run: cmake -S . -B build -DDEXPP_BUILD_PYTHON=ON -DDEXPP_WERROR=ON && cmake --build build -j
+        run: |
+          cmake -S . -B build -DDEXPP_BUILD_PYTHON=ON -DDEXPP_WERROR=ON \
+            -DPYTHON_EXECUTABLE="$(python -c 'import sys; print(sys.executable)')"
+          cmake --build build -j --config Release
       - name: Run binding tests
-        run: PYTHONPATH=build python3 bindings/python/test_dexpp.py
+        run: PYTHONPATH=build python bindings/python/test_dexpp.py
       # The examples the documentation shows, and the output it shows for them.
       - name: Run documentation examples
-        run: PYTHONPATH=build python3 docs/examples/check.py
+        run: PYTHONPATH=build python docs/examples/check.py
       # The examples write the type of every variable.  This checks those
       # types against the stubs, so an example cannot state a wrong type.
       - name: Type-check documentation examples
         run: |
-          pip install mypy==2.4.1
-          MYPYPATH=bindings/python mypy --strict docs/examples/*.py
+          python -m pip install mypy==2.4.1
+          MYPYPATH=bindings/python python -m mypy --strict docs/examples/*.py
       - name: Wheel install smoke test
         run: |
-          pip install .
-          python3 -c "import dexpp; print('import ok:', dexpp.__name__)"
+          python -m pip install .
+          cd "$RUNNER_TEMP" && python -c "import dexpp; print('import ok:', dexpp.__name__)"
 
   go:
-    name: go bindings
-    runs-on: ubuntu-24.04
-    env:
-      CC: gcc-13
-      CXX: g++-13
+    # Linux and macOS.  On Windows, cgo needs a MinGW toolchain; the Go package
+    # does not support Windows.
+    name: go bindings (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15]
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
         with:
           go-version: "1.22"
       - name: Install toolchain
-        run: sudo apt-get update && sudo apt-get install -y g++-13
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update && sudo apt-get install -y g++-13
+          echo "CC=gcc-13" >> "$GITHUB_ENV"
+          echo "CXX=g++-13" >> "$GITHUB_ENV"
       - name: Build C shim
         run: cmake -S . -B build && cmake --build build --target dexpp_c -j
       - name: Run Go tests

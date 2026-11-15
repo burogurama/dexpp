@@ -20,7 +20,7 @@ constexpr std::size_t EOCD_MAX_SCAN = 65535 + EOCD_MIN_SIZE;
 
 uint16_t rd16(std::span<const uint8_t> buf, std::size_t pos)
 {
-    return static_cast<uint16_t>(buf[pos]) | (static_cast<uint16_t>(buf[pos + 1]) << 8);
+    return static_cast<uint16_t>(buf[pos] | (buf[pos + 1] << 8));
 }
 
 uint32_t rd32(std::span<const uint8_t> buf, std::size_t pos)

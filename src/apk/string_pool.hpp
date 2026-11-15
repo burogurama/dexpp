@@ -17,7 +17,7 @@ constexpr uint32_t kNoEntry = 0xFFFFFFFF;
 
 inline uint16_t rd16(std::span<const uint8_t> buf, std::size_t pos)
 {
-    return static_cast<uint16_t>(buf[pos]) | (static_cast<uint16_t>(buf[pos + 1]) << 8);
+    return static_cast<uint16_t>(buf[pos] | (buf[pos + 1] << 8));
 }
 
 inline uint32_t rd32(std::span<const uint8_t> buf, std::size_t pos)

@@ -31,11 +31,14 @@ cmake --build build --target dexpp_c -j
 
 This gives two static libraries: `build/libdexpp_c.a` (the C layer) and
 `build/libdexpp_core.a` (the C++ library). A C program links both, plus the
-C++ runtime:
+C++ runtime: `-lstdc++` on Linux, `-lc++` on macOS.
 
 ```bash
 cc tool.c -Ibindings/c build/libdexpp_c.a build/libdexpp_core.a -lstdc++ -lm -o tool
 ```
+
+With Visual Studio the libraries are `dexpp_c.lib` and `dexpp_core.lib`, in
+the folder of the configuration you built (for example `build/Release`).
 
 The headers are `bindings/c/dexpp.h` for analysis and
 `bindings/c/dexpp_model.h` for the editable model. Their functions are listed
@@ -86,8 +89,12 @@ The rules are the same for every function:
 
 ## Go
 
-The Go package is `github.com/burogurama/dexpp/bindings/go/dexpp`. It links
-the two static libraries from the `build/` folder of the checkout, so:
+The Go package is `github.com/burogurama/dexpp/bindings/go/dexpp`. It works on
+Linux and macOS. It does not support Windows: cgo there needs a MinGW
+toolchain, while the library is built with MSVC.
+
+It links the two static libraries from the `build/` folder of the checkout,
+so:
 
 1. build the C library first, as above;
 2. keep the build folder named `build`;
@@ -100,8 +107,9 @@ go test ./...
 go run ./example ../../tests/data/sample.apk
 ```
 
-The C++ runtime is linked statically. A Go program built with the package
-needs only libc at runtime.
+The dexpp libraries are linked statically, so a Go program built with the
+package needs no dexpp library at runtime. It uses the system's C++ runtime:
+libstdc++ on Linux, libc++ on macOS.
 
 ### Analysis
 

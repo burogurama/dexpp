@@ -57,3 +57,21 @@ DEXPP_BUILD_TESTS = "OFF"
 [tool.cibuildwheel]
 build = "cp314-*"
 test-command = "cd {project} && python bindings/python/test_dexpp.py"
+
+# macOS: one wheel per architecture, built and tested on a runner of that
+# architecture (release.yml uses an arm64 and an x86_64 runner), so each wheel
+# is tested where it will run.  The library needs macOS 13.3 or newer:
+# std::format uses the floating-point std::to_chars that macOS added in 13.3.
+# The target is 14.0, not 13.3, because a wheel tag only carries the major
+# version for macOS 11 and later: a 13.3 build would be tagged macosx_13_0 and
+# would install, then fail to load, on macOS 13.0 to 13.2.
+[tool.cibuildwheel.macos]
+archs = ["native"]
+environment = { MACOSX_DEPLOYMENT_TARGET = "14.0" }
+
+# Windows: 64-bit x86 only.  The tests run in cmd.exe, where `cd` needs `/d`
+# to also change the drive (the project and the test folder are on different
+# drives on the runner).
+[tool.cibuildwheel.windows]
+archs = ["AMD64"]
+test-command = "cd /d {project} && python bindings/python/test_dexpp.py"

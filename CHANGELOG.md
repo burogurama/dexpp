@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+### Platforms
+
+- dex++ now builds and is tested on macOS (Apple Silicon and Intel, with Apple
+  Clang) and on Windows x64 (with MSVC), next to Linux. CI runs the C++ tests
+  and the Python tests on all three, and the Go tests on Linux and macOS.
+- Releases now publish CPython 3.14 wheels for macOS 14 or newer (one for
+  arm64, one for x86_64) and for Windows x64, next to the Linux ones.
+- The Go package links libc++ on macOS. It does not support Windows.
+- The Python module is now placed directly in the build folder with every
+  CMake generator, so `PYTHONPATH=build` works with Visual Studio too.
+
 ### Documentation
 
 - dex++ now has a documentation site, <https://burogurama.github.io/dexpp/>:

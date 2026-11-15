@@ -37,12 +37,14 @@ pip install dexpp
 ```
 
 PyPI has prebuilt wheels for CPython 3.14 on Linux x86_64 (glibc 2.28+ and
-musl). The same wheels are attached to each
+musl), macOS 14 or newer (Apple Silicon and Intel) and Windows x64. The same
+wheels are attached to each
 [GitHub release](https://github.com/burogurama/dexpp/releases).
 
-On other platforms and Python versions, pip builds dexpp from the source
-distribution. That needs a C++23 compiler (GCC ≥ 13 or Clang ≥ 19) and CMake
-≥ 3.18. `pip install .` builds a checkout the same way.
+On other platforms, pip builds dexpp from the source distribution. That needs
+a C++23 compiler (GCC ≥ 13, Clang ≥ 19, Apple Clang from Xcode 16 or MSVC from
+Visual Studio 2022) and CMake ≥ 3.18. `pip install .` builds a checkout the
+same way.
 
 The package ships type stubs, so editors and `mypy`/`pyright` get full
 completion.
@@ -105,7 +107,10 @@ writing, `validate()` and `rename_types()`, and `src/model/types.hpp` for the
 model itself.
 - **Go**: see [bindings/go/README.md](https://github.com/burogurama/dexpp/blob/main/bindings/go/README.md). The cgo package
   links the C shim from this repository's `build/` directory, so it works from
-  a checkout, not through `go get`.
+  a checkout, not through `go get`. It supports Linux and macOS, not Windows.
+
+The library, its tests and the Python module are built and tested on Linux,
+macOS (Apple Silicon and Intel) and Windows x64.
 
 ## Layout
 

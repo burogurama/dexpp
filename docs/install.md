@@ -8,14 +8,22 @@ dexpp needs **Python 3.14 or newer**.
 pip install dexpp
 ```
 
-PyPI has prebuilt wheels for CPython 3.14 on Linux x86_64, for both glibc
-(2.28 or newer) and musl. The same wheels are attached to each
+PyPI has prebuilt wheels for CPython 3.14 on:
+
+| System | Wheels |
+| ------ | ------ |
+| Linux x86_64 | glibc 2.28 or newer, and musl |
+| macOS 14 or newer | Apple Silicon (arm64) and Intel (x86_64), one wheel each |
+| Windows | x64 |
+
+The same wheels are attached to each
 [GitHub release](https://github.com/burogurama/dexpp/releases).
 
 On any other platform, pip builds dexpp from the source distribution. That
 needs:
 
-- a C++23 compiler: GCC 13 or newer, or Clang 19 or newer;
+- a C++23 compiler: GCC 13 or newer, Clang 19 or newer, Apple Clang from
+  Xcode 16 or newer, or MSVC from Visual Studio 2022 or newer;
 - CMake 3.18 or newer.
 
 The build downloads two dependencies by itself (pybind11 and libdeflate), so it
@@ -41,9 +49,13 @@ To work on the library itself, build the module in the tree instead and point
 
 ```bash
 cmake -S . -B build -DDEXPP_BUILD_PYTHON=ON
-cmake --build build -j
+cmake --build build -j --config Release
 PYTHONPATH=build python3 bindings/python/test_dexpp.py
 ```
+
+The module lands in `build/` with every CMake generator, including Visual
+Studio. On Windows, use `python` instead of `python3`, and set `PYTHONPATH` in
+the way your shell does it.
 
 Run the tests from the repository root. They open their fixture files by
 relative path.

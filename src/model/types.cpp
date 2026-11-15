@@ -112,17 +112,17 @@ bool operator==(const RegList &a, const RegList &b) noexcept
 
 // ===== lookups =====
 
-FieldDef *ClassDef::find_field(std::string_view name, std::string_view type)
+FieldDef *ClassDef::find_field(std::string_view name, std::string_view field_type)
 {
     for (FieldDef &f : fields)
-        if (f.name == name && f.type == type)
+        if (f.name == name && f.type == field_type)
             return &f;
     return nullptr;
 }
 
-const FieldDef *ClassDef::find_field(std::string_view name, std::string_view type) const
+const FieldDef *ClassDef::find_field(std::string_view name, std::string_view field_type) const
 {
-    return const_cast<ClassDef *>(this)->find_field(name, type);
+    return const_cast<ClassDef *>(this)->find_field(name, field_type);
 }
 
 MethodDef *ClassDef::find_method(std::string_view name, std::string_view proto)

@@ -113,7 +113,9 @@ std::string operands_of(const Instruction &insn)
             else if constexpr (std::is_same_v<T, BinaryLitInstruction>) {
                 return std::format("v{}, v{}, #{}", i.dest, i.src, i.literal);
             }
-            return "";
+            else {
+                return std::string{};
+            }
         },
         insn);
 }
@@ -262,7 +264,9 @@ bool is_terminator(const Instruction &insn)
                           std::is_same_v<T, ThrowInstruction>) {
                 return true;
             }
-            return false;
+            else {
+                return false;
+            }
         },
         insn);
 }
