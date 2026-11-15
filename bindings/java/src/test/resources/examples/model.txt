@@ -1,0 +1,6 @@
+wrote LShape;
+wrote LAbstractShape;
+wrote LCircle;
+wrote LRectangle;
+renamed: true
+written: true

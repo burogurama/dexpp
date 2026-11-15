@@ -1,0 +1,9 @@
+LMarker; RUNTIME
+  level = the number 3
+  name = the string "cls"
+  tags = an array of 2 values
+BIG starts at IntValue[value=1234567890123]
+FLAG starts at BooleanValue[value=true]
+GREETING starts at StringValue[value=hello]
+MAGIC starts at IntValue[value=42]
+PI starts at FloatValue[value=3.25]

@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  The Java binding of dex++. It calls the C API (bindings/c) through the
+  Foreign Function & Memory API, so it needs Java 22 or newer, and the shared
+  C library (the CMake target dexpp_c_shared) built from the same checkout.
+  bindings/java/README.md says how to build both.
+
+  The tests load the library from ../../build. Pass -Ddexpp.library.path=...
+  to use another folder or file.
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>io.github.burogurama</groupId>
+    <artifactId>dexpp</artifactId>
+    <!-- The same version as src/version.hpp; a test checks it. -->
+    <version>0.2.0</version>
+    <packaging>jar</packaging>
+
+    <name>dex++ for Java</name>
+    <description>Static analysis of Android APK and DEX files, and DEX editing: the Java binding of dex++.</description>
+    <url>https://github.com/burogurama/dexpp</url>
+    <licenses>
+        <license>
+            <name>Apache-2.0</name>
+            <url>https://www.apache.org/licenses/LICENSE-2.0</url>
+        </license>
+    </licenses>
+
+    <properties>
+        <maven.compiler.release>22</maven.compiler.release>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+        <!-- Where the tests find the shared C library: a folder or a file. -->
+        <dexpp.library.path>${project.basedir}/../../build</dexpp.library.path>
+    </properties>
+
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>org.junit</groupId>
+                <artifactId>junit-bom</artifactId>
+                <version>5.14.4</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
+    <dependencies>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.14.1</version>
+                <configuration>
+                    <compilerArgs>
+                        <!-- Every warning is an error, except the notes about
+                             restricted FFM methods, which this package calls
+                             on purpose. Doclint checks the Javadoc of the
+                             public API. -->
+                        <arg>-Xlint:all,-restricted</arg>
+                        <arg>-Xdoclint:all/protected</arg>
+                        <arg>-Werror</arg>
+                    </compilerArgs>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>3.5.6</version>
+                <configuration>
+                    <argLine>--enable-native-access=ALL-UNNAMED</argLine>
+                    <systemPropertyVariables>
+                        <dexpp.library.path>${dexpp.library.path}</dexpp.library.path>
+                        <dexpp.pom.version>${project.version}</dexpp.pom.version>
+                    </systemPropertyVariables>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jar-plugin</artifactId>
+                <version>3.4.2</version>
+                <configuration>
+                    <archive>
+                        <manifestEntries>
+                            <Automatic-Module-Name>io.github.burogurama.dexpp</Automatic-Module-Name>
+                        </manifestEntries>
+                    </archive>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+</project>

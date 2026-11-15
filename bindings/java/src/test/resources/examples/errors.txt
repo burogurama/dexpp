@@ -1,0 +1,4 @@
+no such file: missing.dex
+not a DEX file: INVALID_DEX
+INVALID_MODEL with 2 problems
+not a descriptor: invalid class descriptor "not a descriptor"
