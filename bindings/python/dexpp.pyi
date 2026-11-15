@@ -775,6 +775,21 @@ Use `isinstance` to find out which one. Every class has a `base` with the offset
 opcode and the size.
 """
 
+class InstructionView(Sequence[Instruction]):
+    """The decoded instructions of one method, as a read-only sequence.
+
+    It copies nothing up front: reading `view[i]` builds that one instruction.
+    It supports `len()`, indexing, slicing (which returns a `list`) and
+    iteration. The view keeps the analysis alive.
+    """
+
+    def __len__(self) -> int: ...
+    @overload
+    def __getitem__(self, index: int) -> Instruction: ...
+    @overload
+    def __getitem__(self, index: slice) -> list[Instruction]: ...
+    def __iter__(self) -> Iterator[Instruction]: ...
+
 # ===== CFG =====
 
 class CfgEdge:
@@ -1062,11 +1077,12 @@ class Method:
     def is_native(self) -> bool:
         """True when the method is `native`."""
     @property
-    def instructions(self) -> list[Instruction]:
-        """The decoded bytecode, in order. The list is empty for a method without code.
+    def instructions(self) -> InstructionView:
+        """The decoded bytecode, in order, as a read-only sequence. It is empty for a
+        method without code.
 
-        The bytecode is decoded once and kept, but each read of this property builds
-        a new Python list. Read it once and keep the list when you loop over it.
+        The bytecode is decoded once and kept. The sequence copies nothing up front:
+        each instruction is built when it is read.
         """
     @property
     def cfg(self) -> Cfg:

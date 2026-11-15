@@ -272,6 +272,19 @@ struct BasicBlockView
     py::object at(std::size_t i) const { return py::cast(cfg->blocks()[i]); }
 };
 
+/** Method.instructions: one method's decoded bytecode, straight from the
+ *  context's instruction cache.  The span stays valid while the Method lives
+ *  (a Method keeps its context alive), and the view holds the Method object.
+ *  Each element is copied into a new Python object when it is read. */
+struct InstructionView
+{
+    py::object owner;
+    std::span<const Instruction> insns;
+
+    std::size_t size() const { return insns.size(); }
+    py::object at(std::size_t i) const { return py::cast(insns[i], py::return_value_policy::copy); }
+};
+
 py::object method_or_none(std::optional<Method> m)
 {
     if (!m.has_value())
@@ -551,6 +564,10 @@ PYBIND11_MODULE(dexpp, m)
         .def_readonly("src", &BinaryLitInstruction::src)
         .def_readonly("literal", &BinaryLitInstruction::literal);
 
+    bind_view<InstructionView>(m, "InstructionView",
+                               "Read-only sequence of one method's instructions; reading one "
+                               "does not copy the others.");
+
     // ===== CFG =====
 
     py::class_<CfgEdge>(m, "CfgEdge")
@@ -692,9 +709,9 @@ PYBIND11_MODULE(dexpp, m)
         .def_property_readonly("is_abstract", &Method::is_abstract)
         .def_property_readonly("is_native", &Method::is_native)
         .def_property_readonly("instructions",
-                               [](const Method &m_) {
-                                   auto insns = m_.instructions();
-                                   return std::vector<Instruction>(insns.begin(), insns.end());
+                               [](py::object self) {
+                                   const Method &m_ = self.cast<const Method &>();
+                                   return InstructionView{self, m_.instructions()};
                                })
         .def_property_readonly("cfg", &Method::cfg, py::return_value_policy::reference_internal)
         .def_property_readonly("register_count", &Method::register_count)

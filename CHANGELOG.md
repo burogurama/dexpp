@@ -15,6 +15,12 @@
 
 ### Python bindings
 
+- `Method.instructions` is now a `dexpp.InstructionView`, a read-only
+  sequence over the decoded bytecode, like `Cfg.blocks`. It copies nothing up
+  front; before, every read of the property built a new list of every
+  instruction. Indexing, slicing (which returns a `list`), `len()` and
+  iteration work as before. Code that changed the list in place, or compared it
+  with a list, must call `list(method.instructions)` first.
 - `access_flags` (on `Class`, `Method`, `Field` and `ClassInfo`) is now a
   `dexpp.AccessFlags`, an `enum.IntFlag` with one member per DEX flag:
   `dexpp.AccessFlags.STATIC in method.access_flags`. It is still an `int`, so

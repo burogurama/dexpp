@@ -32,7 +32,7 @@ print(constructor.name, int(flags), dexpp.AccessFlags.CONSTRUCTOR in flags)
 
 # --8<-- [start:instructions]
 area: dexpp.Method = next(method for method in circle.methods if method.name == "area")
-instructions: list[dexpp.Instruction] = area.instructions
+instructions: dexpp.InstructionView = area.instructions
 
 for instruction in instructions:
     print(f"{instruction.base.offset:04x}  {dexpp.to_string(instruction)}")

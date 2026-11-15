@@ -30,7 +30,7 @@ type checker see.
 - **Properties.** Most data is exposed as read-only properties, not as methods:
   `cls.methods`, not `cls.methods()`.
 - **Views.** `CallGraph.nodes`, `CallGraph.edges`, `Xrefs.referrers` and
-  `Cfg.blocks` are read-only sequences that do not copy the data. They support
+  `Cfg.blocks` and `Method.instructions` are read-only sequences that do not copy the data. They support
   `len()`, indexing, slicing and iteration.
 - **Lifetime.** Every object keeps the analysis it came from alive. You never
   have to keep the `AnalysisContext` or `Apk` around yourself.

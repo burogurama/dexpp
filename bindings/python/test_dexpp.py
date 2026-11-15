@@ -99,6 +99,46 @@ def test_methods_and_instructions():
     assert "InvokeInstruction" in kinds
 
 
+def test_instruction_view():
+    import collections.abc
+    import gc
+
+    ctx = dexpp.AnalysisContext.from_dex("tests/data/fibonacci.dex")
+    compute = next(m for m in ctx.find_class("LFibonacci;").methods if m.name == "compute")
+    view = compute.instructions
+    assert isinstance(view, dexpp.InstructionView)
+    assert isinstance(view, collections.abc.Sequence)
+    assert len(view) > 3
+    assert view[0].base.offset == 0
+    assert view[-1].base.offset == view[len(view) - 1].base.offset
+    offsets = [i.base.offset for i in view]
+    assert offsets == sorted(offsets)
+    assert [i.base.offset for i in view[1:3]] == offsets[1:3]
+    assert isinstance(view[1:3], list)
+    for bad in (len(view), -len(view) - 1):
+        try:
+            view[bad]
+            raise AssertionError("expected IndexError")
+        except IndexError:
+            pass
+    # Every read gives the same instructions.
+    assert [dexpp.to_string(i) for i in view] == [
+        dexpp.to_string(i) for i in compute.instructions
+    ]
+
+    # A method without code has an empty sequence.
+    pets = dexpp.AnalysisContext.from_dex("tests/data/polymorphic.dex")
+    abstract = next(m for m in pets.find_class("LAnimal;").methods if m.name == "sound")
+    assert not abstract.has_code and len(abstract.instructions) == 0
+
+    # The view keeps the analysis alive on its own.
+    alone = dexpp.AnalysisContext.from_dex("tests/data/classes.dex").find_class(
+        "LTestDex;"
+    ).methods[1].instructions
+    gc.collect()
+    assert len(alone) > 0 and dexpp.to_string(alone[0])
+
+
 def test_cfg():
     ctx = dexpp.AnalysisContext.from_dex("tests/data/fibonacci.dex")
     cls = ctx.find_class("LFibonacci;")
