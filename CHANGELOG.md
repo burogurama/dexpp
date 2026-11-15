@@ -38,6 +38,9 @@
   docstring, so editors show a description next to each completion.
 - The examples in the guides are run by the tests, with the output the guides
   show.
+- The quick start, the guides and the home page show every example in Python,
+  Go and Java, in tabs; choosing a language switches every example on the
+  site. The Go and Java versions are run by `go test` and by the Java tests.
 
 ### One vocabulary in every language (breaking)
 

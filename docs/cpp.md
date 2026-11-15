@@ -1,7 +1,7 @@
 # C++
 
-The C++ library is the core of dex++. The Python, C and Go bindings are built
-on it, and it can do more than they can: it can build and edit code
+The C++ library is the core of dex++. The Python, C, Go and Java bindings are
+built on it, and it can do more than they can: it can build and edit code
 instruction by instruction.
 
 This page shows how to add the library to a project and how its API is
@@ -102,7 +102,7 @@ first use and returned by reference. In C++ the graph works with node and edge
 indices: `nodes()` and `edges()` are spans, and `callees`, `callers`,
 `dispatch_targets` and `dispatch_sources` return indices into `nodes()`.
 
-The ideas are the same as in Python. The guides explain them:
+The ideas are the same as in the other languages. The guides explain them:
 [code](guide/code.md), [call graph](guide/call-graph.md),
 [hierarchy and cross-references](guide/hierarchy-xrefs.md).
 

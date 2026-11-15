@@ -1,31 +1,28 @@
 # Class hierarchy and cross-references
 
-Both structures cover the whole program. Each is built the first time you read
-it, and kept after that.
+Both structures cover the whole program. Each is built the first time you ask
+the analysis context for it, and kept after that.
+
+The examples come in Python, Go and Java. Pick your language in the tabs.
 
 ## Class hierarchy
 
-`ctx.class_hierarchy` answers questions about inheritance. All queries take
-and return descriptors.
+The class hierarchy (Python `ctx.class_hierarchy`, Go `ctx.ClassHierarchy()`,
+Java `ctx.classHierarchy()`) answers questions about inheritance. All queries
+take and return descriptors.
 
-```python
---8<-- "hierarchy_xrefs.py:hierarchy"
-```
+<!-- example: hierarchy_xrefs.hierarchy -->
 
-```text
---8<-- "output/hierarchy_xrefs.hierarchy.txt"
-```
-
-| Query | Returns |
-| ----- | ------- |
-| `supertypes(d)` | the direct superclass, then the directly implemented interfaces |
-| `all_supertypes(d)` | every ancestor class and interface; `d` itself is not included |
-| `subclasses(d)` | the classes that directly extend `d` |
-| `implementers(d)` | the classes that directly implement the interface `d` |
-| `all_descendants(d)` | everything below `d`, through `extends` and `implements`; `d` itself is not included |
-| `is_subtype_of(sub, super)` | whether `sub` is `super` or is below it |
-| `is_loaded(d)` | whether the class is defined in a loaded file |
-| `is_interface(d)` | whether the class is loaded and is an interface |
+| Python | Go | Java | Returns |
+| ------ | -- | ---- | ------- |
+| `supertypes(d)` | `Supertypes(d)` | `supertypes(d)` | the direct superclass, then the directly implemented interfaces |
+| `all_supertypes(d)` | `AllSupertypes(d)` | `allSupertypes(d)` | every ancestor class and interface; `d` itself is not included |
+| `subclasses(d)` | `Subclasses(d)` | `subclasses(d)` | the classes that directly extend `d` |
+| `implementers(d)` | `Implementers(d)` | `implementers(d)` | the classes that directly implement the interface `d` |
+| `all_descendants(d)` | `AllDescendants(d)` | `allDescendants(d)` | everything below `d`, through `extends` and `implements`; `d` itself is not included |
+| `is_subtype_of(sub, super)` | `IsSubtypeOf(sub, super)` | `isSubtypeOf(sub, super)` | whether `sub` is `super` or is below it |
+| `is_loaded(d)` | `IsLoaded(d)` | `isLoaded(d)` | whether the class is defined in a loaded file |
+| `is_interface(d)` | `IsInterface(d)` | `isInterface(d)` | whether the class is loaded and is an interface |
 
 Classes outside the loaded files are still in the hierarchy when a loaded
 class names them as a superclass or an interface. `Ljava/lang/Object;` is the
@@ -33,40 +30,35 @@ usual example. For such a class `is_loaded` is false, and its own ancestors
 are unknown: the chain stops there.
 
 A query about a descriptor the hierarchy has never seen returns an empty list,
-or `False`.
+or false.
 
 When a class is defined in more than one loaded file, its superclass and
-interfaces come from the first definition only, the one `find_class` returns.
-Android loads that definition and never the later ones.
+interfaces come from the first definition only, the one a lookup by descriptor
+returns. Android loads that definition and never the later ones.
 
 ## Cross-references
 
-`ctx.xrefs` answers "who uses this". It indexes four kinds of use:
+The cross-reference index (Python `ctx.xrefs`, Go `ctx.Xrefs()`, Java
+`ctx.xrefs()`) answers "who uses this". It indexes four kinds of use:
 
-| Kind | Query | Indexed instructions |
-| ---- | ----- | -------------------- |
-| Method | `method_refs(id)`, `method_refs_by_name(name)` | invokes |
-| Field | `field_refs(id)`, `field_reads(id)`, `field_writes(id)` | `iget`, `iput`, `sget`, `sput` |
-| String | `string_refs(value)` | `const-string` |
-| Type | `type_refs(descriptor)` | `const-class`, `check-cast`, `instance-of`, `new-instance`, `new-array`, `filled-new-array` |
+| Kind | Python | Go | Java | Indexed instructions |
+| ---- | ------ | -- | ---- | -------------------- |
+| Method | `method_refs(id)`, `method_refs_by_name(name)` | `MethodRefs(id)`, `MethodRefsByName(name)` | `methodRefs(id)`, `methodRefsByName(name)` | invokes |
+| Field | `field_refs(id)`, `field_reads(id)`, `field_writes(id)` | `FieldRefs(id)`, `FieldReads(id)`, `FieldWrites(id)` | `fieldRefs(id)`, `fieldReads(id)`, `fieldWrites(id)` | `iget`, `iput`, `sget`, `sput` |
+| String | `string_refs(value)` | `StringRefs(value)` | `stringRefs(value)` | `const-string` |
+| Type | `type_refs(descriptor)` | `TypeRefs(descriptor)` | `typeRefs(descriptor)` | `const-class`, `check-cast`, `instance-of`, `new-instance`, `new-array`, `filled-new-array` |
 
-Every result is a list of *sites*. A site has a `code_offset` and a
-`referrer`: the method whose code contains the instruction.
+Every result is a list of *sites*. A site has a code offset and a *referrer*:
+the method whose code contains the instruction.
 
 ### Who calls a method
 
-```python
---8<-- "hierarchy_xrefs.py:method_refs"
-```
-
-```text
---8<-- "output/hierarchy_xrefs.method_refs.txt"
-```
+<!-- example: hierarchy_xrefs.method_refs -->
 
 `method_refs_by_name` finds calls by the bare method name, in any class and
 with any prototype. It is the quick way to find every call to `exec`,
 `loadUrl` or `getInstance`. Each result pairs the exact `MethodId` that was
-called with its sites.
+called with its sites. The results come in no fixed order.
 
 `method_refs(id)` takes an exact `MethodId` instead.
 
@@ -76,65 +68,46 @@ the [call graph](call-graph.md) when you need virtual dispatch.
 
 ### The referrer
 
-`site.referrer` is a number, an index into `xrefs.referrers`. There are three
-ways to use it:
+A site's referrer is a number. There are three ways to use it:
 
-- `xrefs.referrers[site.referrer]` gives the referrer's `MethodId`. This is a
-  view that copies nothing, so it is cheap inside a loop.
-- `xrefs.referrer_id(site.referrer)` does the same.
-- `xrefs.referrer_method(site.referrer)` gives the `Method`, when you need
-  more than the identity.
+| To get | Python | Go | Java |
+| ------ | ------ | -- | ---- |
+| the referrer's `MethodId` | `xrefs.referrer_id(r)` or `xrefs.referrers[r]` | `xrefs.ReferrerID(r)` | `xrefs.referrerId(r)` |
+| the `Method` itself | `xrefs.referrer_method(r)` | `xrefs.ReferrerMethod(r)` | `xrefs.referrerMethod(r)` |
+| every referrer's `MethodId`, by number | `xrefs.referrers` | `xrefs.Referrers()` | `xrefs.referrers()` |
+
+In Python, `xrefs.referrers` is a view that copies nothing, so
+`xrefs.referrers[site.referrer]` is cheap inside a loop. In Go and Java,
+`Referrers()` copies the whole table, so call it once, or use `ReferrerID`
+(Java: `referrerId`) for one number. Use the `Method` when you need more than
+the identity.
 
 ### Who loads a string
 
-```python
---8<-- "hierarchy_xrefs.py:strings"
-```
+<!-- example: hierarchy_xrefs.strings -->
 
-```text
---8<-- "output/hierarchy_xrefs.strings.txt"
-```
+`referenced_strings()` (Go: `ReferencedStrings()`) lists every distinct string
+that the code loads, in no fixed order. `string_refs` matches the whole string
+exactly. To search by substring or pattern, go through `referenced_strings()`
+first, then look up the ones that match:
 
-`string_refs` matches the whole string exactly. To search by substring or
-pattern, go through `referenced_strings()` first, then look up the ones that
-match:
-
-```python
-import re
-
-url: re.Pattern[str] = re.compile(r"https?://")
-for value in xrefs.referenced_strings():
-    if url.search(value) is not None:
-        for site in xrefs.string_refs(value):
-            loader: dexpp.MethodId = xrefs.referrers[site.referrer]
-            print(value, loader.name)
-```
+<!-- example: hierarchy_xrefs.pattern -->
 
 ### Who reads or writes a field
 
-```python
---8<-- "hierarchy_xrefs.py:fields"
-```
+<!-- example: hierarchy_xrefs.fields -->
 
-```text
---8<-- "output/hierarchy_xrefs.fields.txt"
-```
-
-`field_refs` returns reads and writes together. Each site has `is_write` and
-`is_static`.
+`field_refs` returns reads and writes together. Each site says whether it is a
+write and whether the field is static (Python `is_write` and `is_static`, Go
+`IsWrite` and `IsStatic`, Java `isWrite()` and `isStatic()`).
 
 ### Who uses a type
 
-```python
---8<-- "hierarchy_xrefs.py:types"
-```
+<!-- example: hierarchy_xrefs.types -->
 
-```text
---8<-- "output/hierarchy_xrefs.types.txt"
-```
-
-`site.kind` says what the instruction does with the type. For `NEW_ARRAY` the
-descriptor is the array type, such as `[I`.
+The kind of a site says what the instruction does with the type, such as
+`NEW_INSTANCE` (Go: `dexpp.TypeUseNewInstance`, printed as `new-instance`).
+For `NEW_ARRAY` the descriptor is the array type, such as `[I`.
 
 ### What is not indexed
 
@@ -143,5 +116,5 @@ descriptor is the array type, such as `[I`.
 - Types that appear only in a signature, a field type or an annotation. Only
   instructions are indexed.
 - The code of a later definition of a class that is defined in more than one
-  loaded file. Only the first definition, the one `find_class` returns, is
-  indexed, because Android never loads the others.
+  loaded file. Only the first definition, the one a lookup by descriptor
+  returns, is indexed, because Android never loads the others.

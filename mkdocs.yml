@@ -30,6 +30,9 @@ theme:
     - navigation.top
     - navigation.footer
     - content.code.copy
+    # The guides show each example in Python, Go and Java tabs. Choosing a
+    # language in one tab group switches every group, on every page.
+    - content.tabs.link
     - search.highlight
     - toc.follow
 
@@ -80,9 +83,12 @@ markdown_extensions:
       anchor_linenums: true
   - pymdownx.inlinehilite
   - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
   - pymdownx.snippets:
-      # Guides include the tested example files (docs/examples) instead of
-      # copying their code; "." is for CHANGELOG.md.
+      # Guides include the tested example files instead of copying their
+      # code: the Python ones from docs/examples, the Go and Java ones by
+      # their path from the repository root ("."), like CHANGELOG.md.
       base_path: [docs/examples, "."]
       check_paths: true
       dedent_subsections: true

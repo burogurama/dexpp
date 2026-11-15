@@ -6,8 +6,9 @@ Go and Java bindings.
 The current release is **0.2.0** (alpha): the API may still change between
 0.x releases. See [CHANGELOG.md](https://github.com/burogurama/dexpp/blob/main/CHANGELOG.md).
 
-**Documentation: <https://burogurama.github.io/dexpp/>** — guides, the Python
-reference, and the C++ and C reference, for the latest release.
+**Documentation: <https://burogurama.github.io/dexpp/>** — guides with
+examples in Python, Go and Java, the Python reference, and the C++ and C
+reference, for the latest release.
 
 ## What it does
 
