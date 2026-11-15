@@ -52,8 +52,9 @@ thing. The old names are gone; there are no aliases.
   `Class.Descriptor()` in Go and `DexClass.descriptor()` in Java.
 - `Class.package` now gives the package in Java source form, with dots:
   `"com.example"`, not `"com/example"`. This is the form `Manifest.package`
-  uses, so the two can be compared: before, `cls.package.startswith(manifest.package)`
-  was always false for a class in a named package, without any error. The
+  uses, so the two can be compared. Before, a test such as
+  `cls.package.startswith(manifest.package)` was false for the app's own
+  classes whenever the package name has a dot, and nothing said why. The
   default package is still an empty string. This applies to C++
   (`Class::package()`, which now returns a `std::string` instead of a
   `std::string_view`), Python, C (`dexpp_class_package`), Go
