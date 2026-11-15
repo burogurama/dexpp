@@ -44,43 +44,45 @@ typedef struct DexppModelDex DexppModelDex;
 
 /** Read DEX bytes into a model. `debug_info` nonzero keeps line numbers and
  *  local variables. Errors: INVALID_DEX, UNSUPPORTED_DEX. */
-DexppModelDex *dexpp_model_read(const uint8_t *bytes, size_t len, int debug_info, DexppError **err);
+DEXPP_C_API DexppModelDex *dexpp_model_read(const uint8_t *bytes, size_t len, int debug_info,
+                                            DexppError **err);
 
 /** Read a DEX file into a model. Errors: FILE_NOT_FOUND, CANNOT_READ,
  *  INVALID_DEX, UNSUPPORTED_DEX. */
-DexppModelDex *dexpp_model_read_file(const char *path, int debug_info, DexppError **err);
+DEXPP_C_API DexppModelDex *dexpp_model_read_file(const char *path, int debug_info,
+                                                 DexppError **err);
 
 /** An empty model of the given DEX version (35, 37, 38, 39 or 40). */
-DexppModelDex *dexpp_model_new(uint32_t version);
+DEXPP_C_API DexppModelDex *dexpp_model_new(uint32_t version);
 
 /** A deep copy of a model. */
-DexppModelDex *dexpp_model_clone(const DexppModelDex *dex);
+DEXPP_C_API DexppModelDex *dexpp_model_clone(const DexppModelDex *dex);
 
 /** Free a model. Accepts NULL. */
-void dexpp_model_free(DexppModelDex *dex);
+DEXPP_C_API void dexpp_model_free(DexppModelDex *dex);
 
 /** Write the model to DEX bytes. `debug_info` nonzero writes debug info. On
  *  success returns a malloc'd buffer of `*out_len` bytes (free with
  *  dexpp_buffer_free()). Errors: INVALID_MODEL (with the problems),
  *  POOL_OVERFLOW, VERSION_TOO_LOW. */
-uint8_t *dexpp_model_write(const DexppModelDex *dex, int debug_info, size_t *out_len,
-                           DexppError **err);
+DEXPP_C_API uint8_t *dexpp_model_write(const DexppModelDex *dex, int debug_info, size_t *out_len,
+                                       DexppError **err);
 
 /** Write straight to a file. Returns 1 on success, 0 on failure. Errors as
  *  dexpp_model_write(), plus CANNOT_WRITE. */
-int dexpp_model_write_file(const DexppModelDex *dex, const char *path, int debug_info,
-                           DexppError **err);
+DEXPP_C_API int dexpp_model_write_file(const DexppModelDex *dex, const char *path, int debug_info,
+                                       DexppError **err);
 
 /* ---- Version, pools, validation ----------------------------------------- */
 
 /** The DEX format version dexpp_model_write() uses. */
-uint32_t dexpp_model_version(const DexppModelDex *dex);
+DEXPP_C_API uint32_t dexpp_model_version(const DexppModelDex *dex);
 
 /** Set the DEX format version. Writing never raises it by itself. */
-void dexpp_model_set_version(DexppModelDex *dex, uint32_t version);
+DEXPP_C_API void dexpp_model_set_version(DexppModelDex *dex, uint32_t version);
 
 /** The lowest DEX version that has every feature the model uses. */
-uint32_t dexpp_model_required_version(const DexppModelDex *dex);
+DEXPP_C_API uint32_t dexpp_model_required_version(const DexppModelDex *dex);
 
 /** How many entries each pool of the written file would have. Use it to decide
  *  how to split classes across files: a DEX file holds at most 65535 types and
@@ -98,7 +100,7 @@ typedef struct DexppPoolStats
 } DexppPoolStats;
 
 /** The pool sizes the model would write. */
-DexppPoolStats dexpp_model_pool_stats(const DexppModelDex *dex);
+DEXPP_C_API DexppPoolStats dexpp_model_pool_stats(const DexppModelDex *dex);
 
 /** One rule of the format a model breaks. */
 typedef struct DexppProblem
@@ -110,22 +112,22 @@ typedef struct DexppProblem
 /** Every rule of the format the model breaks. Free with
  *  dexpp_problem_array_free(). An empty array (NULL, `*count` 0) means
  *  dexpp_model_write() can encode the model. */
-DexppProblem *dexpp_model_validate(const DexppModelDex *dex, size_t *count);
+DEXPP_C_API DexppProblem *dexpp_model_validate(const DexppModelDex *dex, size_t *count);
 
 /** Free an array of problems. Accepts NULL. */
-void dexpp_problem_array_free(DexppProblem *problems, size_t count);
+DEXPP_C_API void dexpp_problem_array_free(DexppProblem *problems, size_t count);
 
 /* ---- Classes ------------------------------------------------------------ */
 
 /** The number of classes in the model. */
-size_t dexpp_model_class_count(const DexppModelDex *dex);
+DEXPP_C_API size_t dexpp_model_class_count(const DexppModelDex *dex);
 
 /** The descriptors of every class, in model order. Free with
  *  dexpp_string_array_free(). */
-char **dexpp_model_class_descriptors(const DexppModelDex *dex, size_t *count);
+DEXPP_C_API char **dexpp_model_class_descriptors(const DexppModelDex *dex, size_t *count);
 
 /** 1 when the model has a class with this descriptor, otherwise 0. */
-int dexpp_model_has_class(const DexppModelDex *dex, const char *descriptor);
+DEXPP_C_API int dexpp_model_has_class(const DexppModelDex *dex, const char *descriptor);
 
 /** Facts about one class of a model. Release with dexpp_class_info_clear(). */
 typedef struct DexppClassInfo
@@ -142,16 +144,17 @@ typedef struct DexppClassInfo
 /** Fill @p out for the class with this descriptor (release with
  *  dexpp_class_info_clear()). Returns 0 when there is no such class; then
  *  @p out is untouched. */
-int dexpp_model_class_info(const DexppModelDex *dex, const char *descriptor, DexppClassInfo *out);
+DEXPP_C_API int dexpp_model_class_info(const DexppModelDex *dex, const char *descriptor,
+                                       DexppClassInfo *out);
 
 /** Free the strings of a DexppClassInfo (not the struct) and set them to
  *  NULL. */
-void dexpp_class_info_clear(DexppClassInfo *info);
+DEXPP_C_API void dexpp_class_info_clear(DexppClassInfo *info);
 
 /** The interface descriptors a class implements; empty when the class is
  *  absent or implements none. Free with dexpp_string_array_free(). */
-char **dexpp_model_class_interfaces(const DexppModelDex *dex, const char *descriptor,
-                                    size_t *count);
+DEXPP_C_API char **dexpp_model_class_interfaces(const DexppModelDex *dex, const char *descriptor,
+                                                size_t *count);
 
 /* ---- Editing by whole class --------------------------------------------- */
 
@@ -159,17 +162,17 @@ char **dexpp_model_class_interfaces(const DexppModelDex *dex, const char *descri
  * moved, not copied, so this is cheap for a large class. Returns 1 on success;
  * 0 and sets *err (DEXPP_ERROR_MODEL) if `src` has no such class, or `dst`
  * already has one with that descriptor. */
-int dexpp_model_move_class(DexppModelDex *dst, DexppModelDex *src, const char *descriptor,
-                           DexppError **err);
+DEXPP_C_API int dexpp_model_move_class(DexppModelDex *dst, DexppModelDex *src,
+                                       const char *descriptor, DexppError **err);
 
 /** Copy the class `descriptor` from `src` into `dst`, leaving `src` unchanged.
  * Returns 1 on success; 0 and sets *err as dexpp_model_move_class does. */
-int dexpp_model_copy_class(DexppModelDex *dst, const DexppModelDex *src, const char *descriptor,
-                           DexppError **err);
+DEXPP_C_API int dexpp_model_copy_class(DexppModelDex *dst, const DexppModelDex *src,
+                                       const char *descriptor, DexppError **err);
 
 /** Remove the class `descriptor` from the model. Returns 1 if it was removed, 0
  * if there was no such class. */
-int dexpp_model_remove_class(DexppModelDex *dex, const char *descriptor);
+DEXPP_C_API int dexpp_model_remove_class(DexppModelDex *dex, const char *descriptor);
 
 /* ---- Renaming ----------------------------------------------------------- */
 
@@ -179,8 +182,8 @@ int dexpp_model_remove_class(DexppModelDex *dex, const char *descriptor);
  * generic signatures. `from[i]` -> `to[i]` for each of the `count` pairs; a
  * descriptor not listed is left unchanged. String constants are never renamed.
  */
-void dexpp_model_rename_types(DexppModelDex *dex, const char *const *from, const char *const *to,
-                              size_t count);
+DEXPP_C_API void dexpp_model_rename_types(DexppModelDex *dex, const char *const *from,
+                                          const char *const *to, size_t count);
 
 #ifdef __cplusplus
 }

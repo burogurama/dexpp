@@ -42,6 +42,9 @@ Thumbs.db
 # Locally generated benchmark APK (not a test fixture)
 tests/data/bench.apk
 
+# Java build (Maven)
+bindings/java/target/
+
 # Python packaging
 *.egg-info/
 dist/

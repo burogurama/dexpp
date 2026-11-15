@@ -1,7 +1,7 @@
 # dex++
 
 dex++ reads Android APK and DEX files and answers questions about them. It is a
-C++23 library with Python, C and Go bindings. The Python package is called
+C++23 library with Python, C, Go and Java bindings. The Python package is called
 `dexpp`.
 
 This site describes version **{{ dexpp_version }}**. The library is in alpha:
@@ -19,8 +19,8 @@ the API may still change between 0.x releases.
   the class hierarchy, and a cross-reference index: who calls a method, who
   reads or writes a field, who loads a string, who uses a type.
 - **DEX editing.** Read a DEX file into a model, change it, and write a valid
-  DEX file again. From Python and Go the model works on whole classes: copy,
-  move, remove and rename classes.
+  DEX file again. From Python, Go and Java the model works on whole classes:
+  copy, move, remove and rename classes.
 
 It does not decompile to Java, and it does not verify signatures.
 
@@ -44,6 +44,7 @@ It does not decompile to Java, and it does not verify signatures.
 | Look up a Python class or method | [Python reference](reference/python/index.md) |
 | Use the library from C++ | [C++](cpp.md) and the [C++ reference](reference/cpp.md) |
 | Use the library from C or Go | [C and Go](c-go.md) |
+| Use the library from Java | [Java](java.md) |
 
 ## Speed and memory
 

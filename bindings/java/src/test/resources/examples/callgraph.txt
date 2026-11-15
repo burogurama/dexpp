@@ -1,0 +1,4 @@
+dispatches to LCat;->sound()Ljava/lang/String;
+dispatches to LDog;->sound()Ljava/lang/String;
+called by LKennel;.noise INTERFACE DECLARED
+called by LPet;.describe VIRTUAL INHERITED_RESOLUTION

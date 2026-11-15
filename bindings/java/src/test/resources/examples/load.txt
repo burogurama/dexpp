@@ -1,0 +1,5 @@
+LTestDex;
+  <init>()V  public|constructor
+  helloDex()Ljava/lang/String;  public|static
+  main([Ljava/lang/String;)V  public|static
+no such class

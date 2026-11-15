@@ -46,6 +46,23 @@ The headers are `bindings/c/dexpp.h` for analysis and
 `bindings/c/dexpp_model.h` for the editable model. Their functions are listed
 in the [C++ and C reference](reference/cpp.md).
 
+### The shared library
+
+A program that loads the C API at run time, such as the
+[Java package](java.md) or another foreign function interface, needs a shared
+library instead. It is not built by default:
+
+```bash
+cmake -S . -B build -DDEXPP_BUILD_C_SHARED=ON
+cmake --build build --target dexpp_c_shared --config Release -j
+```
+
+This gives one file in `build`: `libdexpp_c_shared.so` on Linux,
+`libdexpp_c_shared.dylib` on macOS, or `dexpp_c_shared.dll` on Windows. It
+holds the C layer and the C++ library together. It exports the functions of
+the two headers and nothing else, so it does not clash with other C++ code in
+the same process.
+
 ## C
 
 ```c
@@ -89,7 +106,11 @@ The rules are the same for every function:
   carries its length.
 - **Arrays** come with a count. An empty array is `NULL` with a count of 0.
   Free an array with the `_array_free` function named for its type. It also
-  frees what the elements own.
+  frees what the elements own. To keep the handles of an array of handles,
+  such as the classes from `dexpp_context_classes`, free the array alone with
+  its `_array_free` function and a count of 0. `free()` works too when the
+  library is linked statically, but not with a Windows DLL, whose C runtime
+  can differ from the program's.
 - **Structs filled through a pointer**, such as `DexppManifest` or
   `DexppSigningInfo`, own the memory their members point to. Release it with
   the matching `_clear` function, such as `dexpp_manifest_clear`.

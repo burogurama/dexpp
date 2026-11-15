@@ -1,0 +1,5 @@
+<init> calls Ljava/lang/Object;-><init>()V with DIRECT
+helloDex loads "Hello Dex++!!"
+main calls LTestDex;->helloDex()Ljava/lang/String; with STATIC
+main calls Ljava/io/PrintStream;->println(Ljava/lang/String;)V with VIRTUAL
+main reads Ljava/lang/System;->out:Ljava/io/PrintStream;

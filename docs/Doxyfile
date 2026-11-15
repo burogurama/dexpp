@@ -46,6 +46,14 @@ INPUT                  = docs/cpp-mainpage.md \
                          bindings/c/dexpp_model.h
 RECURSIVE              = NO
 USE_MDFILE_AS_MAINPAGE = docs/cpp-mainpage.md
+
+# DEXPP_C_API marks every function of the C headers for export from the
+# shared library.  It tells a reader nothing, so Doxygen expands it to
+# nothing, and only this macro.
+ENABLE_PREPROCESSING   = YES
+MACRO_EXPANSION        = YES
+EXPAND_ONLY_PREDEF     = YES
+PREDEFINED             = DEXPP_C_API=
 STRIP_FROM_PATH        = src bindings/c
 STRIP_FROM_INC_PATH    = src bindings/c
 

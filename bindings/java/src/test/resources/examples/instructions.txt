@@ -1,0 +1,8 @@
+0000  sget-object v1, field@0
+      field read, static: true
+0002  invoke-static method@1 {}
+      call, arguments in []
+0005  move-result-object v0
+0006  invoke-virtual method@3 {v1, v0}
+      call, arguments in [1, 0]
+0009  return-void

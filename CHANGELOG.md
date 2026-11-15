@@ -12,6 +12,12 @@
 - The Go package links libc++ on macOS. It does not support Windows.
 - The Python module is now placed directly in the build folder with every
   CMake generator, so `PYTHONPATH=build` works with Visual Studio too.
+- With MSVC, the library is compiled with Microsoft's
+  `_DISABLE_CONSTEXPR_MUTEX_CONSTRUCTOR`. Without it, code built with Visual
+  Studio 2022 17.10 or newer crashes the first time it takes a lock when the
+  process has loaded an older `msvcp140.dll`. A JVM loads the one in the
+  JDK's `bin` folder, and JDK 22 ships an older one; a Python process can
+  have loaded an older one too.
 
 ### Packaging
 
@@ -177,6 +183,49 @@
 - Go: calling a method on a closed or nil handle now panics with a message
   that names the handle type, instead of passing a null pointer to C.
   `Close()` on a nil handle does nothing.
+- The C API can now be built as one shared library, `dexpp_c_shared`
+  (`libdexpp_c_shared.so`, `libdexpp_c_shared.dylib` or
+  `dexpp_c_shared.dll`), with the CMake option `-DDEXPP_BUILD_C_SHARED=ON`.
+  It holds the C layer and the C++ library, and exports the `dexpp_`
+  functions and nothing else. Every declaration in the C headers is marked
+  with the new `DEXPP_C_API` macro for this; it is empty in every other
+  build. The static `dexpp_c` that Go links does not change.
+- The `_array_free` functions of handle arrays (classes, class references,
+  methods, fields) are documented to free the array alone when the count is
+  0, so a caller can keep the handles. Use this instead of `free()` with the
+  shared library: on Windows, the DLL and the program can use different C
+  runtimes.
+
+### Java binding (new)
+
+- dex++ has a Java package, `io.github.burogurama.dexpp`, in
+  `bindings/java`, built with Maven. It needs Java 22 or newer: it calls the
+  C API from the shared library through the Foreign Function & Memory API,
+  with no JNI code. It reaches the same API as the Go package: loading DEX
+  files and APKs, classes, methods and fields, decoded bytecode, control-flow
+  graphs, try blocks, annotations, the call graph, the class hierarchy,
+  cross-references, the manifest, resources and signing of an APK, and the
+  editable model a whole class at a time. It works on Linux, macOS and
+  Windows, from a checkout; it is not on Maven Central yet.
+- Handles (`AnalysisContext`, `Apk`, `DexClass`, `ClassRef`, `DexMethod`,
+  `DexField`, `CallGraph`, `ClassHierarchy`, `Xrefs`, `Model`) are
+  `AutoCloseable`, and a `Cleaner` frees the ones that are never closed.
+  Everything else is copied into Java records and immutable lists. A value
+  that may be absent is an `Optional`, `OptionalInt` or `OptionalLong`.
+- Instructions are a sealed interface with one record per kind, and
+  annotation values are a sealed interface too, so a pattern-matching
+  `switch` tells them apart. Access flags are an `AccessFlags` record with
+  one constant per flag.
+- A file that cannot be opened throws `NoSuchFileException` or
+  `FileSystemException`. Every other error throws an unchecked
+  `DexppException` that carries the C error code. Its subclasses match the
+  Python exceptions: `InvalidApkException`, `InvalidDexException`,
+  `UnsupportedDexException`, `ModelException`, and below it
+  `InvalidModelException` (with the list of problems),
+  `PoolOverflowException` and `VersionTooLowException`.
+- The documentation site has a Java page, with examples that the tests run.
+  CI builds the shared library and runs the Java tests on Linux, macOS and
+  Windows, with Java 22 and Java 25.
 
 ### Fixes
 
