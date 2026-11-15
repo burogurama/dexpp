@@ -1,5 +1,5 @@
 16 methods, 18 edges
-LKennel;->noise resolved: True
+LKennel;->noise kind: DEFINED
   calls LAnimal;->sound INTERFACE at offset 0
 ['LCat;->sound', 'LDog;->sound']
 ['LAnimal;->sound', 'LCat;->sound', 'LDog;->sound']

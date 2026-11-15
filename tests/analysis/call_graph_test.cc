@@ -131,11 +131,11 @@ TEST(CallGraphTest, ClassesDexHasMainToHelloDex)
 
     const CallNode *main_node = find_node_by_class_and_name(g, "LTestDex;", "main");
     ASSERT_NE(main_node, nullptr);
-    EXPECT_TRUE(main_node->resolved);
+    EXPECT_EQ(main_node->kind, CallNodeKind::Defined);
 
     const CallNode *hello_node = find_node_by_class_and_name(g, "LTestDex;", "helloDex");
     ASSERT_NE(hello_node, nullptr);
-    EXPECT_TRUE(hello_node->resolved);
+    EXPECT_EQ(hello_node->kind, CallNodeKind::Defined);
 
     bool found_edge = false;
     uint32_t hello_idx = node_index(g, hello_node);
@@ -158,7 +158,7 @@ TEST(CallGraphTest, ObjectInitNodeUnresolved)
     const auto &g = ctx->call_graph();
     const CallNode *obj_init = g.find(MethodId{"Ljava/lang/Object;", "<init>", "()V"});
     ASSERT_NE(obj_init, nullptr) << "Object.<init> must appear as a referenced node";
-    EXPECT_FALSE(obj_init->resolved);
+    EXPECT_EQ(obj_init->kind, CallNodeKind::External);
     EXPECT_FALSE(g.method_for(*obj_init).has_value());
 }
 
@@ -170,12 +170,56 @@ TEST(CallGraphTest, HelloDexResolvedRoundTrips)
     const auto &g = ctx->call_graph();
     const CallNode *hello = find_node_by_class_and_name(g, "LTestDex;", "helloDex");
     ASSERT_NE(hello, nullptr);
-    ASSERT_TRUE(hello->resolved);
+    ASSERT_EQ(hello->kind, CallNodeKind::Defined);
 
     auto m = g.method_for(*hello);
     ASSERT_TRUE(m.has_value());
     EXPECT_EQ(m->name(), "helloDex");
     EXPECT_TRUE(m->has_code());
+}
+
+TEST(CallGraphTest, InvokeCustomAndInvokePolymorphicSites)
+{
+    // handles.dex: Handles.run makes one invoke-polymorphic and one
+    // invoke-custom call; Handles.spread one invoke-polymorphic/range call.
+    auto ctx = AnalysisContext::from_dex("tests/data/handles.dex");
+    ASSERT_TRUE(ctx.has_value()) << ctx.error().message;
+    const auto &g = ctx->call_graph();
+
+    const CallNode *run = find_node_by_class_and_name(g, "LHandles;", "run");
+    ASSERT_NE(run, nullptr);
+    EXPECT_EQ(run->kind, CallNodeKind::Defined);
+    ASSERT_EQ(run->outgoing.size(), 2u);
+
+    const CallEdge &poly = g.edges()[run->outgoing[0]];
+    EXPECT_EQ(poly.kind, InvokeKind::Polymorphic);
+    EXPECT_EQ(poly.code_offset, 0u);
+    const CallNode &invoke_exact = g.nodes()[poly.callee_node];
+    EXPECT_EQ(invoke_exact.kind, CallNodeKind::External);
+    EXPECT_EQ(invoke_exact.id, (MethodId{"Ljava/lang/invoke/MethodHandle;", "invokeExact",
+                                         "([Ljava/lang/Object;)Ljava/lang/Object;"}));
+    EXPECT_TRUE(g.dispatch_targets(poly).empty());
+
+    const CallEdge &custom = g.edges()[run->outgoing[1]];
+    EXPECT_EQ(custom.kind, InvokeKind::Custom);
+    EXPECT_EQ(custom.code_offset, 0x0au);
+    const CallNode &site = g.nodes()[custom.callee_node];
+    EXPECT_EQ(site.kind, CallNodeKind::CallSite);
+    EXPECT_FALSE(g.method_for(site).has_value());
+    EXPECT_EQ(site.incoming, (std::vector<uint32_t>{run->outgoing[1]}));
+
+    const CallNode *spread = find_node_by_class_and_name(g, "LHandles;", "spread");
+    ASSERT_NE(spread, nullptr);
+    ASSERT_EQ(spread->outgoing.size(), 1u);
+    const CallEdge &range = g.edges()[spread->outgoing[0]];
+    EXPECT_EQ(range.kind, InvokeKind::Polymorphic);
+    EXPECT_EQ(g.nodes()[range.callee_node].id.name, "invoke");
+
+    // The one invoke-custom site is the only CallSite node.
+    std::size_t call_sites = 0;
+    for (const CallNode &n : g.nodes())
+        call_sites += n.kind == CallNodeKind::CallSite ? 1 : 0;
+    EXPECT_EQ(call_sites, 1u);
 }
 
 TEST(CallGraphTest, SafeParseCallsIntegerParseInt)
@@ -194,7 +238,7 @@ TEST(CallGraphTest, SafeParseCallsIntegerParseInt)
         if (callee.id.class_descriptor == "Ljava/lang/Integer;" && callee.id.name == "parseInt") {
             found = true;
             EXPECT_EQ(e.kind, InvokeKind::Static);
-            EXPECT_FALSE(callee.resolved);
+            EXPECT_EQ(callee.kind, CallNodeKind::External);
         }
     }
     EXPECT_TRUE(found) << "safeParse must call Integer.parseInt as invoke-static";
@@ -213,7 +257,7 @@ TEST(CallGraphTest, FibonacciComputeHasNoOutgoingEdges)
 
     const CallNode *compute = find_node_by_class_and_name(g, "LFibonacci;", "compute");
     ASSERT_NE(compute, nullptr);
-    EXPECT_TRUE(compute->resolved);
+    EXPECT_EQ(compute->kind, CallNodeKind::Defined);
     EXPECT_TRUE(compute->outgoing.empty())
         << "Iterative compute() should have no outgoing call edges (only if-* / goto)";
 }
@@ -309,7 +353,7 @@ TEST(ChaTest, InterfaceCallDispatchesToOverrides)
     EXPECT_EQ(declared->kind, InvokeKind::Interface);
     // Animal is loaded, so its abstract sound() registers as a resolved node —
     // but one with no code behind it.
-    ASSERT_TRUE(g.nodes()[declared->callee_node].resolved);
+    ASSERT_EQ(g.nodes()[declared->callee_node].kind, CallNodeKind::Defined);
     auto declared_method = g.method_for(g.nodes()[declared->callee_node]);
     ASSERT_TRUE(declared_method.has_value());
     EXPECT_FALSE(declared_method->has_code());
@@ -317,7 +361,7 @@ TEST(ChaTest, InterfaceCallDispatchesToOverrides)
     auto targets = g.dispatch_targets(*declared);
     EXPECT_EQ(names_of(g, targets), (std::set<std::string>{"LCat;.sound", "LDog;.sound"}));
     for (uint32_t t : targets)
-        EXPECT_TRUE(g.nodes()[t].resolved);
+        EXPECT_EQ(g.nodes()[t].kind, CallNodeKind::Defined);
     // The site's list is the declared node's own list, not a copy.
     auto by_node = g.dispatch_targets(declared->callee_node);
     EXPECT_EQ(targets.data(), by_node.data());
@@ -348,7 +392,7 @@ TEST(ChaTest, VirtualCallThroughAbstractClassDispatches)
     }
     ASSERT_NE(declared, nullptr);
     EXPECT_EQ(g.nodes()[declared->callee_node].id.class_descriptor, "LPet;");
-    EXPECT_FALSE(g.nodes()[declared->callee_node].resolved);
+    EXPECT_EQ(g.nodes()[declared->callee_node].kind, CallNodeKind::External);
     EXPECT_EQ(names_of(g, g.dispatch_targets(*declared)),
               (std::set<std::string>{"LCat;.sound", "LDog;.sound"}));
 
@@ -379,7 +423,7 @@ TEST(ChaTest, LeafVirtualCallHasNoDispatchTargets)
         EXPECT_EQ(callee.id.class_descriptor, "LDog;");
         EXPECT_EQ(e.origin, EdgeOrigin::Declared);
         EXPECT_EQ(e.kind, InvokeKind::Virtual);
-        EXPECT_TRUE(callee.resolved);
+        EXPECT_EQ(callee.kind, CallNodeKind::Defined);
         EXPECT_TRUE(g.dispatch_targets(e).empty())
             << "Dog has no subtypes — nothing to dispatch to";
     }
@@ -491,7 +535,7 @@ TEST(ChaTest, DispatchRowsAreSortedResolvedAndInverse)
                 << path << ": sources of node " << n << " not strictly increasing";
             for (uint32_t t : targets) {
                 EXPECT_NE(t, n) << path << ": node " << n << " dispatches to itself";
-                EXPECT_TRUE(g.nodes()[t].resolved) << path;
+                EXPECT_EQ(g.nodes()[t].kind, CallNodeKind::Defined) << path;
                 auto back = g.dispatch_sources(t);
                 EXPECT_TRUE(std::binary_search(back.begin(), back.end(), n))
                     << path << ": " << n << " -> " << t << " missing from dispatch_sources";
@@ -560,7 +604,7 @@ TEST(CallGraphTest, SameGraphWithAnyThreadCount)
         std::vector<std::string> out;
         for (const auto &n : g.nodes())
             out.push_back(n.id.class_descriptor + "->" + n.id.name + n.id.proto +
-                          (n.resolved ? "" : " (unresolved)"));
+                          (n.kind == CallNodeKind::Defined ? "" : " (unresolved)"));
         for (const auto &e : g.edges())
             out.push_back(std::to_string(e.caller_node) + " " + std::to_string(e.callee_node) +
                           " " + std::to_string(e.code_offset) + " " +
@@ -598,11 +642,12 @@ TEST(CallGraphTest, MultiDexBothLoaded)
     // Both DEX's primary classes must contribute resolved nodes.
     const CallNode *test_dex_main = find_node_by_class_and_name(g, "LTestDex;", "main");
     ASSERT_NE(test_dex_main, nullptr);
-    EXPECT_TRUE(test_dex_main->resolved);
+    EXPECT_EQ(test_dex_main->kind, CallNodeKind::Defined);
 
     bool fib_node_seen = false;
     for (const auto &node : g.nodes()) {
-        if (node.id.class_descriptor.find("Fibonacci") != std::string::npos && node.resolved) {
+        if (node.id.class_descriptor.find("Fibonacci") != std::string::npos &&
+            node.kind == CallNodeKind::Defined) {
             fib_node_seen = true;
             break;
         }

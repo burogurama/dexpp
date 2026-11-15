@@ -208,6 +208,19 @@ inline DexppEdgeOrigin edge_origin(dex::EdgeOrigin o)
     return DEXPP_EDGE_DECLARED;
 }
 
+inline DexppCallNodeKind call_node_kind(dex::CallNodeKind k)
+{
+    switch (k) {
+    case dex::CallNodeKind::Defined:
+        return DEXPP_CALL_NODE_DEFINED;
+    case dex::CallNodeKind::External:
+        return DEXPP_CALL_NODE_EXTERNAL;
+    case dex::CallNodeKind::CallSite:
+        return DEXPP_CALL_NODE_CALL_SITE;
+    }
+    return DEXPP_CALL_NODE_EXTERNAL;
+}
+
 inline DexppCfgEdgeKind cfg_edge_kind(dex::CfgEdgeKind k)
 {
     switch (k) {

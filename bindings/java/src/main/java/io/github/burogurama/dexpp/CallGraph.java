@@ -42,7 +42,7 @@ public final class CallGraph implements AutoCloseable {
         return new CallNode(
                 Mem.i32(m, b + Layouts.CallNode.INDEX),
                 Mem.methodId(m, b + Layouts.CallNode.ID),
-                Mem.bool(m, b + Layouts.CallNode.RESOLVED));
+                CallNodeKind.of(Mem.i32(m, b + Layouts.CallNode.KIND)));
     }
 
     private static CallEdge edge(int index, MemorySegment m, long b) {
@@ -201,7 +201,7 @@ public final class CallGraph implements AutoCloseable {
      * The other methods that a virtual or interface call declared against this node may run: the
      * overrides in loaded subclasses and implementers, and what subclasses that do not override it
      * inherit. The list is sorted by index and stored once on the node, shared by all its call
-     * sites. Every target is a resolved node.
+     * sites. Every target is a {@link CallNodeKind#DEFINED} node.
      *
      * @param node a node index
      * @return the node indices; empty when no such call names this method
@@ -301,10 +301,10 @@ public final class CallGraph implements AutoCloseable {
     }
 
     /**
-     * The method behind a resolved node.
+     * The method behind a {@link CallNodeKind#DEFINED} node.
      *
      * @param node a node index
-     * @return the method, or empty for an external node and for an index out of range
+     * @return the method, or empty for the other kinds of node and for an index out of range
      */
     public Optional<DexMethod> methodFor(int node) {
         return handle.call(g -> {

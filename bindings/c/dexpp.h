@@ -197,6 +197,15 @@ typedef enum DexppEdgeOrigin {
     DEXPP_EDGE_INHERITED_RESOLUTION = 1 /**< The nearest definition in a loaded ancestor. */
 } DexppEdgeOrigin;
 
+/** What a call-graph node stands for. */
+typedef enum DexppCallNodeKind {
+    DEXPP_CALL_NODE_DEFINED = 0,  /**< A method defined in a loaded file. */
+    DEXPP_CALL_NODE_EXTERNAL = 1, /**< A method that loaded code calls but no loaded file
+                                       defines, such as a framework method. */
+    DEXPP_CALL_NODE_CALL_SITE = 2 /**< An invoke-custom call site. Its id is opaque: it only
+                                       keeps call sites apart and names no method. */
+} DexppCallNodeKind;
+
 /** The kind of an edge between two basic blocks. */
 typedef enum DexppCfgEdgeKind {
     DEXPP_CFG_FALLTHROUGH = 0,
@@ -841,12 +850,12 @@ DEXPP_C_API void dexpp_basic_block_array_free(DexppBasicBlock *blocks, size_t co
 /* ======================================================================== */
 /** @{ */
 
-/** A method in the call graph. */
+/** A node of the call graph: a method, or an invoke-custom call site. */
 typedef struct DexppCallNode
 {
-    uint32_t index;   /**< Position of the node in the graph. */
-    DexppMethodId id; /**< The method's identity. */
-    int resolved;     /**< 1 when the method is defined in a loaded file. */
+    uint32_t index;         /**< Position of the node in the graph. */
+    DexppMethodId id;       /**< The method's identity; opaque for a CALL_SITE node. */
+    DexppCallNodeKind kind; /**< What the node stands for. */
 } DexppCallNode;
 
 /** One call-site edge. A call site has one DECLARED edge, and an
@@ -921,8 +930,8 @@ DEXPP_C_API uint32_t *dexpp_call_graph_edge_dispatch_targets(const DexppCallGrap
 DEXPP_C_API uint32_t *dexpp_call_graph_edges_where(const DexppCallGraph *g, int origin, int kind,
                                                    size_t *count);
 
-/** The method behind a resolved node, or NULL for an external node or an
- *  index out of range. Free with dexpp_method_free(). */
+/** The method behind a DEFINED node, or NULL for an EXTERNAL or CALL_SITE
+ *  node or an index out of range. Free with dexpp_method_free(). */
 DEXPP_C_API DexppMethod *dexpp_call_graph_method_for(const DexppCallGraph *g, uint32_t node);
 
 /** Free a call-graph handle. Accepts NULL. */

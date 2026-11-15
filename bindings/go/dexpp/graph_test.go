@@ -59,8 +59,8 @@ func TestCallGraph(t *testing.T) {
 	}
 
 	sound := mustNode(t, g, MethodID{"LAnimal;", "sound", "()Ljava/lang/String;"})
-	if !sound.Resolved {
-		t.Error("Animal.sound is not resolved")
+	if sound.Kind != CallNodeDefined {
+		t.Errorf("Animal.sound has kind %v", sound.Kind)
 	}
 	if _, ok := g.Find(MethodID{"LNo;", "where", "()V"}); ok {
 		t.Error("Find of an unknown method found a node")
@@ -100,7 +100,7 @@ func TestCallGraph(t *testing.T) {
 		t.Fatalf("inherited edges from LPet; = %+v", inherited)
 	}
 	callee := nodes[inherited[0].CalleeNode]
-	if callee.ID.ClassDescriptor != "LAnimal;" || !callee.Resolved {
+	if callee.ID.ClassDescriptor != "LAnimal;" || callee.Kind != CallNodeDefined {
 		t.Errorf("inherited callee = %+v", callee)
 	}
 	// A site's dispatch targets hang off its declared edge only.
@@ -158,8 +158,8 @@ func TestCallGraphTablesAndLookups(t *testing.T) {
 		if found, ok := g.Find(n.ID); !ok || found.Index != n.Index {
 			t.Errorf("Find(%v) = %+v", n.ID, found)
 		}
-		if m := g.MethodFor(n.Index); (m != nil) != n.Resolved {
-			t.Errorf("MethodFor(%v) = %v, resolved %v", n.ID, m, n.Resolved)
+		if m := g.MethodFor(n.Index); (m != nil) != (n.Kind == CallNodeDefined) {
+			t.Errorf("MethodFor(%v) = %v, kind %v", n.ID, m, n.Kind)
 		} else if m != nil && m.ID() != n.ID {
 			t.Errorf("MethodFor(%v) gives %v", n.ID, m.ID())
 		}
@@ -202,10 +202,42 @@ func TestCallGraphTablesAndLookups(t *testing.T) {
 	}
 	external := false
 	for _, n := range nodes {
-		external = external || !n.Resolved
+		external = external || n.Kind == CallNodeExternal
 	}
 	if !external {
 		t.Error("no external node")
+	}
+}
+
+func TestCallNodeKinds(t *testing.T) {
+	// handles.dex: Handles.run makes an invoke-polymorphic and an
+	// invoke-custom call.
+	ctx := mustDEX(t, "handles.dex")
+	g := mustCallGraph(t, ctx)
+	run := mustNode(t, g, MethodID{"LHandles;", "run",
+		"(Ljava/lang/invoke/MethodHandle;[Ljava/lang/Object;)Ljava/lang/Object;"})
+	if run.Kind != CallNodeDefined {
+		t.Errorf("Handles.run has kind %v", run.Kind)
+	}
+	out := g.OutEdges(run.Index)
+	if len(out) != 2 {
+		t.Fatalf("Handles.run has %d call sites, want 2", len(out))
+	}
+	poly, _ := g.Edge(out[0])
+	custom, _ := g.Edge(out[1])
+	if callee, _ := g.Node(poly.CalleeNode); poly.Kind != InvokePolymorphic ||
+		callee.Kind != CallNodeExternal || callee.ID.Name != "invokeExact" {
+		t.Errorf("invoke-polymorphic edge %+v goes to %+v", poly, callee)
+	}
+	site, _ := g.Node(custom.CalleeNode)
+	if custom.Kind != InvokeCustom || site.Kind != CallNodeCallSite {
+		t.Errorf("invoke-custom edge %+v goes to %+v", custom, site)
+	}
+	if g.MethodFor(site.Index) != nil {
+		t.Error("MethodFor gives a method for a call site")
+	}
+	if got := CallNodeCallSite.String(); got != "call-site" {
+		t.Errorf("CallNodeCallSite.String() = %q", got)
 	}
 }
 

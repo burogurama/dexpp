@@ -39,13 +39,15 @@ import (
 // DispatchTargets. Callees and Callers include them.
 type CallGraph struct{ ptr *C.DexppCallGraph }
 
-// CallNode is a method in the call graph. A node is resolved when the method
-// is defined in a loaded file. A method the program calls but does not
-// contain, such as a framework method, is a node too, with Resolved false.
+// CallNode is a node of the call graph. Most nodes are methods: a method
+// defined in a loaded file has the kind CallNodeDefined, and a method the
+// program calls but does not contain, such as a framework method, has the
+// kind CallNodeExternal. An invoke-custom call site is a node of kind
+// CallNodeCallSite.
 type CallNode struct {
-	Index    uint32   // position of the node in the graph
-	ID       MethodID // the method's identity
-	Resolved bool     // true when the method is defined in a loaded file
+	Index uint32       // position of the node in the graph
+	ID    MethodID     // the method's identity; opaque for a CallNodeCallSite node
+	Kind  CallNodeKind // what the node stands for
 }
 
 // CallEdge is one call site: an invoke instruction in a caller, pointing at a
@@ -84,7 +86,7 @@ func (g *CallGraph) p() *C.DexppCallGraph {
 }
 
 func goCallNode(n *C.DexppCallNode) CallNode {
-	return CallNode{Index: uint32(n.index), ID: goMethodID(n.id), Resolved: n.resolved != 0}
+	return CallNode{Index: uint32(n.index), ID: goMethodID(n.id), Kind: CallNodeKind(n.kind)}
 }
 
 func goCallEdge(index uint32, e *C.DexppCallEdge) CallEdge {
@@ -209,7 +211,7 @@ func (g *CallGraph) InEdges(node uint32) []uint32 {
 // interface call declared against this node may run: the overrides in loaded
 // subclasses and implementers, and what subclasses that do not override it
 // inherit. The list is sorted by index and stored once on the node, shared by
-// all its call sites. Every target is a resolved node. It is nil when no such
+// all its call sites. Every target is a CallNodeDefined node. It is nil when no such
 // call names this method.
 func (g *CallGraph) DispatchTargets(node uint32) []uint32 {
 	defer runtime.KeepAlive(g)
@@ -270,8 +272,8 @@ func (g *CallGraph) EdgesWhere(origin EdgeOrigin, kind InvokeKind) []uint32 {
 	return takeIndexArray(arr, n)
 }
 
-// MethodFor returns the method behind a resolved node. It is nil for an
-// external node (Resolved false) and for an index out of range.
+// MethodFor returns the method behind a CallNodeDefined node. It is nil for
+// the other kinds of node and for an index out of range.
 func (g *CallGraph) MethodFor(node uint32) *Method {
 	defer runtime.KeepAlive(g)
 	p := C.dexpp_call_graph_method_for(g.p(), C.uint32_t(node))

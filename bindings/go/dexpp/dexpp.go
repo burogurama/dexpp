@@ -487,6 +487,28 @@ func (o EdgeOrigin) String() string {
 	return enumName(int(o), "declared", "inherited-resolution")
 }
 
+// CallNodeKind is what a call-graph node stands for.
+type CallNodeKind int
+
+// The kinds of call-graph node.
+const (
+	// CallNodeDefined: a method defined in a loaded file. CallGraph.MethodFor
+	// gives its Method.
+	CallNodeDefined CallNodeKind = C.DEXPP_CALL_NODE_DEFINED
+	// CallNodeExternal: a method that loaded code calls but no loaded file
+	// defines, such as a framework method.
+	CallNodeExternal CallNodeKind = C.DEXPP_CALL_NODE_EXTERNAL
+	// CallNodeCallSite: an invoke-custom call site. Its bootstrap method picks
+	// the target at runtime, so the node stands for the call site itself. Its
+	// ID is opaque: it only keeps call sites apart and names no method.
+	CallNodeCallSite CallNodeKind = C.DEXPP_CALL_NODE_CALL_SITE
+)
+
+// String names the kind, such as "defined".
+func (k CallNodeKind) String() string {
+	return enumName(int(k), "defined", "external", "call-site")
+}
+
 // CfgEdgeKind is the kind of an edge between two basic blocks.
 type CfgEdgeKind int
 

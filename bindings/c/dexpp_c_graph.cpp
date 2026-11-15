@@ -17,7 +17,7 @@ namespace {
 
 DexppCallNode call_node(const dex::CallNode &n)
 {
-    return DexppCallNode{n.index, method_id(n.id), n.resolved ? 1 : 0};
+    return DexppCallNode{n.index, method_id(n.id), call_node_kind(n.kind)};
 }
 
 DexppCallEdge call_edge(const dex::CallEdge &e)

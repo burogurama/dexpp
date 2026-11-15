@@ -6,6 +6,8 @@ Which method can call which, over the whole program. See the [call graph guide](
 
 ::: dexpp.CallNode
 
+::: dexpp.CallNodeKind
+
 ::: dexpp.CallEdge
 
 ::: dexpp.InvokeKind

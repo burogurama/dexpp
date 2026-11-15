@@ -80,12 +80,12 @@ TEST_F(InheritedResolutionTest, VirtualResolvesToNearestAncestorNotBeyond)
     const CallEdge *declared = edge_with_origin(edges, EdgeOrigin::Declared);
     ASSERT_NE(declared, nullptr);
     EXPECT_EQ(g.nodes()[declared->callee_node].id.class_descriptor, "LLeaf;");
-    EXPECT_FALSE(g.nodes()[declared->callee_node].resolved);
+    EXPECT_EQ(g.nodes()[declared->callee_node].kind, CallNodeKind::External);
 
     const CallEdge *inherited = edge_with_origin(edges, EdgeOrigin::InheritedResolution);
     ASSERT_NE(inherited, nullptr) << "call through non-defining subclass must resolve upward";
     EXPECT_EQ(g.nodes()[inherited->callee_node].id.class_descriptor, "LMid;");
-    EXPECT_TRUE(g.nodes()[inherited->callee_node].resolved);
+    EXPECT_EQ(g.nodes()[inherited->callee_node].kind, CallNodeKind::Defined);
     EXPECT_EQ(inherited->kind, InvokeKind::Virtual);
     EXPECT_EQ(inherited->code_offset, declared->code_offset);
 
@@ -141,7 +141,7 @@ TEST_F(InheritedResolutionTest, WalkSkipsUnresolvedIntermediateNodes)
     const auto &g = ctx->call_graph();
     const CallNode *mid2_p = node_of(g, "LMid2;", "p");
     ASSERT_NE(mid2_p, nullptr) << "viaMid must have created the Mid2.p reference node";
-    EXPECT_FALSE(mid2_p->resolved);
+    EXPECT_EQ(mid2_p->kind, CallNodeKind::External);
 
     for (const char *caller_name : {"viaMid", "viaLeaf"}) {
         const CallNode *caller = node_of(g, "LUseB;", caller_name);
@@ -227,7 +227,7 @@ TEST_F(InheritedResolutionTest, AbstractInterfaceDeclarationFallback)
     const CallEdge *declared = edge_with_origin(edges, EdgeOrigin::Declared);
     ASSERT_NE(declared, nullptr);
     EXPECT_EQ(g.nodes()[declared->callee_node].id.class_descriptor, "LTagged;");
-    EXPECT_FALSE(g.nodes()[declared->callee_node].resolved);
+    EXPECT_EQ(g.nodes()[declared->callee_node].kind, CallNodeKind::External);
 
     const CallEdge *inherited = edge_with_origin(edges, EdgeOrigin::InheritedResolution);
     ASSERT_NE(inherited, nullptr);
@@ -252,7 +252,8 @@ TEST_F(InheritedResolutionTest, ChaDispatchesToInheritedImplementationSideways)
     const CallEdge *declared = edge_with_origin(edges, EdgeOrigin::Declared);
     ASSERT_NE(declared, nullptr);
     EXPECT_EQ(g.nodes()[declared->callee_node].id.class_descriptor, "LRunner;");
-    EXPECT_TRUE(g.nodes()[declared->callee_node].resolved) << "Runner declares run() abstract";
+    EXPECT_EQ(g.nodes()[declared->callee_node].kind, CallNodeKind::Defined)
+        << "Runner declares run() abstract";
 
     EXPECT_EQ(dispatch_classes(g, *declared), (std::set<std::string>{"LRunnerBase;"}))
         << "non-overriding implementer's inherited definition must be a CHA target";
@@ -272,7 +273,7 @@ TEST_F(InheritedResolutionTest, FrameworkBoundaryStaysUnresolved)
     auto edges = edges_to_name(g, caller, "size");
     ASSERT_EQ(edges.size(), 1u);
     EXPECT_EQ(edges[0]->origin, EdgeOrigin::Declared);
-    EXPECT_FALSE(g.nodes()[edges[0]->callee_node].resolved);
+    EXPECT_EQ(g.nodes()[edges[0]->callee_node].kind, CallNodeKind::External);
 }
 
 TEST_F(InheritedResolutionTest, EdgeInvariantsSweep)
@@ -299,13 +300,14 @@ TEST_F(InheritedResolutionTest, EdgeInvariantsSweep)
         if (e.origin == EdgeOrigin::InheritedResolution)
             ++s.inherited;
         if (e.origin != EdgeOrigin::Declared) {
-            EXPECT_TRUE(g.nodes()[e.callee_node].resolved)
+            EXPECT_EQ(g.nodes()[e.callee_node].kind, CallNodeKind::Defined)
                 << "non-declared edge to unresolved node " << e.callee_node;
         }
         EXPECT_TRUE(s.callees.insert(e.callee_node).second)
             << "duplicate callee at caller " << e.caller_node << " offset " << e.code_offset;
         for (uint32_t t : g.dispatch_targets(e)) {
-            EXPECT_TRUE(g.nodes()[t].resolved) << "dispatch target " << t << " unresolved";
+            EXPECT_EQ(g.nodes()[t].kind, CallNodeKind::Defined)
+                << "dispatch target " << t << " unresolved";
             EXPECT_TRUE(s.callees.insert(t).second)
                 << "duplicate callee at caller " << e.caller_node << " offset " << e.code_offset;
         }
@@ -334,5 +336,5 @@ TEST(InheritedResolutionCrossDex, WalkCrossesDexBoundaries)
     const CallEdge *inherited = edge_with_origin(edges, EdgeOrigin::InheritedResolution);
     ASSERT_NE(inherited, nullptr);
     EXPECT_EQ(g.nodes()[inherited->callee_node].id.class_descriptor, "LBase2;");
-    EXPECT_TRUE(g.nodes()[inherited->callee_node].resolved);
+    EXPECT_EQ(g.nodes()[inherited->callee_node].kind, CallNodeKind::Defined);
 }

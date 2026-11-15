@@ -193,7 +193,7 @@ def test_call_graph():
 
     sound = dexpp.MethodId("LAnimal;", "sound", "()Ljava/lang/String;")
     node = g.find(sound)
-    assert node is not None and node.resolved
+    assert node is not None and node.kind is dexpp.CallNodeKind.DEFINED
     assert g.find(dexpp.MethodId("LNo;", "where", "()V")) is None
 
     # CHA: the interface call may dispatch to the Dog and Cat overrides.  The
@@ -215,7 +215,7 @@ def test_call_graph():
     ]
     assert len(inherited) == 1
     assert g.nodes[inherited[0].callee_node].id.class_descriptor == "LAnimal;"
-    assert g.nodes[inherited[0].callee_node].resolved
+    assert g.nodes[inherited[0].callee_node].kind is dexpp.CallNodeKind.DEFINED
 
     # Every call site has exactly one declared edge.
     declared = [e for e in g.edges if e.origin == dexpp.EdgeOrigin.DECLARED]
@@ -236,6 +236,21 @@ def test_call_graph():
 
     m = g.method_for(node)
     assert m is not None and m.name == "sound" and not m.has_code
+
+
+def test_call_graph_node_kinds():
+    # handles.dex: Handles.run makes an invoke-polymorphic and an invoke-custom call.
+    g = dexpp.AnalysisContext.from_dex("tests/data/handles.dex").call_graph
+    run = next(n for n in g.nodes if n.id.name == "run")
+    assert run.kind is dexpp.CallNodeKind.DEFINED and run.method is not None
+    polymorphic, custom = run.out_edges
+    assert polymorphic.kind is dexpp.InvokeKind.POLYMORPHIC
+    assert polymorphic.callee.kind is dexpp.CallNodeKind.EXTERNAL
+    assert polymorphic.callee.id.name == "invokeExact"
+    assert custom.kind is dexpp.InvokeKind.CUSTOM
+    assert custom.callee.kind is dexpp.CallNodeKind.CALL_SITE
+    assert custom.callee.method is None and g.method_for(custom.callee) is None
+    assert [n.kind for n in g.nodes].count(dexpp.CallNodeKind.CALL_SITE) == 1
 
 
 def test_call_graph_views_and_handles():
@@ -271,7 +286,7 @@ def test_call_graph_views_and_handles():
     assert list(node.out_edges) == [edges[i] for i in node.outgoing]
     assert node.method is not None and node.method.name == "sound"
     assert g.method_for(node).name == "sound"
-    external = next(n for n in nodes if not n.resolved)
+    external = next(n for n in nodes if n.kind is dexpp.CallNodeKind.EXTERNAL)
     assert external.method is None
 
     # Handles are hashable and compare by identity within the graph.
@@ -323,7 +338,7 @@ def test_call_graph_views_and_handles():
 def test_call_graph_does_not_depend_on_thread_count():
     def describe(g):
         return (
-            [(n.id.class_descriptor, n.id.name, n.id.proto, n.resolved) for n in g.nodes],
+            [(n.id.class_descriptor, n.id.name, n.id.proto, n.kind) for n in g.nodes],
             [(e.caller_node, e.callee_node, e.code_offset, e.kind, e.origin) for e in g.edges],
             [[t.index for t in n.dispatch_targets] for n in g.nodes],
         )
@@ -1492,6 +1507,7 @@ ENUMS = {
         "VIRTUAL", "SUPER", "DIRECT", "STATIC", "INTERFACE", "POLYMORPHIC", "CUSTOM",
     ],
     dexpp.EdgeOrigin: ["DECLARED", "INHERITED_RESOLUTION"],
+    dexpp.CallNodeKind: ["DEFINED", "EXTERNAL", "CALL_SITE"],
     dexpp.CfgEdgeKind: [
         "FALLTHROUGH", "GOTO", "BRANCH_TAKEN", "BRANCH_NOT_TAKEN", "SWITCH_CASE",
         "SWITCH_DEFAULT", "EXCEPTION",

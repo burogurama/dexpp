@@ -489,7 +489,7 @@ CallGraph build_call_graph(std::shared_ptr<const detail::AnalysisContextImpl> im
         auto [node, inserted] =
             node_ids.try_emplace(pack(cls, sig), static_cast<uint32_t>(g.nodes_.size()));
         if (inserted) {
-            g.nodes_.push_back(CallNode{node, MethodId{}, /*resolved=*/false, {}, {}});
+            g.nodes_.push_back(CallNode{node, MethodId{}, CallNodeKind::External, {}, {}});
             g.resolved_refs_.emplace_back();
             node_class.push_back(cls);
             node_sig.push_back(sig);
@@ -573,6 +573,7 @@ CallGraph build_call_graph(std::shared_ptr<const detail::AnalysisContextImpl> im
             owned.push_back("#" + std::to_string(dex) + ":" + std::to_string(call_site_idx));
             it->second =
                 node_of(classes.id("call_site"), sig_of(names.id(owned.back()), protos.id({})));
+            g.nodes_[it->second].kind = CallNodeKind::CallSite;
         }
         return it->second;
     };
@@ -615,9 +616,9 @@ CallGraph build_call_graph(std::shared_ptr<const detail::AnalysisContextImpl> im
                 uint32_t node_idx = node_of(cls, method_sig(i, m.method_idx));
                 // A method listed twice in one class (a damaged file): the
                 // first listing wins, as for classes.
-                if (g.nodes_[node_idx].resolved)
+                if (g.nodes_[node_idx].kind == CallNodeKind::Defined)
                     continue;
-                g.nodes_[node_idx].resolved = true;
+                g.nodes_[node_idx].kind = CallNodeKind::Defined;
                 g.resolved_refs_[node_idx] =
                     CallGraph::ResolvedRef{i, m.method_idx, m.access_flags, m.code_off};
                 if (m.code_off != 0) {
@@ -945,7 +946,7 @@ CallGraph build_call_graph(std::shared_ptr<const detail::AnalysisContextImpl> im
     for (const auto &e : g.edges_) {
         if (dispatches(e))
             dispatched[e.callee_node] = true;
-        if (g.nodes_[e.callee_node].resolved)
+        if (g.nodes_[e.callee_node].kind == CallNodeKind::Defined)
             continue;
         if (e.kind == InvokeKind::Virtual || e.kind == InvokeKind::Interface ||
             e.kind == InvokeKind::Super)
@@ -1046,7 +1047,7 @@ CallGraph build_call_graph(std::shared_ptr<const detail::AnalysisContextImpl> im
         if (e.kind != InvokeKind::Virtual && e.kind != InvokeKind::Interface &&
             e.kind != InvokeKind::Super && e.kind != InvokeKind::Static)
             continue;
-        if (g.nodes_[e.callee_node].resolved)
+        if (g.nodes_[e.callee_node].kind == CallNodeKind::Defined)
             continue;
         uint32_t t = inherited[e.kind == InvokeKind::Static ? 1 : 0][e.callee_node];
         if (t != kNone)

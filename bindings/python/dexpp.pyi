@@ -178,6 +178,21 @@ class EdgeOrigin(Enum):
     method Android finds at runtime. A call site has at most one edge of this kind.
     """
 
+class CallNodeKind(Enum):
+    """What a call-graph node stands for."""
+
+    DEFINED = 0
+    """A method defined in a loaded file. `CallNode.method` gives its `Method`."""
+    EXTERNAL = 1
+    """A method that loaded code calls but no loaded file defines, such as a framework
+    method.
+    """
+    CALL_SITE = 2
+    """An `invoke-custom` call site. Its bootstrap method picks the target at runtime,
+    so the node stands for the call site itself. Its `id` is opaque: it only keeps call
+    sites apart, names no method, and may change between versions.
+    """
+
 class CfgEdgeKind(Enum):
     """The kind of edge between two basic blocks of a control-flow graph."""
 
@@ -1311,10 +1326,12 @@ class CallEdge:
     def __hash__(self) -> int: ...
 
 class CallNode:
-    """A method in the call graph.
+    """A node of the call graph.
 
-    A node is *resolved* when the method is defined in a loaded file. A method the
-    app calls but does not contain is a node too, with `resolved` false.
+    Most nodes are methods. A method defined in a loaded file has the kind `DEFINED`.
+    A method the app calls but does not contain, such as a framework method, is a node
+    too, of kind `EXTERNAL`. An `invoke-custom` call site is a node of kind
+    `CALL_SITE`.
     """
 
     @property
@@ -1322,10 +1339,14 @@ class CallNode:
         """Position of the node in `CallGraph.nodes`."""
     @property
     def id(self) -> MethodId:
-        """The method's identity."""
+        """The method's identity. For a `CALL_SITE` node it is opaque: it only keeps call
+        sites apart and names no method.
+        """
     @property
-    def resolved(self) -> bool:
-        """True when the method is defined in a loaded file."""
+    def kind(self) -> CallNodeKind:
+        """What the node stands for: a defined method, an external method, or a call
+        site.
+        """
     @property
     def outgoing(self) -> list[int]:
         """Indices in `CallGraph.edges` of the call sites in this method. `out_edges`
@@ -1348,7 +1369,7 @@ class CallNode:
         may run: the overrides in loaded subclasses and implementers.
 
         The list is stored once on the node and shared by all its call sites. Every
-        target is a resolved node. It is empty when no such call names this method.
+        target is a `DEFINED` node. It is empty when no such call names this method.
         """
     @property
     def dispatch_sources(self) -> CallNodeView:
@@ -1373,7 +1394,9 @@ class CallNode:
         """
     @property
     def method(self) -> Optional[Method]:
-        """The `Method` of a resolved node, or `None` for an external method."""
+        """The `Method` of a `DEFINED` node, or `None` for an `EXTERNAL` or `CALL_SITE`
+        node.
+        """
     def __eq__(self, other: object) -> bool: ...
     def __hash__(self) -> int: ...
 
@@ -1438,8 +1461,8 @@ class CallGraph:
         such method.
         """
     def method_for(self, node: CallNode) -> Optional[Method]:
-        """The `Method` of a resolved node, or `None` for an external method. Same as
-        `node.method`.
+        """The `Method` of a `DEFINED` node, or `None` for an `EXTERNAL` or `CALL_SITE`
+        node. Same as `node.method`.
         """
     @property
     def empty(self) -> bool:

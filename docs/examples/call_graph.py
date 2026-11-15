@@ -18,7 +18,7 @@ def label(node: dexpp.CallNode) -> str:
 noise_id: dexpp.MethodId = dexpp.MethodId("LKennel;", "noise", "(LAnimal;)Ljava/lang/String;")
 noise: dexpp.CallNode | None = graph.find(noise_id)
 assert noise is not None
-print(label(noise), "resolved:", noise.resolved)
+print(label(noise), "kind:", noise.kind.name)
 
 for edge in noise.out_edges:
     print("  calls", label(edge.callee), edge.kind.name, "at offset", edge.code_offset)
@@ -45,7 +45,9 @@ print(sorted(label(caller) for caller in callers))
 # --8<-- [end:callers]
 
 # --8<-- [start:external]
-external: list[dexpp.CallNode] = [node for node in graph.nodes if node.resolved is False]
+external: list[dexpp.CallNode] = [
+    node for node in graph.nodes if node.kind is dexpp.CallNodeKind.EXTERNAL
+]
 print(sorted(label(node) for node in external))
 
 no_method: dexpp.Method | None = external[0].method

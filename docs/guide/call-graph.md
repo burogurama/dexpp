@@ -14,9 +14,15 @@ and kept after that.
 
 ## Nodes and edges
 
-A **node** is a method. `node.id` is its `MethodId`. A node is *resolved* when
-the method is defined in a loaded file. Methods the app calls but does not
-contain, such as framework methods, are nodes too, with `resolved == False`.
+A **node** is a method. `node.id` is its `MethodId`, and `node.kind` says what
+the node stands for:
+
+- `CallNodeKind.DEFINED`: a method defined in a loaded file.
+- `CallNodeKind.EXTERNAL`: a method the app calls but does not contain, such
+  as a framework method.
+- `CallNodeKind.CALL_SITE`: an `invoke-custom` call site (see
+  [What the graph does not model](#what-the-graph-does-not-model)). Its `id`
+  is opaque: it only keeps call sites apart and names no method.
 
 An **edge** is one call site: one invoke instruction in the caller, at
 `edge.code_offset`, pointing at a callee.
@@ -35,8 +41,8 @@ An **edge** is one call site: one invoke instruction in the caller, at
 - `edge.caller` and `edge.callee` are nodes. `edge.kind` is the kind of
   invoke: `VIRTUAL`, `SUPER`, `DIRECT`, `STATIC`, `INTERFACE`, `POLYMORPHIC`
   or `CUSTOM`.
-- `node.method` is the `Method` behind a resolved node, and `None` for an
-  external one.
+- `node.method` is the `Method` behind a `DEFINED` node, and `None` for the
+  other kinds.
 
 ## Virtual dispatch
 
@@ -118,10 +124,10 @@ Each edge has an `origin`:
   exactly one.
 - `INHERITED_RESOLUTION`: the definition found by walking up the superclass
   chain, then the interfaces. A call site has at most one. It always points at
-  a resolved node.
+  a `DEFINED` node.
 
 When no loaded ancestor defines the method, there is no second edge and the
-declared node stays unresolved. This is the normal case for a call that ends
+declared node stays `EXTERNAL`. This is the normal case for a call that ends
 in a framework class.
 
 ## External methods
@@ -165,8 +171,9 @@ they can be put in sets and used as dictionary keys.
 
 - **Reflection.** A method called through `Method.invoke` has no edge.
 - **`invoke-custom`** (lambdas and string concatenation on newer compilers).
-  Each call site becomes an unresolved node of its own. The graph does not
-  follow it to the method the call site is bound to, such as a lambda body.
+  Each call site becomes a node of its own, of kind `CALL_SITE`. The graph
+  does not follow it to the method the call site is bound to, such as a
+  lambda body.
 - **`invoke-polymorphic`.** Only the declared `MethodHandle` target is
   recorded.
 - **Framework callbacks.** Android calls methods such as `onCreate` itself.

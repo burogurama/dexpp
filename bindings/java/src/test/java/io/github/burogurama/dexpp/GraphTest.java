@@ -59,7 +59,7 @@ class GraphTest {
             assertTrue(g.edgeCount() > 0);
 
             CallNode sound = node(g, new MethodId("LAnimal;", "sound", "()Ljava/lang/String;"));
-            assertTrue(sound.resolved());
+            assertEquals(CallNodeKind.DEFINED, sound.kind());
             assertEquals(Optional.empty(), g.find(new MethodId("LNo;", "where", "()V")));
 
             // The interface call may dispatch to the Dog and Cat overrides. The
@@ -93,7 +93,7 @@ class GraphTest {
             assertEquals(1, inherited.size());
             CallNode callee = nodes.get(inherited.get(0).calleeNode());
             assertEquals("LAnimal;", callee.id().classDescriptor());
-            assertTrue(callee.resolved());
+            assertEquals(CallNodeKind.DEFINED, callee.kind());
             // A site's dispatch targets hang off its declared edge only.
             assertEquals(List.of(), g.edgeDispatchTargets(inherited.get(0).index()));
 
@@ -137,7 +137,7 @@ class GraphTest {
                 assertEquals(Optional.of(n), g.node(i));
                 assertEquals(Optional.of(n), g.find(n.id()));
                 Optional<DexMethod> m = g.methodFor(i);
-                assertEquals(n.resolved(), m.isPresent(), n.id().toString());
+                assertEquals(n.kind() == CallNodeKind.DEFINED, m.isPresent(), n.id().toString());
                 m.ifPresent(method -> assertEquals(n.id(), method.id()));
             }
             for (int i = 0; i < edges.size(); i++) {
@@ -177,9 +177,38 @@ class GraphTest {
                                 g.callees(n.index()))) {
                     assertTrue(sortedWithoutDuplicates(list), list + " of " + n.id());
                 }
-                external = external || !n.resolved();
+                external = external || n.kind() == CallNodeKind.EXTERNAL;
             }
             assertTrue(external, "no external node");
+        }
+    }
+
+    @Test
+    void callNodeKinds() {
+        // handles.dex: Handles.run makes an invoke-polymorphic and an invoke-custom call.
+        try (AnalysisContext ctx = dex("handles.dex");
+                CallGraph g = ctx.callGraph()) {
+            CallNode run =
+                    node(
+                            g,
+                            new MethodId(
+                                    "LHandles;",
+                                    "run",
+                                    "(Ljava/lang/invoke/MethodHandle;[Ljava/lang/Object;)"
+                                            + "Ljava/lang/Object;"));
+            assertEquals(CallNodeKind.DEFINED, run.kind());
+            List<Integer> out = g.outEdges(run.index());
+            assertEquals(2, out.size());
+            CallEdge polymorphic = g.edge(out.get(0)).orElseThrow();
+            CallNode invokeExact = g.node(polymorphic.calleeNode()).orElseThrow();
+            assertEquals(InvokeKind.POLYMORPHIC, polymorphic.kind());
+            assertEquals(CallNodeKind.EXTERNAL, invokeExact.kind());
+            assertEquals("invokeExact", invokeExact.id().name());
+            CallEdge custom = g.edge(out.get(1)).orElseThrow();
+            CallNode site = g.node(custom.calleeNode()).orElseThrow();
+            assertEquals(InvokeKind.CUSTOM, custom.kind());
+            assertEquals(CallNodeKind.CALL_SITE, site.kind());
+            assertEquals(Optional.empty(), g.methodFor(site.index()));
         }
     }
 

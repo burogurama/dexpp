@@ -51,7 +51,7 @@ enum class EdgeOrigin : uint8_t {
  *  both share `caller_node`, `kind`, and `code_offset`.  The site's possible
  *  callees — those edges' callees plus `CallGraph::dispatch_targets(edge)` —
  *  are pairwise distinct, and every one except the Declared callee is a
- *  resolved node. */
+ *  Defined node. */
 struct CallEdge
 {
     uint32_t caller_node; ///< Index into CallGraph::nodes().
@@ -61,16 +61,29 @@ struct CallEdge
     EdgeOrigin origin = EdgeOrigin::Declared;
 };
 
-/** A node in the call graph.  Represents either a defined method (resolved=true)
- *  or an external reference (resolved=false) that some defined method calls into.
- *
- *  Custom call sites are represented as resolved=false nodes with a synthetic
- *  MethodId of the form `{ "call_site", "#<dex_idx>:<call_site_index>", "" }`. */
+/** What a call-graph node stands for. */
+enum class CallNodeKind : uint8_t {
+    /** A method defined in a loaded DEX file.  CallGraph::method_for() gives
+     *  its Method. */
+    Defined,
+    /** A method that loaded code calls but no loaded DEX file defines, such as
+     *  a framework method. */
+    External,
+    /** An invoke-custom call site: the target is chosen at runtime by the
+     *  call site's bootstrap method, so the node is the call site itself.
+     *  Its `id` is opaque: it only keeps call sites apart, does not name a
+     *  method, and may change between versions. */
+    CallSite,
+};
+
+/** A node in the call graph: a defined method, an external method that
+ *  defined code calls, or an invoke-custom call site (see CallNodeKind). */
 struct CallNode
 {
     uint32_t index; ///< Position of this node in CallGraph::nodes().
+    /** The method's identity.  Opaque for a CallSite node (see CallNodeKind). */
     MethodId id;
-    bool resolved;                  ///< true iff `id` matches a method defined in some loaded DEX.
+    CallNodeKind kind;
     std::vector<uint32_t> outgoing; ///< Edge indices into CallGraph::edges().
     std::vector<uint32_t> incoming; ///< Edge indices into CallGraph::edges().
 };
@@ -107,7 +120,7 @@ struct CallNode
  *  and static invokes (static resolves through the superclass chain only —
  *  static interface methods are not inherited).  If no loaded ancestor defines
  *  the method (e.g. the chain leaves the loaded set at a framework class), the
- *  declared node simply stays unresolved and no edge is added.
+ *  declared node simply stays External and no edge is added.
  *
  *  Known divergences from runtime resolution, chosen for analysis usefulness:
  *  flag-mismatched shadows (e.g. a static hiding an instance method) are
@@ -117,11 +130,12 @@ struct CallNode
  *  nearest default/abstract definition; invoke-super resolves from the
  *  method_id's class (identical to the caller's superclass in compiler
  *  output); Object methods called through an interface, and array-receiver
- *  descriptors, stay unresolved (Object is never loaded).
+ *  descriptors, stay External (Object is never loaded).
  *
  *  invoke-super never dispatches.  invoke-polymorphic records the declared
  *  MethodHandle target only — distinct call-site shapes through the same
- *  MethodHandle.invoke collapse into one node.
+ *  MethodHandle.invoke collapse into one node.  An invoke-custom site points
+ *  at a CallSite node, one for each call site of each DEX file.
  *
  *  A class defined in more than one loaded DEX file (or twice in one) follows
  *  Android's rule: the first definition wins, in load order (multidex order
@@ -149,16 +163,16 @@ class CallGraph
      *  node carries that id. */
     const CallNode *find(const MethodId &id) const;
 
-    /** If `node.resolved` is true, returns a Method handle for the underlying
-     *  defined method.  Returns nullopt for unresolved (external or custom)
-     *  nodes, or if the owning AnalysisContext has been destroyed.
+    /** For a Defined node, returns a Method handle for the defined method.
+     *  Returns nullopt for External and CallSite nodes, or if the owning
+     *  AnalysisContext has been destroyed.
      *  Precondition: `node` must be a member of this graph's `nodes()` span. */
     std::optional<Method> method_for(const CallNode &node) const;
 
     /** Class-Hierarchy Analysis targets of a virtual / interface call declared
      *  against node index @p node: the definitions such a call may dispatch to
      *  at runtime besides `node` itself and its own upward resolution.  Every
-     *  target is a resolved node; sorted by node index.  Empty when no
+     *  target is a Defined node; sorted by node index.  Empty when no
      *  invoke-virtual / invoke-interface site declares `node`, when no loaded
      *  descendant changes the dispatch, or when `node` is out of range. */
     std::span<const uint32_t> dispatch_targets(uint32_t node) const;
@@ -194,7 +208,7 @@ class CallGraph
   private:
     friend CallGraph build_call_graph(std::shared_ptr<const detail::AnalysisContextImpl>);
 
-    /** Back-reference to the defined method behind a resolved node, used by
+    /** Back-reference to the defined method behind a Defined node, used by
      *  method_for() to construct a Method handle on demand. */
     struct ResolvedRef
     {

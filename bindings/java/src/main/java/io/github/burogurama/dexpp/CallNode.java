@@ -3,17 +3,19 @@ package io.github.burogurama.dexpp;
 import java.util.Objects;
 
 /**
- * A method in the {@link CallGraph}. A node is resolved when the method is defined in a loaded
- * file. A method the program calls but does not contain, such as a framework method, is a node too,
- * with {@code resolved} false.
+ * A node of the {@link CallGraph}. Most nodes are methods: a method defined in a loaded file has
+ * the kind {@link CallNodeKind#DEFINED}, and a method the program calls but does not contain, such
+ * as a framework method, has the kind {@link CallNodeKind#EXTERNAL}. An {@code invoke-custom} call
+ * site is a node of kind {@link CallNodeKind#CALL_SITE}.
  *
  * @param index the position of the node in the graph
- * @param id the method's identity
- * @param resolved true when the method is defined in a loaded file
+ * @param id the method's identity; opaque for a {@link CallNodeKind#CALL_SITE} node
+ * @param kind what the node stands for
  */
-public record CallNode(int index, MethodId id, boolean resolved) {
-    /** Checks that the identity is given. */
+public record CallNode(int index, MethodId id, CallNodeKind kind) {
+    /** Checks that the identity and the kind are given. */
     public CallNode {
         Objects.requireNonNull(id, "id");
+        Objects.requireNonNull(kind, "kind");
     }
 }

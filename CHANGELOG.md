@@ -118,6 +118,25 @@ aliases.
       `DexppFieldId`.
     - Go and Java now get each identity with one call to C, instead of one
       call for each part.
+- Breaking: a call-graph node now has a `kind` instead of the `resolved`
+  flag. The flag mixed two different cases: an `invoke-custom` call site was
+  an unresolved node, like a framework method, with a made-up identity of the
+  form `("call_site", "#<dex>:<index>", "")` that looked like a method. The
+  kind is `DEFINED` (a method defined in a loaded file), `EXTERNAL` (a method
+  the code calls but no loaded file defines) or `CALL_SITE` (an
+  `invoke-custom` call site). The identity of a `CALL_SITE` node is opaque: it
+  only keeps call sites apart, and it may change.
+    - C++: the enum `dex::CallNodeKind` and `CallNode::kind` replace
+      `CallNode::resolved`.
+    - Python: the enum `dexpp.CallNodeKind` and `CallNode.kind`.
+    - C: the enum `DexppCallNodeKind` (`DEXPP_CALL_NODE_DEFINED`,
+      `DEXPP_CALL_NODE_EXTERNAL`, `DEXPP_CALL_NODE_CALL_SITE`) and the member
+      `DexppCallNode.kind` replace `DexppCallNode.resolved`.
+    - Go: the type `CallNodeKind` (`CallNodeDefined`, `CallNodeExternal`,
+      `CallNodeCallSite`) and the field `CallNode.Kind` replace
+      `CallNode.Resolved`.
+    - Java: the enum `CallNodeKind` and `CallNode.kind()` replace
+      `CallNode.resolved()`.
 
 ### Python bindings
 

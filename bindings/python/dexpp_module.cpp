@@ -797,7 +797,7 @@ PYBIND11_MODULE(dexpp, m)
         .def_property_readonly(
             "id", [](const NodeRef &n) -> const MethodId & { return n.get().id; },
             py::return_value_policy::reference_internal)
-        .def_property_readonly("resolved", [](const NodeRef &n) { return n.get().resolved; })
+        .def_property_readonly("kind", [](const NodeRef &n) { return n.get().kind; })
         .def_property_readonly("outgoing", [](const NodeRef &n) { return n.get().outgoing; })
         .def_property_readonly("incoming", [](const NodeRef &n) { return n.get().incoming; })
         .def_property_readonly(
@@ -840,7 +840,7 @@ PYBIND11_MODULE(dexpp, m)
             "on each call.")
         .def_property_readonly(
             "method", [](const NodeRef &n) { return method_or_none(n.graph->method_for(n.get())); },
-            "The Method for a resolved node; None for external methods.")
+            "The Method of a DEFINED node; None for an EXTERNAL or CALL_SITE node.")
         .def(py::self == py::self)
         .def("__hash__", [](const NodeRef &n) { return std::hash<uint32_t>{}(n.index); })
         .def("__repr__",

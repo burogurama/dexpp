@@ -56,6 +56,14 @@ class EdgeOrigin(_enum.Enum):
     INHERITED_RESOLUTION = 1
 
 
+class CallNodeKind(_enum.Enum):
+    """What a call-graph node stands for."""
+
+    DEFINED = 0
+    EXTERNAL = 1
+    CALL_SITE = 2
+
+
 class CfgEdgeKind(_enum.Enum):
     """The kind of edge between two basic blocks of a control-flow graph."""
 
@@ -120,6 +128,9 @@ static_assert(static_cast<int>(dex::InvokeKind::Virtual) == 0 &&
               static_cast<int>(dex::InvokeKind::Custom) == 6);
 static_assert(static_cast<int>(dex::EdgeOrigin::Declared) == 0 &&
               static_cast<int>(dex::EdgeOrigin::InheritedResolution) == 1);
+static_assert(static_cast<int>(dex::CallNodeKind::Defined) == 0 &&
+              static_cast<int>(dex::CallNodeKind::External) == 1 &&
+              static_cast<int>(dex::CallNodeKind::CallSite) == 2);
 static_assert(static_cast<int>(dex::CfgEdgeKind::Fallthrough) == 0 &&
               static_cast<int>(dex::CfgEdgeKind::Goto) == 1 &&
               static_cast<int>(dex::CfgEdgeKind::BranchTaken) == 2 &&
@@ -156,6 +167,7 @@ template <typename E> struct EnumTraits;
 
 DEXPP_PY_ENUM(dex::InvokeKind, "InvokeKind");
 DEXPP_PY_ENUM(dex::EdgeOrigin, "EdgeOrigin");
+DEXPP_PY_ENUM(dex::CallNodeKind, "CallNodeKind");
 DEXPP_PY_ENUM(dex::CfgEdgeKind, "CfgEdgeKind");
 DEXPP_PY_ENUM(dex::TypeUseKind, "TypeUseKind");
 DEXPP_PY_ENUM(dex::OperandWidth, "OperandWidth");
@@ -228,6 +240,9 @@ template <> class type_caster<dex::InvokeKind> : public dexpp_py::EnumCaster<dex
 {
 };
 template <> class type_caster<dex::EdgeOrigin> : public dexpp_py::EnumCaster<dex::EdgeOrigin>
+{
+};
+template <> class type_caster<dex::CallNodeKind> : public dexpp_py::EnumCaster<dex::CallNodeKind>
 {
 };
 template <> class type_caster<dex::CfgEdgeKind> : public dexpp_py::EnumCaster<dex::CfgEdgeKind>

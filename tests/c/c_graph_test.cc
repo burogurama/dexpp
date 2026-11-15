@@ -4,6 +4,7 @@
 #include <gtest/gtest.h>
 
 #include <cstddef>
+#include <map>
 #include <set>
 #include <string>
 #include <vector>
@@ -82,7 +83,7 @@ TEST(CApiCallGraph, NodesEdgesAndLookup)
     EXPECT_EQ(dexpp_call_graph_find(g, "LNo;", "where", "()V"), -1);
     DexppCallNode n{};
     ASSERT_EQ(dexpp_call_graph_node(g, static_cast<uint32_t>(sound), &n), 1);
-    EXPECT_EQ(n.resolved, 1);
+    EXPECT_EQ(n.kind, DEXPP_CALL_NODE_DEFINED);
     EXPECT_STREQ(n.id.proto, "()Ljava/lang/String;");
     dexpp_call_node_clear(&n);
     EXPECT_EQ(dexpp_call_graph_node(g, static_cast<uint32_t>(node_count), &n), 0);
@@ -94,6 +95,33 @@ TEST(CApiCallGraph, NodesEdgesAndLookup)
     EXPECT_EQ(dexpp_call_graph_method_for(g, static_cast<uint32_t>(node_count)), nullptr);
 
     dexpp_call_graph_free(g);
+}
+
+TEST(CApiCallGraph, NodeKinds)
+{
+    DexppContext *ctx = open_dex("tests/data/handles.dex");
+    ASSERT_NE(ctx, nullptr);
+    DexppCallGraph *g = graph_of(ctx);
+    ASSERT_NE(g, nullptr);
+
+    size_t count = 0;
+    DexppCallNode *nodes = dexpp_call_graph_nodes(g, &count);
+    std::map<int, int> kinds;
+    for (size_t i = 0; i < count; ++i) {
+        ++kinds[nodes[i].kind];
+        DexppMethod *m = dexpp_call_graph_method_for(g, nodes[i].index);
+        EXPECT_EQ(m != nullptr, nodes[i].kind == DEXPP_CALL_NODE_DEFINED);
+        dexpp_method_free(m);
+    }
+    dexpp_call_node_array_free(nodes, count);
+    // run, spread, target, bootstrap; MethodHandle.invokeExact and .invoke; the
+    // invoke-custom call site.
+    EXPECT_EQ(kinds[DEXPP_CALL_NODE_DEFINED], 4);
+    EXPECT_EQ(kinds[DEXPP_CALL_NODE_EXTERNAL], 2);
+    EXPECT_EQ(kinds[DEXPP_CALL_NODE_CALL_SITE], 1);
+
+    dexpp_call_graph_free(g);
+    dexpp_context_free(ctx);
 }
 
 TEST(CApiCallGraph, DispatchCallersAndCallees)

@@ -85,7 +85,7 @@ TEST(FromApkTest, AnalysesWorkOnApkContext)
     ASSERT_FALSE(g.empty());
     const CallNode *hello = g.find(MethodId{"LTestDex;", "helloDex", "()Ljava/lang/String;"});
     ASSERT_NE(hello, nullptr);
-    EXPECT_TRUE(hello->resolved);
+    EXPECT_EQ(hello->kind, CallNodeKind::Defined);
 
     EXPECT_FALSE(ctx->xrefs().string_refs("Hello Dex++!!").empty());
 }

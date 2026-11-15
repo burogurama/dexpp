@@ -113,9 +113,9 @@ framework, the Java library. dex++ only sees what is in the files you loaded.
 
 - A `ClassRef` names a class by descriptor. `resolve()` returns the `Class`
   when the class is in a loaded file, and `None` when it is not.
-- A call-graph node has `resolved == True` when the method is defined in a
-  loaded file. A node for a framework method has `resolved == False`, and its
-  `method` is `None`.
+- A call-graph node has the kind `CallNodeKind.DEFINED` when the method is
+  defined in a loaded file. A node for a framework method has the kind
+  `CallNodeKind.EXTERNAL`, and its `method` is `None`.
 - `ClassHierarchy.is_loaded(descriptor)` tells you which side a class is on.
 
 ## Offsets

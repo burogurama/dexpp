@@ -219,7 +219,7 @@ TEST_F(DuplicateClassTest, CallGraphUsesOnlyTheFirstBody)
 
     const CallNode *run = g.find(MethodId{"LDup;", "run", "()V"});
     ASSERT_NE(run, nullptr);
-    EXPECT_TRUE(run->resolved);
+    EXPECT_EQ(run->kind, CallNodeKind::Defined);
     EXPECT_EQ(g.method_for(*run), first_run);
 
     // One call site, from the first body only.
@@ -233,10 +233,10 @@ TEST_F(DuplicateClassTest, CallGraphUsesOnlyTheFirstBody)
     EXPECT_EQ(g.find(MethodId{"LTarget;", "third", "()V"}), nullptr);
     EXPECT_EQ(g.find(MethodId{"LDup;", "extra", "()V"}), nullptr);
 
-    // Every resolved node's method comes from a definition the class index
+    // Every Defined node's method comes from a definition the class index
     // returns.
     for (const CallNode &node : g.nodes()) {
-        if (!node.resolved)
+        if (node.kind != CallNodeKind::Defined)
             continue;
         auto method = g.method_for(node);
         ASSERT_TRUE(method.has_value());
@@ -312,7 +312,7 @@ TEST(DuplicateClassSameFile, LoadingAFileTwiceAddsNothing)
         EXPECT_EQ(g2.nodes()[n].outgoing.size(), g1.nodes()[n].outgoing.size());
         EXPECT_EQ(g2.dispatch_targets(static_cast<uint32_t>(n)).size(),
                   g1.dispatch_targets(static_cast<uint32_t>(n)).size());
-        if (!g2.nodes()[n].resolved)
+        if (g2.nodes()[n].kind != CallNodeKind::Defined)
             continue;
         auto method = g2.method_for(g2.nodes()[n]);
         ASSERT_TRUE(method.has_value());

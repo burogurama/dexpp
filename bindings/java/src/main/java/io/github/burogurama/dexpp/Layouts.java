@@ -306,7 +306,7 @@ final class Layouts {
         private static final Builder B = new Builder();
         static final long INDEX = B.i32("index");
         static final long ID = B.add("id", MethodId.LAYOUT);
-        static final long RESOLVED = B.i32("resolved");
+        static final long KIND = B.i32("kind");
         static final StructLayout LAYOUT = B.build("DexppCallNode");
     }
 
