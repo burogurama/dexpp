@@ -273,7 +273,7 @@ class AnalysisTest {
             assertFalse(hello.isPrivate());
             assertEquals("Ljava/lang/String;", hello.returnType());
             assertEquals(List.of(), hello.parameters());
-            assertEquals("()Ljava/lang/String;", hello.descriptor());
+            assertEquals("()Ljava/lang/String;", hello.proto());
             assertEquals("LTestDex;", hello.declaringClass().descriptor());
             MethodId id = new MethodId("LTestDex;", "helloDex", "()Ljava/lang/String;");
             assertEquals(id, hello.id());

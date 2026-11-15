@@ -264,19 +264,19 @@ TEST(CApiMethod, DescribesTheMethodsOfAClass)
     for (size_t i = 0; i < count; ++i) {
         DexppMethod *m = methods[i];
         std::string name = take(dexpp_method_name(m));
-        std::string descriptor = take(dexpp_method_descriptor(m));
+        std::string proto = take(dexpp_method_proto(m));
         EXPECT_EQ(dexpp_method_has_code(m), 1) << name;
         DexppClassRef *owner = dexpp_method_declaring_class(m);
         EXPECT_EQ(take(dexpp_class_ref_descriptor(owner)), "LTestDex;");
         dexpp_class_ref_free(owner);
         if (name == "<init>") {
-            EXPECT_EQ(descriptor, "()V");
+            EXPECT_EQ(proto, "()V");
             EXPECT_EQ(dexpp_method_is_static(m), 0);
             EXPECT_EQ(dexpp_method_is_constructor(m), 1);
             EXPECT_EQ(take(dexpp_method_return_type(m)), "V");
         }
         if (name == "helloDex") {
-            EXPECT_EQ(descriptor, "()Ljava/lang/String;");
+            EXPECT_EQ(proto, "()Ljava/lang/String;");
             EXPECT_EQ(dexpp_method_is_static(m), 1);
             EXPECT_EQ(dexpp_method_is_constructor(m), 0);
             size_t n = 99;
@@ -287,7 +287,7 @@ TEST(CApiMethod, DescribesTheMethodsOfAClass)
         }
         if (name == "main") {
             saw_main = true;
-            EXPECT_EQ(descriptor, "([Ljava/lang/String;)V");
+            EXPECT_EQ(proto, "([Ljava/lang/String;)V");
             EXPECT_EQ(dexpp_method_access_flags(m), DEXPP_ACC_PUBLIC | DEXPP_ACC_STATIC);
             size_t n = 0;
             char **params = dexpp_method_parameters(m, &n);

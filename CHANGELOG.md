@@ -69,6 +69,11 @@ thing. The old names are gone; there are no aliases.
       and so on in Go, and `TypeUseKind` in Java. The C++ helper
       `type_ref_kind_from_opcode` is now `type_use_kind_from_opcode`. The
       member names and numbers do not change.
+- A method's prototype, such as `"(Ljava/lang/String;I)V"`, is called `proto`
+  everywhere, as in `MethodId.proto`. The accessor that called it a
+  descriptor is renamed: `dexpp_method_descriptor` is now
+  `dexpp_method_proto` in C, `Method.Descriptor()` is now `Method.Proto()` in
+  Go, and `DexMethod.descriptor()` is now `DexMethod.proto()` in Java.
 
 ### Python bindings
 

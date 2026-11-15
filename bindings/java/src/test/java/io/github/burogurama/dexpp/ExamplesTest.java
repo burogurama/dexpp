@@ -130,7 +130,7 @@ class ExamplesTest {
             for (DexClass cls : ctx.classes()) {
                 System.out.println(cls.descriptor());
                 for (DexMethod m : cls.methods()) {
-                    System.out.println("  " + m.name() + m.descriptor() + "  " + m.accessFlags());
+                    System.out.println("  " + m.name() + m.proto() + "  " + m.accessFlags());
                 }
             }
             Optional<DexClass> missing = ctx.findClass("Lcom/example/Missing;");

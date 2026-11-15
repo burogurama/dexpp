@@ -263,7 +263,7 @@ void dexpp_class_ref_array_free(DexppClassRef **refs, size_t count)
 
 char *dexpp_method_name(const DexppMethod *m) { return cstr(m->method.name()); }
 
-char *dexpp_method_descriptor(const DexppMethod *m)
+char *dexpp_method_proto(const DexppMethod *m)
 {
     std::string d = "(";
     for (const auto &p : m->method.parameters())

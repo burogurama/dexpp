@@ -341,8 +341,8 @@ func TestMethods(t *testing.T) {
 	if got := hello.Parameters(); len(got) != 0 {
 		t.Errorf("Parameters = %v, want none", got)
 	}
-	if got := hello.Descriptor(); got != "()Ljava/lang/String;" {
-		t.Errorf("Descriptor = %q", got)
+	if got := hello.Proto(); got != "()Ljava/lang/String;" {
+		t.Errorf("Proto = %q", got)
 	}
 	if got := hello.DeclaringClass().Descriptor(); got != "LTestDex;" {
 		t.Errorf("DeclaringClass = %q", got)

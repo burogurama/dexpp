@@ -32,7 +32,7 @@ func ExampleFromDEX() {
 	for _, cls := range ctx.Classes() {
 		fmt.Println(cls.Descriptor())
 		for _, m := range cls.Methods() {
-			fmt.Printf("  %s%s  %v\n", m.Name(), m.Descriptor(), m.AccessFlags())
+			fmt.Printf("  %s%s  %v\n", m.Name(), m.Proto(), m.AccessFlags())
 		}
 	}
 	if ctx.FindClass("Lcom/example/Missing;") == nil {

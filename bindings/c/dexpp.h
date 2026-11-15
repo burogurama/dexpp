@@ -554,8 +554,10 @@ typedef struct DexppTryBlock
  *  `<clinit>`. */
 DEXPP_C_API char *dexpp_method_name(const DexppMethod *m);
 
-/** The prototype, e.g. "(Ljava/lang/String;I)V". */
-DEXPP_C_API char *dexpp_method_descriptor(const DexppMethod *m);
+/** The prototype: the parameter types inside parentheses, then the return
+ *  type, e.g. "(Ljava/lang/String;I)V". It is the `proto` of the method's
+ *  DexppMethodId. */
+DEXPP_C_API char *dexpp_method_proto(const DexppMethod *m);
 
 /** The class that defines the method. Free with dexpp_class_ref_free(). */
 DEXPP_C_API DexppClassRef *dexpp_method_declaring_class(const DexppMethod *m);

@@ -290,11 +290,12 @@ func (m *Method) Name() string {
 	return takeString(C.dexpp_method_name(m.p()))
 }
 
-// Descriptor returns the prototype: the parameter types inside parentheses,
-// then the return type, such as "(Ljava/lang/String;I)V".
-func (m *Method) Descriptor() string {
+// Proto returns the prototype: the parameter types inside parentheses, then
+// the return type, such as "(Ljava/lang/String;I)V". It is the Proto of the
+// method's MethodID.
+func (m *Method) Proto() string {
 	defer runtime.KeepAlive(m)
-	return takeString(C.dexpp_method_descriptor(m.p()))
+	return takeString(C.dexpp_method_proto(m.p()))
 }
 
 // DeclaringClass returns the class that defines the method.
@@ -308,7 +309,7 @@ func (m *Method) DeclaringClass() *ClassRef {
 func (m *Method) ID() MethodID {
 	ref := m.DeclaringClass()
 	defer ref.Close()
-	return MethodID{ClassDescriptor: ref.Descriptor(), Name: m.Name(), Proto: m.Descriptor()}
+	return MethodID{ClassDescriptor: ref.Descriptor(), Name: m.Name(), Proto: m.Proto()}
 }
 
 // ReturnType returns the descriptor of the return type; "V" means void.

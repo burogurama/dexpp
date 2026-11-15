@@ -35,12 +35,12 @@ public final class DexMethod implements AutoCloseable {
 
     /**
      * The prototype: the parameter types inside parentheses, then the return type, such as {@code
-     * "(Ljava/lang/String;I)V"}.
+     * "(Ljava/lang/String;I)V"}. It is the {@link MethodId#proto()} of {@link #id()}.
      *
      * @return the prototype
      */
-    public String descriptor() {
-        return handle.call(p -> Mem.takeString(Native.dexpp_method_descriptor(p)));
+    public String proto() {
+        return handle.call(p -> Mem.takeString(Native.dexpp_method_proto(p)));
     }
 
     /**
@@ -60,7 +60,7 @@ public final class DexMethod implements AutoCloseable {
      */
     public MethodId id() {
         try (ClassRef cls = declaringClass()) {
-            return new MethodId(cls.descriptor(), name(), descriptor());
+            return new MethodId(cls.descriptor(), name(), proto());
         }
     }
 
