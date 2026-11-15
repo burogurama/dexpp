@@ -6,6 +6,7 @@
 #include <string>
 #include <unordered_map>
 
+#include "../raw/test_utils.hpp"
 #include "dex.hpp"
 
 using namespace dex;
@@ -466,7 +467,9 @@ TEST(ChaTest, CalleesIncludeDispatchTargets)
 TEST(ChaTest, DispatchRowsAreSortedResolvedAndInverse)
 {
     for (const char *path : {"tests/data/polymorphic.dex", "tests/data/inherit.dex",
-                             "tests/data/androguard/a2dp.Vol_137.apk"}) {
+                             "tests/data/local/a2dp.Vol_137.apk"}) {
+        if (missing_local_fixture(path))
+            continue;
         auto ctx = std::string_view(path).ends_with(".apk") ? AnalysisContext::from_apk(path)
                                                             : AnalysisContext::from_dex(path);
         ASSERT_TRUE(ctx.has_value()) << path;
@@ -502,7 +505,10 @@ TEST(ChaTest, OnlyDeclaredVirtualAndInterfaceEdgesDispatch)
     // In a2dp, some invoke-super sites and InheritedResolution edges point at
     // a node that has dispatch targets (from a virtual call elsewhere); the
     // edge form must not apply them there.
-    auto ctx = AnalysisContext::from_apk("tests/data/androguard/a2dp.Vol_137.apk");
+    const std::string path = "tests/data/local/a2dp.Vol_137.apk";
+    if (missing_local_fixture(path))
+        GTEST_SKIP() << path << " is not in this checkout";
+    auto ctx = AnalysisContext::from_apk(path);
     ASSERT_TRUE(ctx.has_value()) << ctx.error().message;
     const auto &g = ctx->call_graph();
 
@@ -565,7 +571,9 @@ TEST(CallGraphTest, SameGraphWithAnyThreadCount)
         return out;
     };
     for (const char *path :
-         {"tests/data/multidex.apk", "tests/data/app.apk", "tests/data/androguard/multidex.apk"}) {
+         {"tests/data/multidex.apk", "tests/data/app.apk", "tests/data/local/multidex.apk"}) {
+        if (missing_local_fixture(path))
+            continue;
         auto one = AnalysisContext::from_apk(path, ApkLoadOptions{.threads = 1});
         auto four = AnalysisContext::from_apk(path, ApkLoadOptions{.threads = 4});
         auto automatic = AnalysisContext::from_apk(path);

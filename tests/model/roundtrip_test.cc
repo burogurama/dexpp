@@ -34,7 +34,10 @@ struct Input
 std::vector<Input> fixtures()
 {
     std::vector<Input> out;
-    for (const char *dir : {"tests/data", "tests/data/androguard"})
+    // tests/data/local holds real apps that are not part of the repository.
+    for (const char *dir : {"tests/data", "tests/data/local"}) {
+        if (!std::filesystem::exists(dir))
+            continue;
         for (const auto &entry : std::filesystem::directory_iterator(dir)) {
             const auto &p = entry.path();
             if (p.filename().string().starts_with("bench")) // generated locally, not a fixture
@@ -53,6 +56,7 @@ std::vector<Input> fixtures()
                     if (auto bytes = dex::raw::zip::read_entry(apk, name))
                         out.push_back({p.string() + "!" + name, std::move(*bytes)});
         }
+    }
     std::sort(out.begin(), out.end(),
               [](const Input &a, const Input &b) { return a.name < b.name; });
     return out;
@@ -102,7 +106,7 @@ void round_trip(const Input &in, std::size_t index)
 TEST(ModelRoundTrip, EveryFixtureWritesBackTheSameProgram)
 {
     std::vector<Input> inputs = fixtures();
-    EXPECT_GE(inputs.size(), 25u);
+    EXPECT_GE(inputs.size(), 20u); // the fixtures in the repository; more with tests/data/local
     for (std::size_t i = 0; i < inputs.size(); ++i)
         round_trip(inputs[i], i);
 }

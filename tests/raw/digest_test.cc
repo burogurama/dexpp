@@ -53,7 +53,9 @@ TEST(Digest, HeaderChecksumAndSignatureOfFixtures)
     // (polymorphic.dex is left out: the tool that built it left a stale
     // signature, which ART does not check.)
     for (const char *path : {"tests/data/classes.dex", "tests/data/inherit.dex",
-                             "tests/data/fibonacci.dex", "tests/data/androguard/classes.dex"}) {
+                             "tests/data/fibonacci.dex", "tests/data/local/classes.dex"}) {
+        if (missing_local_fixture(path))
+            continue;
         auto buf = load_buf(path);
         auto header = parser::parse_header(buf);
         ASSERT_TRUE(header.has_value()) << path;

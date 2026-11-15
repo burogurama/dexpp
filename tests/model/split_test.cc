@@ -15,7 +15,9 @@
 
 TEST(ModelSplit, OneClassPerFileHoldsTheSameProgram)
 {
-    for (const char *input : {"tests/data/inherit.dex", "tests/data/androguard/classes.dex"}) {
+    for (const char *input : {"tests/data/inherit.dex", "tests/data/local/classes.dex"}) {
+        if (missing_local_fixture(input))
+            continue;
         SCOPED_TRACE(input);
         auto dex = dex::model::read_file(input);
         ASSERT_TRUE(dex.has_value());

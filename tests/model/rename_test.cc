@@ -146,7 +146,10 @@ TEST(ModelRename, GenericSignaturesKeepInnerSuffixesAndTypeVariables)
 
 TEST(ModelRename, MovesAPackageInARealApp)
 {
-    auto input = load_buf("tests/data/androguard/Annotation_classes.dex");
+    const std::string fixture = "tests/data/local/Annotation_classes.dex";
+    if (missing_local_fixture(fixture))
+        GTEST_SKIP() << fixture << " is not in this checkout";
+    auto input = load_buf(fixture);
     auto dex = read(input);
     ASSERT_TRUE(dex.has_value());
     rename_types(*dex, [](std::string_view type) -> std::optional<std::string> {

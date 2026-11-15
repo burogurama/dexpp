@@ -784,19 +784,17 @@ def test_invalid_model_error_lists_problems():
 
 
 def test_pool_overflow_error():
-    # A DEX file holds at most 65536 methods.  Six copies of a 14796-method
-    # file, each renamed into its own package, need more than that.
-    source = dexpp.Model.read_file(
-        "tests/data/androguard/Annotation_classes.dex", debug_info=False
-    )
+    # A DEX file holds at most 65536 fields.  The class in this fixture has 7
+    # fields of its own, so 9400 copies of it, each renamed into its own
+    # package, need more than that.
+    source = dexpp.Model.read_file("tests/data/multistring.dex", debug_info=False)
     merged = dexpp.Model(source.version)
-    for copy in range(6):
+    for copy in range(9400):
         part = source.clone()
         part.rename_types({d: f"Lcopy{copy}/{d[1:]}" for d in part.class_descriptors})
-        # From the end, so the remaining classes of `part` do not shift.
-        for descriptor in reversed(part.class_descriptors):
+        for descriptor in part.class_descriptors:
             merged.move_class(part, descriptor)
-    assert merged.pool_stats.methods > 65536
+    assert merged.pool_stats.fields > 65536
 
     error = _error_from(merged.write)
     assert type(error) is dexpp.PoolOverflowError

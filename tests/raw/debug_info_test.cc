@@ -60,8 +60,10 @@ TEST(DebugInfo, RejectsMissingEnd)
 TEST(DebugInfo, ParsesEveryFixtureMethod)
 {
     std::size_t parsed = 0;
-    for (const char *path : {"tests/data/classes.dex", "tests/data/fibonacci.dex",
-                             "tests/data/androguard/classes.dex"}) {
+    for (const char *path :
+         {"tests/data/classes.dex", "tests/data/fibonacci.dex", "tests/data/local/classes.dex"}) {
+        if (missing_local_fixture(path))
+            continue;
         auto buf = load_buf(path);
         auto dex = parser::parse_buffer(buf);
         ASSERT_TRUE(dex.has_value());
@@ -84,5 +86,7 @@ TEST(DebugInfo, ParsesEveryFixtureMethod)
                 }
         }
     }
-    EXPECT_GT(parsed, 1000u);
+    // The local real-app fixture holds most of the methods with debug info.
+    const bool has_real_app = !missing_local_fixture("tests/data/local/classes.dex");
+    EXPECT_GT(parsed, has_real_app ? 1000u : 5u);
 }

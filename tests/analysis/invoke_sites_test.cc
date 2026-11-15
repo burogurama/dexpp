@@ -63,10 +63,12 @@ TEST(InvokeSitesTest, MatchesDecoderOnRealCode)
     for (const char *path :
          {"tests/data/classes.dex", "tests/data/polymorphic.dex", "tests/data/inherit.dex",
           "tests/data/trycatch.dex", "tests/data/shapes.dex", "tests/data/fibonacci.dex",
-          "tests/data/androguard/AnalysisTest.dex", "tests/data/androguard/ExceptionHandling.dex",
-          "tests/data/androguard/StringTests.dex", "tests/data/androguard/classes.dex",
-          "tests/data/androguard/InterfaceCls.dex", "tests/data/androguard/FieldsTest.dex",
-          "tests/data/androguard/Annotation_classes.dex"}) {
+          "tests/data/local/AnalysisTest.dex", "tests/data/local/ExceptionHandling.dex",
+          "tests/data/local/StringTests.dex", "tests/data/local/classes.dex",
+          "tests/data/local/InterfaceCls.dex", "tests/data/local/FieldsTest.dex",
+          "tests/data/local/Annotation_classes.dex"}) {
+        if (missing_local_fixture(path))
+            continue;
         auto buf = load_buf(path);
         auto dex = raw::parser::parse_buffer(std::span(buf));
         ASSERT_TRUE(dex.has_value()) << path;
