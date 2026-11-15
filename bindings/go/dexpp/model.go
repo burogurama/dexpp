@@ -1,8 +1,8 @@
 package dexpp
 
 // The editable DEX model (dex::model): read a DEX file into memory, change it
-// at the granularity of whole classes, and write a DEX file again. See
-// bindings/c/dexpp_model.h for the boundary this wraps.
+// a whole class at a time, and write a DEX file again. See
+// bindings/c/dexpp_model.h for the C API this wraps.
 
 /*
 #include <stdlib.h>
@@ -15,8 +15,15 @@ import (
 	"unsafe"
 )
 
-// Model is an editable in-memory DEX file. It owns a C-side model freed by a
-// finalizer on garbage collection; call Close to release it eagerly.
+// Model is an editable DEX file in memory. Read a DEX file into a model,
+// change it, and write a DEX file again. From Go the model works on whole
+// classes: inspect, copy, move, remove and rename them. Changing the code
+// inside a method is only possible from C++.
+//
+// A Model is separate from the analysis API: it is not a Context. It is a
+// handle (see the package documentation). It can be read from several
+// goroutines at once, but a change to it must not run at the same time as any
+// other use of it.
 type Model struct{ ptr *C.DexppModelDex }
 
 func newModel(p *C.DexppModelDex) *Model {
@@ -25,14 +32,17 @@ func newModel(p *C.DexppModelDex) *Model {
 	return m
 }
 
-// ReadModel reads DEX bytes into a model. debugInfo keeps line numbers and
-// local variables.
+// ReadModel reads the bytes of a DEX file into a model. debugInfo keeps line
+// numbers and local variable names; false leaves them out, which makes the
+// model smaller. It fails with CodeInvalidDex or CodeUnsupportedDex (such as
+// the version 41 container format).
 func ReadModel(data []byte, debugInfo bool) (*Model, error) {
 	var ptr *C.uint8_t
 	if len(data) > 0 {
+		// cgo lets C read Go memory that holds no Go pointers during the call.
 		ptr = (*C.uint8_t)(unsafe.Pointer(&data[0]))
 	}
-	var cerr *C.char
+	var cerr *C.DexppError
 	p := C.dexpp_model_read(ptr, C.size_t(len(data)), cbool(debugInfo), &cerr)
 	runtime.KeepAlive(data)
 	if p == nil {
@@ -41,11 +51,13 @@ func ReadModel(data []byte, debugInfo bool) (*Model, error) {
 	return newModel(p), nil
 }
 
-// ReadModelFile reads a DEX file into a model.
+// ReadModelFile reads a DEX file into a model. debugInfo is as for ReadModel.
+// It fails with CodeFileNotFound, CodeCannotRead, CodeInvalidDex or
+// CodeUnsupportedDex.
 func ReadModelFile(path string, debugInfo bool) (*Model, error) {
 	cpath := C.CString(path)
 	defer C.free(unsafe.Pointer(cpath))
-	var cerr *C.char
+	var cerr *C.DexppError
 	p := C.dexpp_model_read_file(cpath, cbool(debugInfo), &cerr)
 	if p == nil {
 		return nil, goError(cerr)
@@ -53,89 +65,110 @@ func ReadModelFile(path string, debugInfo bool) (*Model, error) {
 	return newModel(p), nil
 }
 
-// NewModel makes an empty model of the given DEX version (35, 37, 38, 39, 40).
+// NewModel makes an empty model of the given DEX format version: 35, 37, 38,
+// 39 or 40.
 func NewModel(version uint32) *Model {
 	return newModel(C.dexpp_model_new(C.uint32_t(version)))
 }
 
-// Clone returns a deep copy of the model.
-func (m *Model) Clone() *Model {
-	p := C.dexpp_model_clone(m.ptr)
-	runtime.KeepAlive(m)
-	return newModel(p)
-}
-
-// Close releases the model eagerly. Safe to call more than once.
+// Close frees the model at once. Calling Close again, or on a nil *Model,
+// does nothing.
 func (m *Model) Close() {
-	if m.ptr != nil {
-		C.dexpp_model_free(m.ptr)
-		m.ptr = nil
-		runtime.SetFinalizer(m, nil)
+	if m == nil || m.ptr == nil {
+		return
 	}
+	C.dexpp_model_free(m.ptr)
+	m.ptr = nil
+	runtime.SetFinalizer(m, nil)
 }
 
-// Write returns the model as DEX bytes. debugInfo writes debug information.
+func (m *Model) p() *C.DexppModelDex {
+	if m == nil {
+		panicNil("Model")
+	}
+	if m.ptr == nil {
+		panicClosed("Model")
+	}
+	return m.ptr
+}
+
+// Clone returns a full copy of the model. Changing one does not change the
+// other.
+func (m *Model) Clone() *Model {
+	defer runtime.KeepAlive(m)
+	return newModel(C.dexpp_model_clone(m.p()))
+}
+
+// Write returns the model as the bytes of a DEX file. debugInfo writes line
+// numbers and local variable names; false strips them. The model is checked
+// first, and the same model always gives the same bytes. It fails with
+// CodeInvalidModel (Error.Problems lists the broken rules), CodePoolOverflow
+// or CodeVersionTooLow.
 func (m *Model) Write(debugInfo bool) ([]byte, error) {
+	defer runtime.KeepAlive(m)
 	var n C.size_t
-	var cerr *C.char
-	buf := C.dexpp_model_write(m.ptr, cbool(debugInfo), &n, &cerr)
-	runtime.KeepAlive(m)
+	var cerr *C.DexppError
+	buf := C.dexpp_model_write(m.p(), cbool(debugInfo), &n, &cerr)
 	if buf == nil {
 		return nil, goError(cerr)
 	}
 	defer C.dexpp_buffer_free(buf)
-	return C.GoBytes(unsafe.Pointer(buf), C.int(n)), nil
+	return goBytes(unsafe.Pointer(buf), n), nil
 }
 
-// WriteFile writes the model to a DEX file.
+// WriteFile writes the model to a DEX file. debugInfo is as for Write. It
+// fails as Write does, and with CodeCannotWrite when the file cannot be
+// created or written.
 func (m *Model) WriteFile(path string, debugInfo bool) error {
+	defer runtime.KeepAlive(m)
 	cpath := C.CString(path)
 	defer C.free(unsafe.Pointer(cpath))
-	var cerr *C.char
-	ok := C.dexpp_model_write_file(m.ptr, cpath, cbool(debugInfo), &cerr)
-	runtime.KeepAlive(m)
-	if ok == 0 {
+	var cerr *C.DexppError
+	if C.dexpp_model_write_file(m.p(), cpath, cbool(debugInfo), &cerr) == 0 {
 		return goError(cerr)
 	}
 	return nil
 }
 
-// Version is the model's DEX format version.
+// Version returns the DEX format version that Write uses.
 func (m *Model) Version() uint32 {
-	v := uint32(C.dexpp_model_version(m.ptr))
-	runtime.KeepAlive(m)
-	return v
+	defer runtime.KeepAlive(m)
+	return uint32(C.dexpp_model_version(m.p()))
 }
 
-// SetVersion sets the DEX format version write() will use.
+// SetVersion sets the DEX format version that Write uses. Write never raises
+// the version by itself: set it when RequiredVersion is higher.
 func (m *Model) SetVersion(version uint32) {
-	C.dexpp_model_set_version(m.ptr, C.uint32_t(version))
-	runtime.KeepAlive(m)
+	defer runtime.KeepAlive(m)
+	C.dexpp_model_set_version(m.p(), C.uint32_t(version))
 }
 
-// RequiredVersion is the lowest DEX version with every feature the model uses.
+// RequiredVersion returns the lowest DEX version that has every feature the
+// model uses.
 func (m *Model) RequiredVersion() uint32 {
-	v := uint32(C.dexpp_model_required_version(m.ptr))
-	runtime.KeepAlive(m)
-	return v
+	defer runtime.KeepAlive(m)
+	return uint32(C.dexpp_model_required_version(m.p()))
 }
 
-// PoolStats is how many entries each pool of the written file would have.
+// PoolStats is how many entries each table of the written DEX file would
+// have. A DEX file holds at most 65,535 types and prototypes, and at most
+// 65,536 fields, methods, method handles and call sites. Use these numbers to
+// decide when a file is full.
 type PoolStats struct {
-	Strings       int
-	Types         int
-	Protos        int
-	Fields        int
-	Methods       int
-	MethodHandles int
-	CallSites     int
+	Strings       int // number of strings
+	Types         int // number of types; at most 65,535
+	Protos        int // number of method prototypes; at most 65,535
+	Fields        int // number of field identities; at most 65,536
+	Methods       int // number of method identities; at most 65,536
+	MethodHandles int // number of method handles
+	CallSites     int // number of call sites
 }
 
-// PoolStats reports the pool sizes the model would write, to help decide how
-// to split classes across files.
+// PoolStats returns how many entries each table of the written file would
+// have.
 func (m *Model) PoolStats() PoolStats {
-	s := C.dexpp_model_pool_stats(m.ptr)
-	runtime.KeepAlive(m)
+	defer runtime.KeepAlive(m)
+	s := C.dexpp_model_pool_stats(m.p())
 	return PoolStats{
 		Strings:       int(s.strings),
 		Types:         int(s.types),
@@ -147,190 +180,155 @@ func (m *Model) PoolStats() PoolStats {
 	}
 }
 
-// Problem is one rule of the format the model breaks. Where is empty for a
-// whole-file problem.
-type Problem struct {
-	Where   string
-	Message string
-}
-
-// Validate returns every rule of the format the model breaks; an empty slice
-// means write() can encode it.
+// Validate returns every rule of the DEX format the model breaks. An empty
+// result means Write can encode the model. Otherwise Write fails with an
+// *Error whose Problems is the same list.
 func (m *Model) Validate() []Problem {
+	defer runtime.KeepAlive(m)
 	var n C.size_t
-	arr := C.dexpp_model_validate(m.ptr, &n)
-	runtime.KeepAlive(m)
-	if n == 0 {
+	arr := C.dexpp_model_validate(m.p(), &n)
+	defer C.dexpp_problem_array_free(arr, n)
+	if arr == nil || n == 0 {
 		return nil
 	}
-	slice := unsafe.Slice(arr, int(n))
-	out := make([]Problem, int(n))
-	for i := range out {
-		out[i] = Problem{Where: C.GoString(slice[i].where), Message: C.GoString(slice[i].message)}
+	raw := unsafe.Slice(arr, int(n))
+	out := make([]Problem, len(raw))
+	for i, p := range raw {
+		out[i] = Problem{Where: C.GoString(p.where), Message: C.GoString(p.message)}
 	}
-	C.dexpp_problem_array_free(arr, n)
 	return out
 }
 
-// ClassCount is the number of classes in the model.
+// ClassCount returns the number of classes in the model.
 func (m *Model) ClassCount() int {
-	n := int(C.dexpp_model_class_count(m.ptr))
-	runtime.KeepAlive(m)
-	return n
+	defer runtime.KeepAlive(m)
+	return int(C.dexpp_model_class_count(m.p()))
 }
 
-// ClassDescriptors returns every class's descriptor, in model order.
+// ClassDescriptors returns the descriptor of every class, in model order.
 func (m *Model) ClassDescriptors() []string {
+	defer runtime.KeepAlive(m)
 	var n C.size_t
-	arr := C.dexpp_model_class_descriptors(m.ptr, &n)
-	runtime.KeepAlive(m)
+	arr := C.dexpp_model_class_descriptors(m.p(), &n)
 	return takeStringArray(arr, n)
 }
 
 // HasClass reports whether the model has a class with this descriptor.
 func (m *Model) HasClass(descriptor string) bool {
+	defer runtime.KeepAlive(m)
 	cd := C.CString(descriptor)
 	defer C.free(unsafe.Pointer(cd))
-	has := C.dexpp_model_has_class(m.ptr, cd) != 0
-	runtime.KeepAlive(m)
-	return has
+	return C.dexpp_model_has_class(m.p(), cd) != 0
 }
 
-// ClassInfo holds facts about one class. Superclass and SourceFile are nil
-// when the class has none.
+// ClassInfo is a summary of one class in a Model.
 type ClassInfo struct {
-	Descriptor     string
-	AccessFlags    uint32
-	Superclass     *string
+	Descriptor  string      // the class descriptor
+	AccessFlags AccessFlags // the class's access flags
+	// Superclass is the descriptor of the superclass, or nil for
+	// java.lang.Object, which has none.
+	Superclass *string
+	// SourceFile is the source file name recorded for the class, or nil.
 	SourceFile     *string
-	InterfaceCount int
-	FieldCount     int
-	MethodCount    int
+	InterfaceCount int // number of interfaces the class implements directly
+	FieldCount     int // number of fields the class declares
+	MethodCount    int // number of methods the class defines
 }
 
-// ClassInfo returns facts about the class with this descriptor, and whether it
-// exists.
+// ClassInfo returns a summary of the class with this descriptor. The bool is
+// false when the model has no such class.
 func (m *Model) ClassInfo(descriptor string) (ClassInfo, bool) {
+	defer runtime.KeepAlive(m)
 	cd := C.CString(descriptor)
 	defer C.free(unsafe.Pointer(cd))
 	var info C.DexppClassInfo
-	ok := C.dexpp_model_class_info(m.ptr, cd, &info)
-	runtime.KeepAlive(m)
-	if ok == 0 {
+	if C.dexpp_model_class_info(m.p(), cd, &info) == 0 {
 		return ClassInfo{}, false
 	}
-	defer C.dexpp_class_info_free(&info)
+	defer C.dexpp_class_info_clear(&info)
 	return ClassInfo{
 		Descriptor:     C.GoString(info.descriptor),
-		AccessFlags:    uint32(info.access_flags),
-		Superclass:     optString(info.superclass),
-		SourceFile:     optString(info.source_file),
+		AccessFlags:    AccessFlags(info.access_flags),
+		Superclass:     goOptString(info.superclass),
+		SourceFile:     goOptString(info.source_file),
 		InterfaceCount: int(info.interface_count),
 		FieldCount:     int(info.field_count),
 		MethodCount:    int(info.method_count),
 	}, true
 }
 
-// ClassInterfaces returns the interface descriptors the class implements.
+// ClassInterfaces returns the descriptors of the interfaces the class
+// implements directly. It is nil when the model has no such class.
 func (m *Model) ClassInterfaces(descriptor string) []string {
+	defer runtime.KeepAlive(m)
 	cd := C.CString(descriptor)
 	defer C.free(unsafe.Pointer(cd))
 	var n C.size_t
-	arr := C.dexpp_model_class_interfaces(m.ptr, cd, &n)
-	runtime.KeepAlive(m)
+	arr := C.dexpp_model_class_interfaces(m.p(), cd, &n)
 	return takeStringArray(arr, n)
 }
 
-// MoveClass moves the class out of src and into m. The class is moved, not
-// copied, so this is cheap for a large class.
+// MoveClass takes the class out of src and puts it into m. The class is not
+// copied, so this is cheap for a large class. It fails with CodeModel when
+// src has no such class or m already has one.
 func (m *Model) MoveClass(src *Model, descriptor string) error {
+	defer runtime.KeepAlive(m)
+	defer runtime.KeepAlive(src)
 	cd := C.CString(descriptor)
 	defer C.free(unsafe.Pointer(cd))
-	var cerr *C.char
-	ok := C.dexpp_model_move_class(m.ptr, src.ptr, cd, &cerr)
-	runtime.KeepAlive(m)
-	runtime.KeepAlive(src)
-	if ok == 0 {
+	var cerr *C.DexppError
+	if C.dexpp_model_move_class(m.p(), src.p(), cd, &cerr) == 0 {
 		return goError(cerr)
 	}
 	return nil
 }
 
-// CopyClass copies the class from src into m, leaving src unchanged.
+// CopyClass copies the class from src into m. src is not changed. It fails
+// with CodeModel when src has no such class or m already has one.
 func (m *Model) CopyClass(src *Model, descriptor string) error {
+	defer runtime.KeepAlive(m)
+	defer runtime.KeepAlive(src)
 	cd := C.CString(descriptor)
 	defer C.free(unsafe.Pointer(cd))
-	var cerr *C.char
-	ok := C.dexpp_model_copy_class(m.ptr, src.ptr, cd, &cerr)
-	runtime.KeepAlive(m)
-	runtime.KeepAlive(src)
-	if ok == 0 {
+	var cerr *C.DexppError
+	if C.dexpp_model_copy_class(m.p(), src.p(), cd, &cerr) == 0 {
 		return goError(cerr)
 	}
 	return nil
 }
 
-// RemoveClass removes the class with this descriptor, reporting whether one
-// was removed.
+// RemoveClass removes the class with this descriptor. It reports whether a
+// class was removed.
 func (m *Model) RemoveClass(descriptor string) bool {
+	defer runtime.KeepAlive(m)
 	cd := C.CString(descriptor)
 	defer C.free(unsafe.Pointer(cd))
-	removed := C.dexpp_model_remove_class(m.ptr, cd) != 0
-	runtime.KeepAlive(m)
-	return removed
+	return C.dexpp_model_remove_class(m.p(), cd) != 0
 }
 
-// RenameTypes renames every reference to each class in the mapping (from its
-// descriptor to the new one). A descriptor not in the mapping is unchanged;
-// string constants are never renamed.
+// RenameTypes renames classes everywhere they are referenced. The mapping
+// goes from old descriptor to new descriptor. Every reference to a class in
+// it is changed: the class itself, superclasses and interfaces, method and
+// field identities, array types, instructions, catch types, annotations, and
+// the class names inside generic signatures. A class that is not in the
+// mapping is left as it is. String constants are never changed, so a name
+// passed to Class.forName keeps its old value.
 func (m *Model) RenameTypes(mapping map[string]string) {
+	defer runtime.KeepAlive(m)
+	p := m.p()
 	if len(mapping) == 0 {
 		return
 	}
-	from := make([]*C.char, 0, len(mapping))
-	to := make([]*C.char, 0, len(mapping))
-	defer func() {
-		for i := range from {
-			C.free(unsafe.Pointer(from[i]))
-			C.free(unsafe.Pointer(to[i]))
-		}
-	}()
+	from := make([]string, 0, len(mapping))
+	to := make([]string, 0, len(mapping))
 	for k, v := range mapping {
-		from = append(from, C.CString(k))
-		to = append(to, C.CString(v))
+		from = append(from, k)
+		to = append(to, v)
 	}
-	C.dexpp_model_rename_types(m.ptr, &from[0], &to[0], C.size_t(len(from)))
-	runtime.KeepAlive(m)
-}
-
-func cbool(b bool) C.int {
-	if b {
-		return 1
-	}
-	return 0
-}
-
-// optString copies a malloc'd C string to Go (nil stays nil) and frees it.
-func optString(s *C.char) *string {
-	if s == nil {
-		return nil
-	}
-	out := C.GoString(s)
-	return &out
-}
-
-// takeStringArray copies a malloc'd char* array of n strings to Go and frees
-// the whole array with the dexpp allocator.
-func takeStringArray(arr **C.char, n C.size_t) []string {
-	if n == 0 {
-		C.dexpp_string_array_free(arr, n)
-		return nil
-	}
-	slice := unsafe.Slice(arr, int(n))
-	out := make([]string, int(n))
-	for i := range out {
-		out[i] = C.GoString(slice[i])
-	}
-	C.dexpp_string_array_free(arr, n)
-	return out
+	cfrom, cto := cStrings(from), cStrings(to)
+	defer freeCStrings(cfrom)
+	defer freeCStrings(cto)
+	// cgo allows passing &cfrom[0]: the slices hold C pointers, not Go
+	// pointers.
+	C.dexpp_model_rename_types(p, &cfrom[0], &cto[0], C.size_t(len(cfrom)))
 }
