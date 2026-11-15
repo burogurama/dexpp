@@ -17,6 +17,7 @@
 #include "invoke_sites.hpp"
 #include "joining_threads.hpp"
 #include "method.hpp"
+#include "opcode_kinds.hpp"
 #include "raw/parser.hpp"
 
 namespace dex {
@@ -224,7 +225,7 @@ Rows group_by(std::size_t key_count, const std::vector<uint32_t> &items, Key &&k
 
 } // namespace
 
-std::optional<InvokeKind> invoke_kind_from_opcode(uint8_t opcode)
+std::optional<InvokeKind> detail::invoke_kind_from_opcode(uint8_t opcode)
 {
     switch (opcode) {
     case 0x6e:

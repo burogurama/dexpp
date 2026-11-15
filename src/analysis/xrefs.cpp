@@ -8,10 +8,11 @@
 #include "analysis_context_impl.hpp"
 #include "instruction.hpp"
 #include "method.hpp"
+#include "opcode_kinds.hpp"
 
 namespace dex {
 
-std::optional<TypeUseKind> type_use_kind_from_opcode(uint8_t opcode)
+std::optional<TypeUseKind> detail::type_use_kind_from_opcode(uint8_t opcode)
 {
     switch (opcode) {
     case 0x1c:

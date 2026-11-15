@@ -7,6 +7,7 @@
 #include <unordered_map>
 
 #include "../raw/test_utils.hpp"
+#include "analysis/opcode_kinds.hpp"
 #include "dex.hpp"
 
 using namespace dex;
@@ -108,15 +109,15 @@ TEST(InvokeKindTest, AllOpcodesMapped)
     };
 
     for (const auto &r : kTable) {
-        auto k = invoke_kind_from_opcode(r.opcode);
+        auto k = detail::invoke_kind_from_opcode(r.opcode);
         ASSERT_TRUE(k.has_value()) << "opcode 0x" << std::hex << static_cast<int>(r.opcode);
         EXPECT_EQ(*k, r.expected) << "opcode 0x" << std::hex << static_cast<int>(r.opcode);
     }
 
     // Non-invoke opcodes return nullopt — silent fallback would be a footgun.
-    EXPECT_FALSE(invoke_kind_from_opcode(0x00).has_value()); // nop
-    EXPECT_FALSE(invoke_kind_from_opcode(0x0e).has_value()); // return-void
-    EXPECT_FALSE(invoke_kind_from_opcode(0x28).has_value()); // goto
+    EXPECT_FALSE(detail::invoke_kind_from_opcode(0x00).has_value()); // nop
+    EXPECT_FALSE(detail::invoke_kind_from_opcode(0x0e).has_value()); // return-void
+    EXPECT_FALSE(detail::invoke_kind_from_opcode(0x28).has_value()); // goto
 }
 
 // ===== Real-fixture tests =====

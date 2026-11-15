@@ -29,10 +29,6 @@ enum class InvokeKind : uint8_t {
     Custom,      ///< invoke-custom / invoke-custom/range            (0xfc, 0xfd)
 };
 
-/** Map a Dalvik invoke opcode to its InvokeKind.  Returns std::nullopt for any
- *  opcode that is not a recognised invoke. */
-std::optional<InvokeKind> invoke_kind_from_opcode(uint8_t opcode);
-
 /** How an edge came to point at its callee. */
 enum class EdgeOrigin : uint8_t {
     /** The invoke's literal declared target (the method_id in the bytecode).

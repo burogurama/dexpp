@@ -68,8 +68,8 @@ thing. The old names are gone; there are no aliases.
       Python, `DexppTypeUseKind` with the values `DEXPP_TYPE_USE_CONST_CLASS`
       and so on in C, `TypeUseKind` with the constants `TypeUseConstClass`
       and so on in Go, and `TypeUseKind` in Java. The C++ helper
-      `type_ref_kind_from_opcode` is now `type_use_kind_from_opcode`. The
-      member names and numbers do not change.
+      `type_ref_kind_from_opcode` is no longer public (see "C++ API
+      (breaking)"). The member names and numbers do not change.
 - A method's prototype, such as `"(Ljava/lang/String;I)V"`, is called `proto`
   everywhere, as in `MethodId.proto`. The accessor that called it a
   descriptor is renamed: `dexpp_method_descriptor` is now
@@ -619,6 +619,11 @@ aliases.
   are no longer public. They took the library's private implementation type,
   so no user could call them. `AnalysisContext::call_graph()`, `xrefs()` and
   `class_hierarchy()` are the way to get these, as before.
+- `dex::invoke_kind_from_opcode` and `dex::type_ref_kind_from_opcode` are no
+  longer public. They map a raw opcode byte to an `InvokeKind` or a
+  `TypeUseKind`, and the API already gives those kinds resolved:
+  `MethodCall::kind`, `TypeUse::kind`, `CallEdge::kind` and the kinds of the
+  cross-reference sites. No binding exposed them.
 - In the parser layer, `raw::ParseError::Code::NullPointer`, which
   `raw::parser::parse_file` used for a file it could not open, is replaced by
   `FileNotFound` and `CannotRead`.
