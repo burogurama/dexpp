@@ -1,7 +1,6 @@
 #pragma once
 
 #include <cstdint>
-#include <memory>
 #include <optional>
 #include <span>
 #include <string>
@@ -110,8 +109,8 @@ class Xrefs
     /** Identity of one referrer.  Precondition: `referrer < referrers().size()`. */
     const MethodId &referrer_id(uint32_t referrer) const { return referrer_ids_[referrer]; }
 
-    /** Materialize a Method handle for one referrer.  Returns nullopt if the
-     *  owning AnalysisContext has been destroyed. */
+    /** Materialize a Method handle for one referrer.  Returns nullopt when
+     *  `referrer >= referrers().size()`. */
     std::optional<Method> referrer_method(uint32_t referrer) const;
 
     /** All invoke sites whose declared target is exactly @p id. */
@@ -192,7 +191,10 @@ class Xrefs
     std::unordered_map<FieldId, std::vector<FieldXref>, FieldIdHash> field_map_;
     std::unordered_map<std::string, std::vector<StringXref>, SvHash, SvEq> string_map_;
     std::unordered_map<std::string, std::vector<TypeXref>, SvHash, SvEq> type_map_;
-    std::weak_ptr<const detail::AnalysisContextImpl> impl_;
+    /** The context the index was built from.  The context owns the index, so
+     *  it is alive whenever the index is; referrer_method() uses it to make
+     *  Method handles.  Null only for a default-constructed, empty index. */
+    const detail::AnalysisContextImpl *impl_ = nullptr;
 };
 
 } // namespace dex

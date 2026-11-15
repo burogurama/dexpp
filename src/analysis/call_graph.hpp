@@ -2,7 +2,6 @@
 
 #include <cstdint>
 #include <functional>
-#include <memory>
 #include <optional>
 #include <span>
 #include <string>
@@ -165,8 +164,7 @@ class CallGraph
     const CallNode *find(const MethodId &id) const;
 
     /** For a Defined node, returns a Method handle for the defined method.
-     *  Returns nullopt for External and CallSite nodes, or if the owning
-     *  AnalysisContext has been destroyed.
+     *  Returns nullopt for External and CallSite nodes.
      *  Precondition: `node` must be a member of this graph's `nodes()` span. */
     std::optional<Method> method_for(const CallNode &node) const;
 
@@ -226,7 +224,10 @@ class CallGraph
      *  ids are stored once, in nodes_. */
     std::vector<uint32_t> index_;
     std::vector<std::optional<ResolvedRef>> resolved_refs_; ///< parallel to nodes_
-    std::weak_ptr<const detail::AnalysisContextImpl> impl_;
+    /** The context the graph was built from.  The context owns the graph, so
+     *  it is alive whenever the graph is; method_for() uses it to make Method
+     *  handles.  Null only for a default-constructed, empty graph. */
+    const detail::AnalysisContextImpl *impl_ = nullptr;
 
     // dispatch_targets() / dispatch_sources() as compressed rows: node n's
     // entries are values[offsets[n] .. offsets[n + 1]).  The offsets hold

@@ -37,12 +37,11 @@ std::optional<Method> Xrefs::referrer_method(uint32_t referrer) const
     if (referrer >= referrer_refs_.size())
         return std::nullopt;
 
-    auto impl = impl_.lock();
-    if (!impl)
-        return std::nullopt;
-
+    // The index lives inside the context it was built from, so impl_ is alive
+    // whenever the index is.
     const auto &ref = referrer_refs_[referrer];
-    return Method(std::move(impl), ref.dex_idx, ref.method_abs_idx, ref.access_flags, ref.code_off);
+    return Method(impl_->shared_from_this(), ref.dex_idx, ref.method_abs_idx, ref.access_flags,
+                  ref.code_off);
 }
 
 std::span<const MethodXref> Xrefs::method_refs(const MethodId &id) const
@@ -122,39 +121,33 @@ namespace detail {
 /** Lets build_xrefs() fill the index's private members. */
 struct XrefsAccess
 {
-    static Xrefs build(std::shared_ptr<const AnalysisContextImpl> impl);
+    static Xrefs build(const AnalysisContextImpl &impl);
 };
 
-Xrefs build_xrefs(std::shared_ptr<const AnalysisContextImpl> impl)
-{
-    return XrefsAccess::build(std::move(impl));
-}
+Xrefs build_xrefs(const AnalysisContextImpl &impl) { return XrefsAccess::build(impl); }
 
 } // namespace detail
 
-Xrefs detail::XrefsAccess::build(std::shared_ptr<const AnalysisContextImpl> impl)
+Xrefs detail::XrefsAccess::build(const AnalysisContextImpl &impl)
 {
     Xrefs x;
-    x.impl_ = impl;
+    x.impl_ = &impl;
 
-    if (!impl)
-        return x;
-
-    for (std::size_t i = 0; i < impl->dex_files().size(); ++i) {
-        const auto &dex = impl->dex_files()[i];
+    for (std::size_t i = 0; i < impl.dex_files().size(); ++i) {
+        const auto &dex = impl.dex_files()[i];
         for (uint32_t j = 0; j < static_cast<uint32_t>(dex.class_defs().size()); ++j) {
             // Only the definition a class loader would load: the code of a
             // later definition of the same class never runs.
-            if (!impl->is_winning_definition(i, j))
+            if (!impl.is_winning_definition(i, j))
                 continue;
-            const auto *cd = impl->get_class_data(i, dex.class_defs()[j].class_data_off);
+            const auto *cd = impl.get_class_data(i, dex.class_defs()[j].class_data_off);
             if (!cd)
                 continue;
 
             auto index_method = [&](const raw::EncodedMethod &em) {
                 if (em.code_off == 0)
                     return;
-                auto insns = impl->get_instructions(i, em.code_off);
+                auto insns = impl.get_instructions(i, em.code_off);
                 if (insns.empty())
                     return;
 
@@ -164,7 +157,7 @@ Xrefs detail::XrefsAccess::build(std::shared_ptr<const AnalysisContextImpl> impl
                 auto referrer_idx = [&]() -> uint32_t {
                     if (referrer == UINT32_MAX) {
                         referrer = static_cast<uint32_t>(x.referrer_ids_.size());
-                        x.referrer_ids_.push_back(impl->method_id_of(i, em.method_idx));
+                        x.referrer_ids_.push_back(impl.method_id_of(i, em.method_idx));
                         x.referrer_refs_.push_back(
                             Xrefs::ReferrerRef{i, em.method_idx, em.access_flags, em.code_off});
                     }
@@ -176,12 +169,12 @@ Xrefs detail::XrefsAccess::build(std::shared_ptr<const AnalysisContextImpl> impl
                         [&](const auto &v) {
                             using T = std::decay_t<decltype(v)>;
                             if constexpr (std::is_same_v<T, ConstStringInstruction>) {
-                                std::string value(impl->string_of(i, v.string_index));
+                                std::string value(impl.string_of(i, v.string_index));
                                 x.string_map_[std::move(value)].push_back(
                                     StringXref{referrer_idx(), v.base.offset});
                             }
                             else if constexpr (std::is_same_v<T, ConstClassInstruction>) {
-                                std::string desc(impl->type_descriptor_of(i, v.type_index));
+                                std::string desc(impl.type_descriptor_of(i, v.type_index));
                                 x.type_map_[std::move(desc)].push_back(TypeXref{
                                     referrer_idx(), v.base.offset, TypeUseKind::ConstClass});
                             }
@@ -189,17 +182,17 @@ Xrefs detail::XrefsAccess::build(std::shared_ptr<const AnalysisContextImpl> impl
                                 auto kind = type_use_kind_from_opcode(v.base.opcode);
                                 if (!kind.has_value())
                                     return;
-                                std::string desc(impl->type_descriptor_of(i, v.type_index));
+                                std::string desc(impl.type_descriptor_of(i, v.type_index));
                                 x.type_map_[std::move(desc)].push_back(
                                     TypeXref{referrer_idx(), v.base.offset, *kind});
                             }
                             else if constexpr (std::is_same_v<T, FilledNewArrayInstruction>) {
-                                std::string desc(impl->type_descriptor_of(i, v.type_index));
+                                std::string desc(impl.type_descriptor_of(i, v.type_index));
                                 x.type_map_[std::move(desc)].push_back(TypeXref{
                                     referrer_idx(), v.base.offset, TypeUseKind::FilledNewArray});
                             }
                             else if constexpr (std::is_same_v<T, FieldInstruction>) {
-                                x.field_map_[impl->field_id_of(i, v.field_index)].push_back(
+                                x.field_map_[impl.field_id_of(i, v.field_index)].push_back(
                                     FieldXref{referrer_idx(), v.base.offset, v.is_write,
                                               v.is_static});
                             }
@@ -207,11 +200,11 @@ Xrefs detail::XrefsAccess::build(std::shared_ptr<const AnalysisContextImpl> impl
                                 auto kind = invoke_kind_from_opcode(v.base.opcode);
                                 if (!kind.has_value())
                                     return;
-                                x.method_map_[impl->method_id_of(i, v.method_index)].push_back(
+                                x.method_map_[impl.method_id_of(i, v.method_index)].push_back(
                                     MethodXref{referrer_idx(), v.base.offset, *kind});
                             }
                             else if constexpr (std::is_same_v<T, InvokePolymorphicInstruction>) {
-                                x.method_map_[impl->method_id_of(i, v.method_index)].push_back(
+                                x.method_map_[impl.method_id_of(i, v.method_index)].push_back(
                                     MethodXref{referrer_idx(), v.base.offset,
                                                InvokeKind::Polymorphic});
                             }

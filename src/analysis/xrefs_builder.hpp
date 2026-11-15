@@ -4,8 +4,6 @@
 // it).  The public way to get the cross-reference index is
 // AnalysisContext::xrefs().
 
-#include <memory>
-
 #include "analysis/xrefs.hpp"
 
 namespace dex::detail {
@@ -14,6 +12,6 @@ struct AnalysisContextImpl;
 
 /** Build the whole-program cross-reference index of @p impl.
  *  AnalysisContextImpl's get_xrefs() calls it once and caches the result. */
-Xrefs build_xrefs(std::shared_ptr<const AnalysisContextImpl> impl);
+Xrefs build_xrefs(const AnalysisContextImpl &impl);
 
 } // namespace dex::detail

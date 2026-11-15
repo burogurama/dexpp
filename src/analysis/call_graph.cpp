@@ -272,12 +272,11 @@ std::optional<Method> CallGraph::method_for(const CallNode &node) const
     if (node.index >= resolved_refs_.size() || !resolved_refs_[node.index].has_value())
         return std::nullopt;
 
-    auto impl = impl_.lock();
-    if (!impl)
-        return std::nullopt;
-
+    // The graph lives inside the context it was built from, so impl_ is alive
+    // whenever the graph is.
     const auto &ref = *resolved_refs_[node.index];
-    return Method(std::move(impl), ref.dex_idx, ref.method_abs_idx, ref.access_flags, ref.code_off);
+    return Method(impl_->shared_from_this(), ref.dex_idx, ref.method_abs_idx, ref.access_flags,
+                  ref.code_off);
 }
 
 std::span<const uint32_t> CallGraph::dispatch_targets(uint32_t node) const
@@ -340,28 +339,22 @@ namespace detail {
 /** Lets build_call_graph() fill CallGraph's private members. */
 struct CallGraphAccess
 {
-    static CallGraph build(std::shared_ptr<const AnalysisContextImpl> impl);
+    static CallGraph build(const AnalysisContextImpl &impl);
 };
 
-CallGraph build_call_graph(std::shared_ptr<const AnalysisContextImpl> impl)
-{
-    return CallGraphAccess::build(std::move(impl));
-}
+CallGraph build_call_graph(const AnalysisContextImpl &impl) { return CallGraphAccess::build(impl); }
 
 } // namespace detail
 
-CallGraph detail::CallGraphAccess::build(std::shared_ptr<const AnalysisContextImpl> impl)
+CallGraph detail::CallGraphAccess::build(const AnalysisContextImpl &impl)
 {
     CallGraph g;
-    g.impl_ = impl;
+    g.impl_ = &impl;
 
-    if (!impl)
-        return g;
-
-    const std::size_t dex_count = impl->dex_files().size();
+    const std::size_t dex_count = impl.dex_files().size();
     // hardware_concurrency() reads system files on every call; ask once.
     static const unsigned hardware_threads = std::max(1u, std::thread::hardware_concurrency());
-    const std::size_t threads = impl->threads != 0 ? impl->threads : hardware_threads;
+    const std::size_t threads = impl.threads != 0 ? impl.threads : hardware_threads;
 
     // ---- Per-DEX preparation, one thread per DEX file -----------------------
     // Everything the steps below need from one DEX file is independent of the
@@ -401,28 +394,28 @@ CallGraph detail::CallGraphAccess::build(std::shared_ptr<const AnalysisContextIm
     std::vector<DexPrep> prep(dex_count);
 
     auto prepare = [&](std::size_t i) {
-        const auto &dex = impl->dex_files()[i];
+        const auto &dex = impl.dex_files()[i];
         DexPrep &p = prep[i];
 
         const auto type_count = static_cast<uint32_t>(dex.type_ids().size());
         p.type_view.resize(type_count);
         p.type_hash.resize(type_count);
         for (uint32_t t = 0; t < type_count; ++t) {
-            p.type_view[t] = impl->type_descriptor_of(i, t);
+            p.type_view[t] = impl.type_descriptor_of(i, t);
             p.type_hash[t] = Interner::hash(p.type_view[t]);
         }
         const auto method_count = static_cast<uint32_t>(dex.method_ids().size());
         p.method_name.resize(method_count);
         p.method_name_hash.resize(method_count);
         for (uint32_t m = 0; m < method_count; ++m) {
-            p.method_name[m] = impl->string_of(i, dex.method_ids()[m].name_idx);
+            p.method_name[m] = impl.string_of(i, dex.method_ids()[m].name_idx);
             p.method_name_hash[m] = Interner::hash(p.method_name[m]);
         }
         const auto proto_count = static_cast<uint32_t>(dex.proto_ids().size());
         p.proto.resize(proto_count);
         p.proto_hash.resize(proto_count);
         for (uint32_t k = 0; k < proto_count; ++k) {
-            p.proto[k] = impl->build_proto_descriptor(i, k);
+            p.proto[k] = impl.build_proto_descriptor(i, k);
             p.proto_hash[k] = Interner::hash(p.proto[k]);
         }
 
@@ -432,22 +425,22 @@ CallGraph detail::CallGraphAccess::build(std::shared_ptr<const AnalysisContextIm
             p.iface_offsets.push_back(p.iface_types.size());
             p.method_offsets.push_back(p.methods.size());
             if (cdef.interfaces_off != 0) {
-                auto list = raw::parser::parse_type_list(impl->buffer_of(i), cdef.interfaces_off);
+                auto list = raw::parser::parse_type_list(impl.buffer_of(i), cdef.interfaces_off);
                 if (list.has_value())
                     p.iface_types.insert(p.iface_types.end(), list->type_ids.begin(),
                                          list->type_ids.end());
             }
 
-            const auto *cd = impl->get_class_data(i, cdef.class_data_off);
+            const auto *cd = impl.get_class_data(i, cdef.class_data_off);
             if (!cd)
                 continue;
             for (const auto *methods : {&cd->direct_methods, &cd->virtual_methods})
                 for (const auto &em : *methods) {
-                    if (!impl->method_item(i, em.method_idx))
+                    if (!impl.method_item(i, em.method_idx))
                         continue; // malformed class_data: skip this method
                     std::size_t begin = p.sites.size();
                     if (em.code_off != 0)
-                        if (const raw::CodeItem *ci = impl->get_code_item(i, em.code_off))
+                        if (const raw::CodeItem *ci = impl.get_code_item(i, em.code_off))
                             detail::find_invokes(ci->insns, p.sites);
                     p.methods.push_back(DexPrep::Method{em.method_idx, em.access_flags, em.code_off,
                                                         begin, p.sites.size()});
@@ -464,7 +457,7 @@ CallGraph detail::CallGraphAccess::build(std::shared_ptr<const AnalysisContextIm
         for (std::size_t i = 0; i < dex_count; ++i)
             order[i] = i;
         std::stable_sort(order.begin(), order.end(), [&](std::size_t a, std::size_t b) {
-            return impl->buffer_of(a).size() > impl->buffer_of(b).size();
+            return impl.buffer_of(a).size() > impl.buffer_of(b).size();
         });
         // Threads only pay off when the DEX files besides the biggest hold real
         // work: for a few small ones, starting a thread costs more than the
@@ -472,7 +465,7 @@ CallGraph detail::CallGraphAccess::build(std::shared_ptr<const AnalysisContextIm
         constexpr std::size_t kMinParallelBytes = std::size_t{1} << 20;
         std::size_t besides_biggest = 0;
         for (std::size_t k = 1; k < dex_count; ++k)
-            besides_biggest += impl->buffer_of(order[k]).size();
+            besides_biggest += impl.buffer_of(order[k]).size();
         std::size_t prepare_threads =
             besides_biggest >= kMinParallelBytes ? std::min(threads, dex_count) : 1;
         for_each_parallel(order, prepare_threads, prepare);
@@ -525,7 +518,7 @@ CallGraph detail::CallGraphAccess::build(std::shared_ptr<const AnalysisContextIm
     std::vector<DexIds> dex_ids(dex_count);
     std::size_t method_id_total = 0;
     for (std::size_t i = 0; i < dex_count; ++i) {
-        const auto &dex = impl->dex_files()[i];
+        const auto &dex = impl.dex_files()[i];
         dex_ids[i].type.assign(dex.type_ids().size(), kNone);
         dex_ids[i].string.assign(dex.string_ids().size(), kNone);
         dex_ids[i].proto.assign(dex.proto_ids().size(), kNone);
@@ -555,7 +548,7 @@ CallGraph detail::CallGraphAccess::build(std::shared_ptr<const AnalysisContextIm
     };
     // The signature of method_ids[method_idx], which must be in range.
     auto method_sig = [&](std::size_t dex, uint32_t method_idx) -> uint32_t {
-        const auto &mid = impl->dex_files()[dex].method_ids()[method_idx];
+        const auto &mid = impl.dex_files()[dex].method_ids()[method_idx];
         auto &names_of = dex_ids[dex].string;
         uint32_t name;
         if (mid.name_idx >= names_of.size()) {
@@ -576,7 +569,7 @@ CallGraph detail::CallGraphAccess::build(std::shared_ptr<const AnalysisContextIm
         if (method_idx >= table.size())
             return node_of(classes.id({}), sig_of(names.id({}), protos.id({})));
         if (table[method_idx] == kNone) {
-            const auto &mid = impl->dex_files()[dex].method_ids()[method_idx];
+            const auto &mid = impl.dex_files()[dex].method_ids()[method_idx];
             table[method_idx] = node_of(class_id(dex, mid.class_idx), method_sig(dex, method_idx));
         }
         return table[method_idx];
@@ -617,7 +610,7 @@ CallGraph detail::CallGraphAccess::build(std::shared_ptr<const AnalysisContextIm
     std::vector<bool> class_taken; // by class id
     std::size_t site_total = 0;
     for (std::size_t i = 0; i < dex_count; ++i) {
-        const auto class_defs = impl->dex_files()[i].class_defs();
+        const auto class_defs = impl.dex_files()[i].class_defs();
         wins[i].assign(class_defs.size(), false);
         for (std::size_t j = 0; j < class_defs.size(); ++j) {
             uint32_t cls = class_id(i, class_defs[j].class_idx);
@@ -701,7 +694,7 @@ CallGraph detail::CallGraphAccess::build(std::shared_ptr<const AnalysisContextIm
     std::vector<uint32_t> super_by_class;
     std::vector<std::pair<uint32_t, uint32_t>> class_iface; // (class, interface), in order
     for (std::size_t i = 0; i < dex_count; ++i) {
-        const auto class_defs = impl->dex_files()[i].class_defs();
+        const auto class_defs = impl.dex_files()[i].class_defs();
         for (std::size_t j = 0; j < class_defs.size(); ++j) {
             if (!wins[i][j])
                 continue;

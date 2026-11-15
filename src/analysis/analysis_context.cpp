@@ -596,8 +596,7 @@ AnalysisContextImpl::find_class_index(std::string_view descriptor) const
 
 const CallGraph &AnalysisContextImpl::get_call_graph() const
 {
-    std::call_once(call_graph_flag,
-                   [this] { call_graph_cache.emplace(build_call_graph(shared_from_this())); });
+    std::call_once(call_graph_flag, [this] { call_graph_cache.emplace(build_call_graph(*this)); });
     return *call_graph_cache;
 }
 
@@ -610,7 +609,7 @@ const ClassHierarchy &AnalysisContextImpl::get_class_hierarchy() const
 
 const Xrefs &AnalysisContextImpl::get_xrefs() const
 {
-    std::call_once(xrefs_flag, [this] { xrefs_cache.emplace(build_xrefs(shared_from_this())); });
+    std::call_once(xrefs_flag, [this] { xrefs_cache.emplace(build_xrefs(*this)); });
     return *xrefs_cache;
 }
 
