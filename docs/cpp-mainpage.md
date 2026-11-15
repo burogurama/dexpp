@@ -25,6 +25,10 @@ Include the single public header:
 
 Two headers, built into the static library `libdexpp_c.a`:
 
-- `dexpp.h` — the analysis API: loading, the manifest, classes, methods, the
-  string pool.
+- `dexpp.h` — the analysis API, the same ground as the Python binding:
+  loading, classes, methods and fields, decoded bytecode, control-flow graphs,
+  try blocks, annotations, the call graph, the class hierarchy,
+  cross-references, and the APK's archive entries, manifest, resources and
+  signing. The comment at the top of the header gives the rules for errors
+  (`DexppError`), handles, strings, arrays and threads.
 - `dexpp_model.h` — the editable model, a whole class at a time.

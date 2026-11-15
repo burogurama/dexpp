@@ -107,8 +107,10 @@ class can move to another file as it is. See `src/model/io.hpp` for reading,
 writing, `validate()` and `rename_types()`, and `src/model/types.hpp` for the
 model itself.
 - **Go**: see [bindings/go/README.md](https://github.com/burogurama/dexpp/blob/main/bindings/go/README.md). The cgo package
-  links the C shim from this repository's `build/` directory, so it works from
-  a checkout, not through `go get`. It supports Linux and macOS, not Windows.
+  reaches the same API as Python: the whole analysis API, the APK metadata,
+  and the editable model a whole class at a time. It links the C shim from
+  this repository's `build/` directory, so it works from a checkout, not
+  through `go get`. It supports Linux and macOS, not Windows.
 
 The library, its tests and the Python module are built and tested on Linux,
 macOS (Apple Silicon and Intel) and Windows x64.

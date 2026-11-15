@@ -11,6 +11,7 @@ so it describes the latest release.
 | `examples/output/` | What each example section prints. The guides show these files. |
 | `examples/check.py` | Runs the examples and compares their output with the saved one. CI runs it. |
 | `examples/cpp/` | The C++ examples. The unit test build compiles and runs them. |
+| `../bindings/go/dexpp/example_test.go` | The Go examples that `c-go.md` shows. `go test` runs them and checks their output. |
 | `Doxyfile`, `cpp-mainpage.md` | Doxygen setup for the C++ and C reference. |
 | `hooks.py` | Puts the version on the site and prepares the Python stubs for the reference. |
 | `build.sh`, `requirements.txt` | Build the site. |
@@ -61,6 +62,22 @@ After changing an example, write its output again and look at the diff:
 PYTHONPATH=build python3 docs/examples/check.py --update
 git diff docs/examples/output
 ```
+
+The Go snippets of `c-go.md` work the same way. They come from the testable
+examples in `bindings/go/dexpp/example_test.go`:
+
+````markdown
+```go
+--8<-- "bindings/go/dexpp/example_test.go:load"
+```
+````
+
+This is the part of the file between the `// --8<-- [start:load]` and
+`// --8<-- [end:load]` comments. The output of each example is its
+`// Output:` comment, which `go test` checks. Keep a blank line between the
+end marker and `// Output:`. Without it, the two comments form one block that
+does not start with "Output:", and `go test` only compiles the example
+instead of running it.
 
 ## Explicit types
 

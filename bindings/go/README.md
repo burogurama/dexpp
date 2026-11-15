@@ -1,7 +1,14 @@
 # dexpp Go binding
 
-Go bindings for the dexpp Android DEX/APK static-analysis library, via its C ABI
-(`bindings/c`) and cgo.
+Go bindings for the dexpp Android DEX/APK static-analysis library, through its
+C API (`bindings/c`) and cgo.
+
+The package reaches the same API as the Python binding: loading, classes,
+methods and fields, decoded bytecode, control-flow graphs and try blocks,
+annotations, the call graph, the class hierarchy, cross-references, the
+APK's manifest, resources and signing, and the editable DEX model a whole
+class at a time. Only building or changing code inside a method needs the
+C++ API.
 
 ## Build
 
@@ -15,11 +22,13 @@ cmake --build build --target dexpp_c -j
 ```
 
 This produces `build/libdexpp_c.a` and `build/libdexpp_core.a`, which the
-package's cgo `LDFLAGS` reference by relative path. Then, from `bindings/go`:
+package's cgo `LDFLAGS` reference by relative path. So the build folder must
+be named `build`, and the package is used from the checkout, not through
+`go get`. Then, from `bindings/go`:
 
 ```bash
-go test ./...                 # run the binding tests
-go run ./example app.apk      # demo: package, components, class/method summary
+go test ./...                 # the binding tests and the testable examples
+go run ./example app.apk      # demo: package, components, code summary
 ```
 
 The dexpp libraries are linked statically into the resulting Go binary, so it
@@ -39,76 +48,79 @@ apk, err := dexpp.OpenAPK("app.apk")
 if err != nil { /* ... */ }
 defer apk.Close()
 
-fmt.Println(apk.Package())
-for _, c := range apk.Components() {
-    fmt.Println(c.Kind, c.Name, "reachable:", c.Reachable)
+if m, ok := apk.Manifest(); ok {
+    fmt.Println(m.Package)
+    for _, c := range m.Components {
+        fmt.Println(c.Kind, c.Name, "reachable:", c.IsReachable)
+    }
 }
 
-ctx, _ := apk.Analysis()          // or dexpp.FromAPK / dexpp.FromDEX
+ctx, err := apk.Analysis()        // or dexpp.FromAPK / dexpp.FromDEX
+if err != nil { /* ... */ }
 defer ctx.Close()
 for _, cls := range ctx.Classes() {
     for _, m := range cls.Methods() {
-        fmt.Println(cls.Name(), m.Name()+m.Descriptor())
+        for _, call := range m.Calls() {
+            fmt.Println(cls.Name(), m.Name(), "calls", call.Target)
+        }
     }
 }
-if c := ctx.FindClass("Lcom/example/Foo;"); c != nil { /* ... */ }
+
+g, err := ctx.CallGraph()
+if err != nil { /* ... */ }
+loadURL := dexpp.MethodID{
+    ClassDescriptor: "Landroid/webkit/WebView;", Name: "loadUrl", Proto: "(Ljava/lang/String;)V",
+}
+if n, ok := g.Find(loadURL); ok {
+    for _, caller := range g.Callers(n.Index) {
+        c, _ := g.Node(caller)
+        fmt.Println("called by", c.ID)
+    }
+}
 ```
 
-## Editing DEX files (the model)
+`example_test.go` holds a testable example for each area (loading,
+bytecode, control-flow graph, references, annotations, call graph, hierarchy
+and cross-references, APK metadata, signing, the model, errors). `go test`
+runs them and checks their output, and the documentation site shows them on
+its "C and Go" page.
 
-`Model` wraps dexpp's editable DEX model (`dex::model`): read a DEX file into
-memory, change it at the granularity of whole classes, and write a DEX file
-again. Editing inside a method is not exposed — a class crosses the boundary
-whole — which covers splitting, merging and renaming.
+| Area | Go API |
+| ---- | ------ |
+| Loading | `FromDEX`, `FromDEXFiles`, `FromAPK` (with `WithThreads`), `Context` |
+| Code | `Class`, `ClassRef`, `Method`, `Field`, `AccessFlags`, `Annotation` |
+| Bytecode | `Method.Instructions` (an `Instruction` per opcode family), `OpcodeName`, `ToString`, `Method.Cfg`, `Method.TryBlocks` |
+| References | `Method.Calls`, `FieldAccesses`, `StringLoads`, `TypeUses`, `ParameterRegisters` |
+| Whole program | `CallGraph`, `ClassHierarchy`, `Xrefs` |
+| APK | `OpenAPK`, `Apk`, `Manifest`, `Component`, `ResourceTable`, `SigningInfo` |
+| Editing | `Model`: `ReadModel`, `ReadModelFile`, `NewModel`, `CopyClass`, `MoveClass`, `RemoveClass`, `RenameTypes`, `Validate`, `PoolStats`, `Write` |
+
+## Errors
+
+A failed call returns an `*dexpp.Error` with a `Code`, a `Message`, and, for
+a model that breaks rules of the DEX format, the list of `Problems`. Each code
+has a sentinel value for `errors.Is`:
 
 ```go
-// Split a DEX into one file per class.
-m, err := dexpp.ReadModelFile("classes.dex", true)
-if err != nil { /* ... */ }
-defer m.Close()
-
-for i, desc := range m.ClassDescriptors() {
-    one := dexpp.NewModel(m.Version())
-    if err := one.CopyClass(m, desc); err != nil { /* ... */ }
-    bytes, err := one.Write(true)
-    if err != nil { /* ... */ }
-    _ = os.WriteFile(fmt.Sprintf("class%d.dex", i), bytes, 0o644)
-    one.Close()
-}
-
-// Rename a class everywhere it is referenced, then write.
-m.RenameTypes(map[string]string{"Lcom/old/Name;": "Lcom/new/Name;"})
-if problems := m.Validate(); len(problems) == 0 {
-    out, _ := m.Write(true)
-    _ = os.WriteFile("renamed.dex", out, 0o644)
+_, err := dexpp.FromDEX("classes.dex")
+switch {
+case errors.Is(err, fs.ErrNotExist):     // also dexpp.ErrFileNotFound
+case errors.Is(err, dexpp.ErrInvalidDex):
 }
 ```
-
-`PoolStats()` reports how full each DEX pool would be (the format indexes types,
-protos, fields and methods with 16 bits), so a splitter can keep each file under
-the limit. `RequiredVersion()` gives the lowest DEX version the model needs.
 
 ## Memory
 
-`Context`, `Apk`, `Class`, `Method`, and `Model` are handles over C++ objects.
-Each is freed by a finalizer on garbage collection; call `Close()` to release
-eagerly. Returned strings, `[]Component`, and the DEX bytes from `Model.Write`
-are copied into Go and need no cleanup. `Class`/`Method` handles keep the
-analysis alive on their own, so they stay valid after the owning `Context` is
-closed (matching the C++ handle model). `Model` owns its data outright; a
-`Class`/`Method` from the analysis API is unrelated to it.
+`Context`, `Apk`, `Class`, `ClassRef`, `Method`, `Field`, `CallGraph`,
+`ClassHierarchy`, `Xrefs` and `Model` are handles over C++ objects. Each is
+freed by a finalizer on garbage collection; call `Close()` to release it
+eagerly. Calling a method on a closed or nil handle panics with a clear
+message instead of passing NULL to C. Handles keep the analysis alive on their
+own, so a `Class` or `Method` stays valid after the `Context` it came from is
+closed (matching the C++ handle model). Everything else — strings, slices,
+structs, the DEX bytes from `Model.Write` — is copied into Go and needs no
+cleanup.
 
-## Surface
-
-Two C headers back the binding:
-
-- `bindings/c/dexpp.h` — the analysis API: loading (APK / DEX), the manifest
-  (package, components, exported/reachable), class enumeration and lookup, the
-  string pool, and per-class methods with descriptors and access flags.
-- `bindings/c/dexpp_model.h` — the editable model (above): read, inspect
-  classes, move/copy/remove whole classes, rename types, validate, pool stats,
-  and write.
-
-Instruction-level disassembly, the call graph, the xref index (analysis side),
-and building classes instruction by instruction (model side) are in the
-C++/Python APIs and can be added to the C shim as needed.
+A value that may be absent is never an empty string: a handle comes back as
+`nil`, a plain value with a second `bool` result, and a struct field as a
+pointer.

@@ -1,24 +1,26 @@
 # C and Go
 
-The C API is a small C layer over the C++ library. It exists so that languages
+The C API is a C layer over the C++ library. It exists so that languages
 that can call C, such as Go, can use dex++. The Go package is built on it.
 
-Both cover a **part** of the library:
+Both cover the same ground as the [Python binding](quickstart.md): the whole
+analysis API, the APK metadata, and the editable model a whole class at a
+time. Only building or changing code inside a method needs [C++](cpp.md).
 
-| Area | C and Go |
-| ---- | -------- |
-| Load an APK or DEX file | yes |
-| Manifest: package, components, exported, reachable | yes |
-| Classes: list, find, superclass, interfaces | yes |
-| Methods: name, descriptor, flags, number of calls | yes |
-| The string table | yes |
-| Editable model, a whole class at a time | yes |
-| Bytecode, control-flow graphs | no |
-| Call graph, class hierarchy, cross-references | no |
-| Resources, signing | no |
-| Editing code inside a method | no |
-
-For the parts marked "no", use [Python](quickstart.md) or [C++](cpp.md).
+| Area | C | Go |
+| ---- | - | -- |
+| Load a DEX file, several DEX files, or an APK | `dexpp_context_from_dex`, `dexpp_context_from_dex_files`, `dexpp_context_from_apk` | `FromDEX`, `FromDEXFiles`, `FromAPK` |
+| Classes, class references, methods, fields | `dexpp_class_*`, `dexpp_class_ref_*`, `dexpp_method_*`, `dexpp_field_*` | `Class`, `ClassRef`, `Method`, `Field` |
+| Decoded bytecode | `dexpp_method_instructions`, `dexpp_opcode_name`, `dexpp_instruction_to_string` | `Method.Instructions`, `OpcodeName`, `ToString` |
+| Control-flow graph, try blocks | `dexpp_method_cfg`, `dexpp_method_try_blocks` | `Method.Cfg`, `Method.TryBlocks` |
+| Calls, field accesses, string loads, type uses, parameter registers | `dexpp_method_calls` and the functions after it | `Method.Calls` and the methods after it |
+| Annotations, initial values of static fields | `dexpp_class_annotations`, `dexpp_field_initial_value`, ... | `Class.Annotations`, `Field.InitialValue`, ... |
+| Call graph | `dexpp_call_graph_*` | `CallGraph` |
+| Class hierarchy | `dexpp_class_hierarchy_*` | `ClassHierarchy` |
+| Cross-references | `dexpp_xrefs_*` | `Xrefs` |
+| APK: archive entries, manifest, resources, signing | `dexpp_apk_*` | `Apk`, `Manifest`, `ResourceTable`, `SigningInfo` |
+| Editable model, a whole class at a time | `dexpp_model_*` | `Model` |
+| Editing code inside a method | no | no |
 
 Both are used from a checkout. There are no prebuilt binaries.
 
@@ -44,7 +46,7 @@ The headers are `bindings/c/dexpp.h` for analysis and
 `bindings/c/dexpp_model.h` for the editable model. Their functions are listed
 in the [C++ and C reference](reference/cpp.md).
 
-## C conventions
+## C
 
 ```c
 #include <stdio.h>
@@ -52,11 +54,11 @@ in the [C++ and C reference](reference/cpp.md).
 
 int main(void)
 {
-    char *err = NULL;
-    DexppContext *ctx = dexpp_context_from_apk("app.apk", &err);
+    DexppError *err = NULL;
+    DexppContext *ctx = dexpp_context_from_apk("app.apk", 0, &err);
     if (ctx == NULL) {
-        fprintf(stderr, "%s\n", err);
-        dexpp_string_free(err);
+        fprintf(stderr, "error %d: %s\n", (int)dexpp_error_code(err), dexpp_error_message(err));
+        dexpp_error_free(err);
         return 1;
     }
 
@@ -75,17 +77,54 @@ int main(void)
 
 The rules are the same for every function:
 
-- **Handles are opaque pointers**: `DexppContext`, `DexppClass`, `DexppMethod`,
-  `DexppApk`, `DexppModelDex`. Free each one with its `_free` function.
-- **Errors.** A function that can fail takes a `char **err`. On failure it
-  returns `NULL` (or `0`, for a function that returns an `int`) and sets
-  `*err` to a message. Free the message with `dexpp_string_free`.
+- **Handles are opaque pointers**: `DexppContext`, `DexppApk`, `DexppClass`,
+  `DexppClassRef`, `DexppMethod`, `DexppField`, `DexppCallGraph`,
+  `DexppClassHierarchy`, `DexppXrefs` and `DexppModelDex`. Free each one with
+  its `_free` function.
+- **Handles keep the analysis alive.** A class or method handle stays valid
+  after the context handle it came from is freed.
 - **Strings are copies.** Every string a function returns was allocated for
-  you. Free it with `dexpp_string_free`.
-- **Arrays** are allocated too. Free an array with its matching
-  `_array_free` function, which also frees the items in it.
-- **Class and method handles keep the analysis alive.** They stay valid after
-  the context handle is freed.
+  you. Free it with `dexpp_string_free`. The string constants of the analysed
+  program can contain NUL bytes, so they come back as a `DexppText`, which
+  carries its length.
+- **Arrays** come with a count. An empty array is `NULL` with a count of 0.
+  Free an array with the `_array_free` function named for its type. It also
+  frees what the elements own.
+- **Structs filled through a pointer**, such as `DexppManifest` or
+  `DexppSigningInfo`, own the memory their members point to. Release it with
+  the matching `_clear` function, such as `dexpp_manifest_clear`.
+- **Threads.** Reading from one analysis on several threads at once is safe.
+  Do not free a handle while another thread still uses it.
+
+### Errors in C
+
+A function that can fail takes a `DexppError **err` as its last argument. On
+failure it returns `NULL` (or 0) and sets `*err` to a new error object. On
+success it sets `*err` to `NULL`, so `dexpp_error_free(err)` is always
+allowed. Pass `NULL` for `err` when you do not need the details.
+
+- `dexpp_error_code(err)` says what went wrong (see the table below).
+- `dexpp_error_message(err)` describes it. The string belongs to the error.
+- For `DEXPP_ERROR_INVALID_MODEL`, `dexpp_error_problem_count(err)` gives the
+  number of broken rules, and `dexpp_error_problem_where` and
+  `dexpp_error_problem_message` describe each one.
+- `dexpp_error_free(err)` frees the error.
+
+Each code matches an error of the other bindings:
+
+| C code | Go sentinel | Python exception | Meaning |
+| ------ | ----------- | ---------------- | ------- |
+| `DEXPP_ERROR_FILE_NOT_FOUND` | `ErrFileNotFound` | `FileNotFoundError` | The path does not exist. |
+| `DEXPP_ERROR_CANNOT_READ` | `ErrCannotRead` | `OSError` | The path exists but cannot be read, for example a directory. |
+| `DEXPP_ERROR_CANNOT_WRITE` | `ErrCannotWrite` | `OSError` | The file cannot be created or written. |
+| `DEXPP_ERROR_INVALID_APK` | `ErrInvalidAPK` | `InvalidApkError` | Not a ZIP archive, or an APK with no `classes.dex`. |
+| `DEXPP_ERROR_INVALID_DEX` | `ErrInvalidDex` | `InvalidDexError` | A DEX file cannot be parsed. |
+| `DEXPP_ERROR_UNSUPPORTED_DEX` | `ErrUnsupportedDex` | `UnsupportedDexError` | A DEX format the model does not read, such as version 41. |
+| `DEXPP_ERROR_INVALID_MODEL` | `ErrInvalidModel` | `InvalidModelError` | A model breaks rules of the DEX format. |
+| `DEXPP_ERROR_POOL_OVERFLOW` | `ErrPoolOverflow` | `PoolOverflowError` | A table of the written file would be too large. |
+| `DEXPP_ERROR_VERSION_TOO_LOW` | `ErrVersionTooLow` | `VersionTooLowError` | A model uses a feature its DEX version does not have. |
+| `DEXPP_ERROR_MODEL` | `ErrModel` | `ModelError` | A class to move or copy is missing, or already there. |
+| `DEXPP_ERROR_INTERNAL` | `ErrInternal` | `MemoryError` or `RuntimeError` | An unexpected failure, such as running out of memory. |
 
 ## Go
 
@@ -111,29 +150,89 @@ The dexpp libraries are linked statically, so a Go program built with the
 package needs no dexpp library at runtime. It uses the system's C++ runtime:
 libstdc++ on Linux, libc++ on macOS.
 
-### Analysis
+The examples below are the package's testable examples, from
+`bindings/go/dexpp/example_test.go`. `go test` runs each one and checks what
+it prints. It runs them in `bindings/go/dexpp`, so they open the test files of
+the repository by the relative path `../../../tests/data`.
+
+### Classes and methods
 
 ```go
-import "github.com/burogurama/dexpp/bindings/go/dexpp"
-
-apk, err := dexpp.OpenAPK("app.apk")
-if err != nil { /* ... */ }
-defer apk.Close()
-
-fmt.Println(apk.Package())
-for _, c := range apk.Components() {
-    fmt.Println(c.Kind, c.Name, "reachable:", c.Reachable)
-}
-
-ctx, _ := apk.Analysis()          // or dexpp.FromAPK / dexpp.FromDEX
-defer ctx.Close()
-for _, cls := range ctx.Classes() {
-    for _, m := range cls.Methods() {
-        fmt.Println(cls.Name(), m.Name()+m.Descriptor())
-    }
-}
-if c := ctx.FindClass("Lcom/example/Foo;"); c != nil { /* ... */ }
+--8<-- "bindings/go/dexpp/example_test.go:load"
 ```
+
+`FromAPK` loads every `classes*.dex` of an APK instead.
+`dexpp.WithThreads(1)` keeps all its work on the calling thread:
+`dexpp.FromAPK(path, dexpp.WithThreads(1))`.
+
+### Bytecode and the control-flow graph
+
+`Method.Instructions` returns the decoded bytecode. Each instruction is one of
+24 struct types, one per family of opcodes, so a type switch tells them
+apart:
+
+```go
+--8<-- "bindings/go/dexpp/example_test.go:instructions"
+```
+
+Pool operands, such as `method@3`, are raw indices into the tables of the DEX
+file. The next section gives the names.
+
+```go
+--8<-- "bindings/go/dexpp/example_test.go:cfg"
+```
+
+### What a method refers to
+
+`Calls`, `FieldAccesses`, `StringLoads` and `TypeUses` list what a method's
+code refers to, with names instead of indices:
+
+```go
+--8<-- "bindings/go/dexpp/example_test.go:references"
+```
+
+Annotations are copied into Go values. An element value has one of the types
+listed for `dexpp.AnnotationValue`: `nil`, `bool`, `int64`, `float64`,
+`string`, a reference type such as `dexpp.TypeRef`, a slice, or a nested
+`dexpp.Annotation`.
+
+```go
+--8<-- "bindings/go/dexpp/example_test.go:annotations"
+```
+
+### Call graph
+
+Nodes and edges of the call graph are numbered. `CallNode` and `CallEdge` are
+plain values that hold the numbers of their neighbours, and the methods of
+`CallGraph` take and return numbers. `Nodes()` and `Edges()` copy the whole
+table, so call them once; `Node(i)` and `Edge(i)` copy one entry.
+
+```go
+--8<-- "bindings/go/dexpp/example_test.go:callgraph"
+```
+
+`EdgesWhere(origin, kind)` filters the edges inside the library:
+`g.EdgesWhere(dexpp.EdgeDeclared, dexpp.AnyInvokeKind)` gives one edge per
+call site. See [Call graph](guide/call-graph.md) for what the edges and the
+dispatch targets mean.
+
+### Class hierarchy and cross-references
+
+```go
+--8<-- "bindings/go/dexpp/example_test.go:hierarchy"
+```
+
+### APK metadata
+
+```go
+--8<-- "bindings/go/dexpp/example_test.go:apk"
+```
+
+```go
+--8<-- "bindings/go/dexpp/example_test.go:signing"
+```
+
+As in the other bindings, the signatures are only identified, not verified.
 
 ### Editing DEX files
 
@@ -142,34 +241,40 @@ operations as the Python `Model`: see [Editing DEX files](guide/editing-dex.md)
 for what each one does.
 
 ```go
-// Split a DEX file into one file per class.
-m, err := dexpp.ReadModelFile("classes.dex", true)
-if err != nil { /* ... */ }
-defer m.Close()
-
-for i, desc := range m.ClassDescriptors() {
-    one := dexpp.NewModel(m.Version())
-    if err := one.CopyClass(m, desc); err != nil { /* ... */ }
-    bytes, err := one.Write(true)
-    if err != nil { /* ... */ }
-    _ = os.WriteFile(fmt.Sprintf("class%d.dex", i), bytes, 0o644)
-    one.Close()
-}
-
-// Rename a class everywhere it is referenced, then write.
-m.RenameTypes(map[string]string{"Lcom/old/Name;": "Lcom/new/Name;"})
-if problems := m.Validate(); len(problems) == 0 {
-    out, _ := m.Write(true)
-    _ = os.WriteFile("renamed.dex", out, 0o644)
-}
+--8<-- "bindings/go/dexpp/example_test.go:model"
 ```
 
 The second argument of `ReadModelFile` and the argument of `Write` say whether
 to keep debug information: line numbers and local variable names.
 
-### Memory in Go
+### Errors in Go
 
-`Context`, `Apk`, `Class`, `Method` and `Model` wrap C++ objects. The garbage
-collector frees them, and `Close()` frees one at once. Strings, component
-lists and the bytes from `Model.Write` are copied into Go memory and need no
-cleanup.
+A call that fails returns an `*dexpp.Error`. It has the `Code` of the C error,
+its `Message`, and for an invalid model the `Problems`. Each code has a
+sentinel value, so `errors.Is` tells the kinds apart, and
+`errors.Is(err, fs.ErrNotExist)` is true for a missing file. Use `errors.As`
+to read the code and the problems:
+
+```go
+--8<-- "bindings/go/dexpp/example_test.go:errors"
+```
+
+### Handles and memory in Go
+
+- `Context`, `Apk`, `Class`, `ClassRef`, `Method`, `Field`, `CallGraph`,
+  `ClassHierarchy`, `Xrefs` and `Model` are handles over C++ objects. The
+  garbage collector frees them, and `Close()` frees one at once. Calling
+  `Close()` twice, or on a nil handle, does nothing.
+- Calling any other method on a closed or nil handle panics with a message
+  that names the type, such as `dexpp: *Class used after Close`.
+- Every handle keeps the analysis alive, so a `Class` still works after its
+  `Context` is closed.
+- Everything else (strings, slices, structs, the bytes from `Model.Write`) is
+  copied into Go memory and needs no cleanup.
+- A value that may be absent is never an empty string. A method that returns
+  a handle returns `nil` when there is none, such as `Class.Superclass()`. A
+  method that returns a plain value also returns a `bool`, such as
+  `Class.SourceFile()`. A struct field that may be absent is a pointer, such
+  as `Manifest.VersionName`.
+- Reading from one analysis in several goroutines at once is safe. Do not
+  call `Close()` on a handle while another goroutine still uses it.
