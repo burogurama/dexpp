@@ -7,6 +7,7 @@
 #include <cstdlib>
 #include <set>
 #include <string>
+#include <type_traits>
 #include <vector>
 
 #include "c_test_util.hpp"
@@ -433,6 +434,56 @@ TEST(CApiLifetime, HandlesOfAnArrayCanBeFreedOneByOne)
             dexpp_method_free(method);
         }
     }
+}
+
+TEST(CApiLifetime, AnArrayFreedWithCountZeroKeepsItsHandles)
+{
+    // What the Java binding does: free() is not safe across a DLL boundary,
+    // so it frees the array itself with the _array_free function and a count
+    // of 0, and frees every handle on its own later.
+    DexppContext *ctx = open_dex("tests/data/shapes.dex");
+    ASSERT_NE(ctx, nullptr);
+
+    size_t class_count = 0;
+    DexppClass **class_array = dexpp_context_classes(ctx, &class_count);
+    std::vector<DexppClass *> classes(class_array, class_array + class_count);
+    dexpp_class_array_free(class_array, 0);
+    ASSERT_EQ(classes.size(), 4u);
+
+    // An empty array is NULL, so copy only a non-empty one.
+    auto keep = [](auto **array, size_t count) {
+        std::vector<std::remove_pointer_t<decltype(array)>> out;
+        if (array != nullptr)
+            out.assign(array, array + count);
+        return out;
+    };
+    for (DexppClass *cls : classes) {
+        size_t count = 0;
+        DexppMethod **method_array = dexpp_class_methods(cls, &count);
+        std::vector<DexppMethod *> methods = keep(method_array, count);
+        dexpp_method_array_free(method_array, 0);
+        DexppField **field_array = dexpp_class_fields(cls, &count);
+        std::vector<DexppField *> fields = keep(field_array, count);
+        dexpp_field_array_free(field_array, 0);
+        DexppClassRef **ref_array = dexpp_class_interfaces(cls, &count);
+        std::vector<DexppClassRef *> refs = keep(ref_array, count);
+        dexpp_class_ref_array_free(ref_array, 0);
+        dexpp_class_free(cls);
+
+        for (DexppMethod *method : methods) {
+            EXPECT_NE(take(dexpp_method_name(method)), "");
+            dexpp_method_free(method);
+        }
+        for (DexppField *field : fields) {
+            EXPECT_NE(take(dexpp_field_name(field)), "");
+            dexpp_field_free(field);
+        }
+        for (DexppClassRef *ref : refs) {
+            EXPECT_EQ(take(dexpp_class_ref_descriptor(ref)), "LShape;");
+            dexpp_class_ref_free(ref);
+        }
+    }
+    dexpp_context_free(ctx);
 }
 
 TEST(CApiMemory, FreeingNullIsAllowed)

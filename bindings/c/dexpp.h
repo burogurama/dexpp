@@ -31,7 +31,10 @@
  *   function named for its type; it frees everything the elements own, and
  *   accepts NULL. An array of handles is one block from malloc(): a caller
  *   that keeps the handles, to free each one later with its `_free`
- *   function, frees the block alone with free().
+ *   function, frees the block alone with the array's `_array_free` function
+ *   and a count of 0. free() also works when the library is linked
+ *   statically, but not across the boundary of a Windows DLL, where the
+ *   library and the caller can use different C runtimes.
  * - **Structs filled through an out-pointer** own malloc'd members; release
  *   them with the matching `_clear` function, which frees the members (not
  *   the struct) and sets them to NULL.
@@ -44,6 +47,22 @@
 
 #include <stddef.h>
 #include <stdint.h>
+
+/* DEXPP_C_API marks every function of the C API. When the C API is built as
+ * a shared library (the CMake target dexpp_c_shared, which defines
+ * DEXPP_C_BUILD_SHARED), it exports the function: __declspec(dllexport) on
+ * Windows, default visibility elsewhere, where everything else in the library
+ * is hidden. In every other build, and for programs that include this header,
+ * it is empty. */
+#ifndef DEXPP_C_API
+#if defined(DEXPP_C_BUILD_SHARED) && defined(_WIN32)
+#define DEXPP_C_API __declspec(dllexport)
+#elif defined(DEXPP_C_BUILD_SHARED)
+#define DEXPP_C_API __attribute__((visibility("default")))
+#else
+#define DEXPP_C_API
+#endif
+#endif
 
 #ifdef __cplusplus
 extern "C" {
@@ -73,27 +92,27 @@ typedef enum DexppErrorCode {
 typedef struct DexppError DexppError;
 
 /** The kind of the error. */
-DexppErrorCode dexpp_error_code(const DexppError *error);
+DEXPP_C_API DexppErrorCode dexpp_error_code(const DexppError *error);
 
 /** The error message. The string belongs to the error and lives until
  *  dexpp_error_free(). */
-const char *dexpp_error_message(const DexppError *error);
+DEXPP_C_API const char *dexpp_error_message(const DexppError *error);
 
 /** How many problems an error with code DEXPP_ERROR_INVALID_MODEL lists
  *  (0 for every other code). */
-size_t dexpp_error_problem_count(const DexppError *error);
+DEXPP_C_API size_t dexpp_error_problem_count(const DexppError *error);
 
 /** Where problem @p index is, e.g. `"Lcom/a/B;->run()V, item 12"`; empty for
  *  a problem with the whole file. NULL when @p index is out of range. The
  *  string belongs to the error. */
-const char *dexpp_error_problem_where(const DexppError *error, size_t index);
+DEXPP_C_API const char *dexpp_error_problem_where(const DexppError *error, size_t index);
 
 /** What is wrong in problem @p index. NULL when @p index is out of range. The
  *  string belongs to the error. */
-const char *dexpp_error_problem_message(const DexppError *error, size_t index);
+DEXPP_C_API const char *dexpp_error_problem_message(const DexppError *error, size_t index);
 
 /** Free an error. Accepts NULL. */
-void dexpp_error_free(DexppError *error);
+DEXPP_C_API void dexpp_error_free(DexppError *error);
 
 /** @} */
 
@@ -112,23 +131,23 @@ typedef struct DexppText
 } DexppText;
 
 /** Free a string returned by any dexpp function. Accepts NULL. */
-void dexpp_string_free(char *s);
+DEXPP_C_API void dexpp_string_free(char *s);
 
 /** Free an array of strings and every string in it. Accepts NULL. */
-void dexpp_string_array_free(char **strings, size_t count);
+DEXPP_C_API void dexpp_string_array_free(char **strings, size_t count);
 
 /** Free the bytes of one DexppText and set its members to NULL and 0. */
-void dexpp_text_clear(DexppText *text);
+DEXPP_C_API void dexpp_text_clear(DexppText *text);
 
 /** Free an array of DexppText and every text in it. Accepts NULL. */
-void dexpp_text_array_free(DexppText *texts, size_t count);
+DEXPP_C_API void dexpp_text_array_free(DexppText *texts, size_t count);
 
 /** Free a byte buffer returned by dexpp_apk_read() or dexpp_model_write().
  *  Accepts NULL. */
-void dexpp_buffer_free(uint8_t *buffer);
+DEXPP_C_API void dexpp_buffer_free(uint8_t *buffer);
 
 /** Free an array of indices (node, edge or block numbers). Accepts NULL. */
-void dexpp_index_array_free(uint32_t *indices, size_t count);
+DEXPP_C_API void dexpp_index_array_free(uint32_t *indices, size_t count);
 
 /** @} */
 
@@ -245,10 +264,10 @@ typedef struct DexppFieldId
 } DexppFieldId;
 
 /** Free the strings of one DexppMethodId and set them to NULL. */
-void dexpp_method_id_clear(DexppMethodId *id);
+DEXPP_C_API void dexpp_method_id_clear(DexppMethodId *id);
 
 /** Free an array of DexppMethodId. Accepts NULL. */
-void dexpp_method_id_array_free(DexppMethodId *ids, size_t count);
+DEXPP_C_API void dexpp_method_id_array_free(DexppMethodId *ids, size_t count);
 
 /** @} */
 
@@ -339,10 +358,10 @@ typedef struct DexppAnnotation
 } DexppAnnotation;
 
 /** Free everything a DexppValue owns and reset it to a NULL value. */
-void dexpp_value_clear(DexppValue *value);
+DEXPP_C_API void dexpp_value_clear(DexppValue *value);
 
 /** Free an array of annotations and everything they own. Accepts NULL. */
-void dexpp_annotation_array_free(DexppAnnotation *annotations, size_t count);
+DEXPP_C_API void dexpp_annotation_array_free(DexppAnnotation *annotations, size_t count);
 
 /** @} */
 
@@ -352,46 +371,48 @@ void dexpp_annotation_array_free(DexppAnnotation *annotations, size_t count);
 /** @{ */
 
 /** Load one DEX file. Errors: FILE_NOT_FOUND, CANNOT_READ, INVALID_DEX. */
-DexppContext *dexpp_context_from_dex(const char *path, DexppError **err);
+DEXPP_C_API DexppContext *dexpp_context_from_dex(const char *path, DexppError **err);
 
 /** Load several DEX files into one context, for example the unpacked files of
  *  a multidex app. Errors as dexpp_context_from_dex(). */
-DexppContext *dexpp_context_from_dex_files(const char *const *paths, size_t count,
-                                           DexppError **err);
+DEXPP_C_API DexppContext *dexpp_context_from_dex_files(const char *const *paths, size_t count,
+                                                       DexppError **err);
 
 /** Load every top-level classes*.dex of an APK, in multidex order. `threads`
  *  is the number of threads for decompressing and, later, for building the
  *  call graph: 0 lets the library choose, 1 keeps all work on the calling
  *  thread. Errors: FILE_NOT_FOUND, CANNOT_READ, INVALID_APK, INVALID_DEX. */
-DexppContext *dexpp_context_from_apk(const char *path, uint32_t threads, DexppError **err);
+DEXPP_C_API DexppContext *dexpp_context_from_apk(const char *path, uint32_t threads,
+                                                 DexppError **err);
 
 /** Free a context. Handles that came from it stay valid. Accepts NULL. */
-void dexpp_context_free(DexppContext *ctx);
+DEXPP_C_API void dexpp_context_free(DexppContext *ctx);
 
 /** Every class of every loaded DEX file, in file order. Free with
  *  dexpp_class_array_free(). */
-DexppClass **dexpp_context_classes(const DexppContext *ctx, size_t *count);
+DEXPP_C_API DexppClass **dexpp_context_classes(const DexppContext *ctx, size_t *count);
 
 /** The class with this descriptor (e.g. "Lcom/example/Foo;"), or NULL when no
  *  loaded file defines it. */
-DexppClass *dexpp_context_find_class(const DexppContext *ctx, const char *descriptor);
+DEXPP_C_API DexppClass *dexpp_context_find_class(const DexppContext *ctx, const char *descriptor);
 
 /** Every string of every loaded DEX file's string table, including names of
  *  classes and members. Decodes the whole table. Free with
  *  dexpp_text_array_free(). */
-DexppText *dexpp_context_strings(const DexppContext *ctx, size_t *count);
+DEXPP_C_API DexppText *dexpp_context_strings(const DexppContext *ctx, size_t *count);
 
 /** The call graph of the whole program, built on the first call and kept.
  *  Free the handle with dexpp_call_graph_free(). Errors: INTERNAL. */
-DexppCallGraph *dexpp_context_call_graph(const DexppContext *ctx, DexppError **err);
+DEXPP_C_API DexppCallGraph *dexpp_context_call_graph(const DexppContext *ctx, DexppError **err);
 
 /** The class hierarchy of the whole program, built on the first call and
  *  kept. Free with dexpp_class_hierarchy_free(). Errors: INTERNAL. */
-DexppClassHierarchy *dexpp_context_class_hierarchy(const DexppContext *ctx, DexppError **err);
+DEXPP_C_API DexppClassHierarchy *dexpp_context_class_hierarchy(const DexppContext *ctx,
+                                                               DexppError **err);
 
 /** The cross-reference index of the whole program, built on the first call
  *  and kept. Free with dexpp_xrefs_free(). Errors: INTERNAL. */
-DexppXrefs *dexpp_context_xrefs(const DexppContext *ctx, DexppError **err);
+DEXPP_C_API DexppXrefs *dexpp_context_xrefs(const DexppContext *ctx, DexppError **err);
 
 /** @} */
 
@@ -401,64 +422,66 @@ DexppXrefs *dexpp_context_xrefs(const DexppContext *ctx, DexppError **err);
 /** @{ */
 
 /** The class descriptor, e.g. "Lcom/example/Foo;". */
-char *dexpp_class_name(const DexppClass *cls);
+DEXPP_C_API char *dexpp_class_name(const DexppClass *cls);
 
 /** The package with `/` between its parts, e.g. "com/example"; empty for the
  *  default package. */
-char *dexpp_class_package(const DexppClass *cls);
+DEXPP_C_API char *dexpp_class_package(const DexppClass *cls);
 
 /** The direct superclass, or NULL for java.lang.Object itself. Free with
  *  dexpp_class_ref_free(). */
-DexppClassRef *dexpp_class_superclass(const DexppClass *cls);
+DEXPP_C_API DexppClassRef *dexpp_class_superclass(const DexppClass *cls);
 
 /** The interfaces the class implements directly, in declaration order. Free
  *  with dexpp_class_ref_array_free(). */
-DexppClassRef **dexpp_class_interfaces(const DexppClass *cls, size_t *count);
+DEXPP_C_API DexppClassRef **dexpp_class_interfaces(const DexppClass *cls, size_t *count);
 
 /** The access flags (see DexppAccessFlag). */
-uint32_t dexpp_class_access_flags(const DexppClass *cls);
+DEXPP_C_API uint32_t dexpp_class_access_flags(const DexppClass *cls);
 
 /** 1 when the class is an interface, otherwise 0. */
-int dexpp_class_is_interface(const DexppClass *cls);
+DEXPP_C_API int dexpp_class_is_interface(const DexppClass *cls);
 
 /** 1 when the class is abstract, otherwise 0. */
-int dexpp_class_is_abstract(const DexppClass *cls);
+DEXPP_C_API int dexpp_class_is_abstract(const DexppClass *cls);
 
 /** The source file name recorded for the class, or NULL. */
-char *dexpp_class_source_file(const DexppClass *cls);
+DEXPP_C_API char *dexpp_class_source_file(const DexppClass *cls);
 
 /** The methods the class defines: direct methods first, then virtual ones.
  *  Free with dexpp_method_array_free(). */
-DexppMethod **dexpp_class_methods(const DexppClass *cls, size_t *count);
+DEXPP_C_API DexppMethod **dexpp_class_methods(const DexppClass *cls, size_t *count);
 
 /** The fields the class declares: static fields first, then instance fields.
  *  Free with dexpp_field_array_free(). */
-DexppField **dexpp_class_fields(const DexppClass *cls, size_t *count);
+DEXPP_C_API DexppField **dexpp_class_fields(const DexppClass *cls, size_t *count);
 
 /** The annotations on the class. Free with dexpp_annotation_array_free(). */
-DexppAnnotation *dexpp_class_annotations(const DexppClass *cls, size_t *count);
+DEXPP_C_API DexppAnnotation *dexpp_class_annotations(const DexppClass *cls, size_t *count);
 
 /** Free a class handle. Accepts NULL. */
-void dexpp_class_free(DexppClass *cls);
+DEXPP_C_API void dexpp_class_free(DexppClass *cls);
 
-/** Free an array of class handles and every handle in it. Accepts NULL. */
-void dexpp_class_array_free(DexppClass **classes, size_t count);
+/** Free an array of class handles and every handle in it. Accepts NULL.
+ *  With @p count 0 it frees the array alone and the handles stay valid. */
+DEXPP_C_API void dexpp_class_array_free(DexppClass **classes, size_t count);
 
 /** The descriptor the reference names. */
-char *dexpp_class_ref_descriptor(const DexppClassRef *ref);
+DEXPP_C_API char *dexpp_class_ref_descriptor(const DexppClassRef *ref);
 
 /** 1 when the class is defined in a loaded DEX file, otherwise 0. */
-int dexpp_class_ref_is_resolved(const DexppClassRef *ref);
+DEXPP_C_API int dexpp_class_ref_is_resolved(const DexppClassRef *ref);
 
 /** The referenced class, or NULL when no loaded file defines it. */
-DexppClass *dexpp_class_ref_resolve(const DexppClassRef *ref);
+DEXPP_C_API DexppClass *dexpp_class_ref_resolve(const DexppClassRef *ref);
 
 /** Free a class reference. Accepts NULL. */
-void dexpp_class_ref_free(DexppClassRef *ref);
+DEXPP_C_API void dexpp_class_ref_free(DexppClassRef *ref);
 
 /** Free an array of class references and every reference in it. Accepts
- *  NULL. */
-void dexpp_class_ref_array_free(DexppClassRef **refs, size_t count);
+ *  NULL. With @p count 0 it frees the array alone and the references stay
+ *  valid. */
+DEXPP_C_API void dexpp_class_ref_array_free(DexppClassRef **refs, size_t count);
 
 /** @} */
 
@@ -528,86 +551,88 @@ typedef struct DexppTryBlock
 
 /** The method name. Constructors are `<init>`, the static initializer is
  *  `<clinit>`. */
-char *dexpp_method_name(const DexppMethod *m);
+DEXPP_C_API char *dexpp_method_name(const DexppMethod *m);
 
 /** The prototype, e.g. "(Ljava/lang/String;I)V". */
-char *dexpp_method_descriptor(const DexppMethod *m);
+DEXPP_C_API char *dexpp_method_descriptor(const DexppMethod *m);
 
 /** The class that defines the method. Free with dexpp_class_ref_free(). */
-DexppClassRef *dexpp_method_declaring_class(const DexppMethod *m);
+DEXPP_C_API DexppClassRef *dexpp_method_declaring_class(const DexppMethod *m);
 
 /** The return type descriptor; "V" for void. */
-char *dexpp_method_return_type(const DexppMethod *m);
+DEXPP_C_API char *dexpp_method_return_type(const DexppMethod *m);
 
 /** The declared parameter types, in order (`this` is not included). Free
  *  with dexpp_string_array_free(). */
-char **dexpp_method_parameters(const DexppMethod *m, size_t *count);
+DEXPP_C_API char **dexpp_method_parameters(const DexppMethod *m, size_t *count);
 
 /** The access flags (see DexppAccessFlag). */
-uint32_t dexpp_method_access_flags(const DexppMethod *m);
+DEXPP_C_API uint32_t dexpp_method_access_flags(const DexppMethod *m);
 
 /** 1 when the method has bytecode (it is neither abstract nor native). */
-int dexpp_method_has_code(const DexppMethod *m);
+DEXPP_C_API int dexpp_method_has_code(const DexppMethod *m);
 
 /** 1 when the method is static. */
-int dexpp_method_is_static(const DexppMethod *m);
+DEXPP_C_API int dexpp_method_is_static(const DexppMethod *m);
 
 /** 1 for `<init>` and `<clinit>`. */
-int dexpp_method_is_constructor(const DexppMethod *m);
+DEXPP_C_API int dexpp_method_is_constructor(const DexppMethod *m);
 
 /** The number of registers in the method's frame; 0 without code. */
-uint16_t dexpp_method_register_count(const DexppMethod *m);
+DEXPP_C_API uint16_t dexpp_method_register_count(const DexppMethod *m);
 
 /** The incoming arguments and their registers, `this` first for an instance
  *  method. Free with dexpp_parameter_register_array_free(). */
-DexppParameterRegister *dexpp_method_parameter_registers(const DexppMethod *m, size_t *count);
+DEXPP_C_API DexppParameterRegister *dexpp_method_parameter_registers(const DexppMethod *m,
+                                                                     size_t *count);
 
 /** Every call in the method's code, in order. Free with
  *  dexpp_method_call_array_free(). */
-DexppMethodCall *dexpp_method_calls(const DexppMethod *m, size_t *count);
+DEXPP_C_API DexppMethodCall *dexpp_method_calls(const DexppMethod *m, size_t *count);
 
 /** Every field read and write in the method's code, in order. Free with
  *  dexpp_field_access_array_free(). */
-DexppFieldAccess *dexpp_method_field_accesses(const DexppMethod *m, size_t *count);
+DEXPP_C_API DexppFieldAccess *dexpp_method_field_accesses(const DexppMethod *m, size_t *count);
 
 /** Every const-string in the method's code, in order. Free with
  *  dexpp_string_load_array_free(). */
-DexppStringLoad *dexpp_method_string_loads(const DexppMethod *m, size_t *count);
+DEXPP_C_API DexppStringLoad *dexpp_method_string_loads(const DexppMethod *m, size_t *count);
 
 /** Every instruction that names a type, in order. Free with
  *  dexpp_type_use_array_free(). */
-DexppTypeUse *dexpp_method_type_uses(const DexppMethod *m, size_t *count);
+DEXPP_C_API DexppTypeUse *dexpp_method_type_uses(const DexppMethod *m, size_t *count);
 
 /** The try blocks and their handlers. Free with
  *  dexpp_try_block_array_free(). */
-DexppTryBlock *dexpp_method_try_blocks(const DexppMethod *m, size_t *count);
+DEXPP_C_API DexppTryBlock *dexpp_method_try_blocks(const DexppMethod *m, size_t *count);
 
 /** The annotations on the method. Free with dexpp_annotation_array_free(). */
-DexppAnnotation *dexpp_method_annotations(const DexppMethod *m, size_t *count);
+DEXPP_C_API DexppAnnotation *dexpp_method_annotations(const DexppMethod *m, size_t *count);
 
 /** Free a method handle. Accepts NULL. */
-void dexpp_method_free(DexppMethod *m);
+DEXPP_C_API void dexpp_method_free(DexppMethod *m);
 
-/** Free an array of method handles and every handle in it. Accepts NULL. */
-void dexpp_method_array_free(DexppMethod **methods, size_t count);
+/** Free an array of method handles and every handle in it. Accepts NULL.
+ *  With @p count 0 it frees the array alone and the handles stay valid. */
+DEXPP_C_API void dexpp_method_array_free(DexppMethod **methods, size_t count);
 
 /** Free an array of DexppParameterRegister. Accepts NULL. */
-void dexpp_parameter_register_array_free(DexppParameterRegister *regs, size_t count);
+DEXPP_C_API void dexpp_parameter_register_array_free(DexppParameterRegister *regs, size_t count);
 
 /** Free an array of DexppMethodCall. Accepts NULL. */
-void dexpp_method_call_array_free(DexppMethodCall *calls, size_t count);
+DEXPP_C_API void dexpp_method_call_array_free(DexppMethodCall *calls, size_t count);
 
 /** Free an array of DexppFieldAccess. Accepts NULL. */
-void dexpp_field_access_array_free(DexppFieldAccess *accesses, size_t count);
+DEXPP_C_API void dexpp_field_access_array_free(DexppFieldAccess *accesses, size_t count);
 
 /** Free an array of DexppStringLoad. Accepts NULL. */
-void dexpp_string_load_array_free(DexppStringLoad *loads, size_t count);
+DEXPP_C_API void dexpp_string_load_array_free(DexppStringLoad *loads, size_t count);
 
 /** Free an array of DexppTypeUse. Accepts NULL. */
-void dexpp_type_use_array_free(DexppTypeUse *uses, size_t count);
+DEXPP_C_API void dexpp_type_use_array_free(DexppTypeUse *uses, size_t count);
 
 /** Free an array of DexppTryBlock and their handlers. Accepts NULL. */
-void dexpp_try_block_array_free(DexppTryBlock *blocks, size_t count);
+DEXPP_C_API void dexpp_try_block_array_free(DexppTryBlock *blocks, size_t count);
 
 /** @} */
 
@@ -617,30 +642,31 @@ void dexpp_try_block_array_free(DexppTryBlock *blocks, size_t count);
 /** @{ */
 
 /** The field name. */
-char *dexpp_field_name(const DexppField *f);
+DEXPP_C_API char *dexpp_field_name(const DexppField *f);
 
 /** The class that declares the field. Free with dexpp_class_ref_free(). */
-DexppClassRef *dexpp_field_declaring_class(const DexppField *f);
+DEXPP_C_API DexppClassRef *dexpp_field_declaring_class(const DexppField *f);
 
 /** The field's type descriptor. */
-char *dexpp_field_type(const DexppField *f);
+DEXPP_C_API char *dexpp_field_type(const DexppField *f);
 
 /** The access flags (see DexppAccessFlag). */
-uint32_t dexpp_field_access_flags(const DexppField *f);
+DEXPP_C_API uint32_t dexpp_field_access_flags(const DexppField *f);
 
 /** The annotations on the field. Free with dexpp_annotation_array_free(). */
-DexppAnnotation *dexpp_field_annotations(const DexppField *f, size_t *count);
+DEXPP_C_API DexppAnnotation *dexpp_field_annotations(const DexppField *f, size_t *count);
 
 /** The constant a static field starts with. Returns 1 and fills @p out
  *  (release with dexpp_value_clear()) when the field has a recorded value;
  *  returns 0 when it has none, which means the type's default (0 or null). */
-int dexpp_field_initial_value(const DexppField *f, DexppValue *out);
+DEXPP_C_API int dexpp_field_initial_value(const DexppField *f, DexppValue *out);
 
 /** Free a field handle. Accepts NULL. */
-void dexpp_field_free(DexppField *f);
+DEXPP_C_API void dexpp_field_free(DexppField *f);
 
-/** Free an array of field handles and every handle in it. Accepts NULL. */
-void dexpp_field_array_free(DexppField **fields, size_t count);
+/** Free an array of field handles and every handle in it. Accepts NULL.
+ *  With @p count 0 it frees the array alone and the handles stay valid. */
+DEXPP_C_API void dexpp_field_array_free(DexppField **fields, size_t count);
 
 /** @} */
 
@@ -737,20 +763,20 @@ typedef struct DexppInstruction
 
 /** The decoded bytecode of a method, in order. Free with
  *  dexpp_instruction_array_free(). */
-DexppInstruction *dexpp_method_instructions(const DexppMethod *m, size_t *count);
+DEXPP_C_API DexppInstruction *dexpp_method_instructions(const DexppMethod *m, size_t *count);
 
 /** Free an array of instructions. Accepts NULL. */
-void dexpp_instruction_array_free(DexppInstruction *insns, size_t count);
+DEXPP_C_API void dexpp_instruction_array_free(DexppInstruction *insns, size_t count);
 
 /** The name of a Dalvik opcode byte, such as "invoke-virtual". An unused
  *  opcode gives "unused-XX". The string is static: do not free it. */
-const char *dexpp_opcode_name(uint8_t opcode);
+DEXPP_C_API const char *dexpp_opcode_name(uint8_t opcode);
 
 /** One instruction as text: the opcode name, then its operands, with pool
  *  operands as raw indices (`string@12`). A `kind` this header does not list
  *  gives the opcode name alone, and a width other than DEXPP_WIDTH_PAIR counts
  *  as DEXPP_WIDTH_SINGLE. */
-char *dexpp_instruction_to_string(const DexppInstruction *insn);
+DEXPP_C_API char *dexpp_instruction_to_string(const DexppInstruction *insn);
 
 /** @} */
 
@@ -787,10 +813,10 @@ typedef struct DexppBasicBlock
 /** The method's control-flow graph: blocks ordered by offset, block 0 is the
  *  entry. Empty for a method without code. Free with
  *  dexpp_basic_block_array_free(). */
-DexppBasicBlock *dexpp_method_cfg(const DexppMethod *m, size_t *count);
+DEXPP_C_API DexppBasicBlock *dexpp_method_cfg(const DexppMethod *m, size_t *count);
 
 /** Free an array of basic blocks. Accepts NULL. */
-void dexpp_basic_block_array_free(DexppBasicBlock *blocks, size_t count);
+DEXPP_C_API void dexpp_basic_block_array_free(DexppBasicBlock *blocks, size_t count);
 
 /** @} */
 
@@ -820,74 +846,80 @@ typedef struct DexppCallEdge
 } DexppCallEdge;
 
 /** Number of nodes. */
-size_t dexpp_call_graph_node_count(const DexppCallGraph *g);
+DEXPP_C_API size_t dexpp_call_graph_node_count(const DexppCallGraph *g);
 
 /** Number of edges. */
-size_t dexpp_call_graph_edge_count(const DexppCallGraph *g);
+DEXPP_C_API size_t dexpp_call_graph_edge_count(const DexppCallGraph *g);
 
 /** Every node, in index order. Free with dexpp_call_node_array_free(). */
-DexppCallNode *dexpp_call_graph_nodes(const DexppCallGraph *g, size_t *count);
+DEXPP_C_API DexppCallNode *dexpp_call_graph_nodes(const DexppCallGraph *g, size_t *count);
 
 /** Fill @p out with node @p node (release with dexpp_call_node_clear()).
  *  Returns 0 when @p node is out of range. */
-int dexpp_call_graph_node(const DexppCallGraph *g, uint32_t node, DexppCallNode *out);
+DEXPP_C_API int dexpp_call_graph_node(const DexppCallGraph *g, uint32_t node, DexppCallNode *out);
 
 /** Every edge, in index order. Free with dexpp_call_edge_array_free(). */
-DexppCallEdge *dexpp_call_graph_edges(const DexppCallGraph *g, size_t *count);
+DEXPP_C_API DexppCallEdge *dexpp_call_graph_edges(const DexppCallGraph *g, size_t *count);
 
 /** Fill @p out with edge @p edge. Returns 0 when it is out of range. */
-int dexpp_call_graph_edge(const DexppCallGraph *g, uint32_t edge, DexppCallEdge *out);
+DEXPP_C_API int dexpp_call_graph_edge(const DexppCallGraph *g, uint32_t edge, DexppCallEdge *out);
 
 /** The index of the node with this identity, or -1 when the graph has none. */
-int64_t dexpp_call_graph_find(const DexppCallGraph *g, const char *class_descriptor,
-                              const char *name, const char *proto);
+DEXPP_C_API int64_t dexpp_call_graph_find(const DexppCallGraph *g, const char *class_descriptor,
+                                          const char *name, const char *proto);
 
 /** Indices of the edges that leave node @p node (its call sites). Free with
  *  dexpp_index_array_free(). Empty when @p node is out of range. */
-uint32_t *dexpp_call_graph_out_edges(const DexppCallGraph *g, uint32_t node, size_t *count);
+DEXPP_C_API uint32_t *dexpp_call_graph_out_edges(const DexppCallGraph *g, uint32_t node,
+                                                 size_t *count);
 
 /** Indices of the edges that enter node @p node (the calls into it). */
-uint32_t *dexpp_call_graph_in_edges(const DexppCallGraph *g, uint32_t node, size_t *count);
+DEXPP_C_API uint32_t *dexpp_call_graph_in_edges(const DexppCallGraph *g, uint32_t node,
+                                                size_t *count);
 
 /** Nodes a virtual or interface call declared against @p node may dispatch
  *  to, besides itself and its own resolution. */
-uint32_t *dexpp_call_graph_dispatch_targets(const DexppCallGraph *g, uint32_t node, size_t *count);
+DEXPP_C_API uint32_t *dexpp_call_graph_dispatch_targets(const DexppCallGraph *g, uint32_t node,
+                                                        size_t *count);
 
 /** The reverse of dexpp_call_graph_dispatch_targets(). */
-uint32_t *dexpp_call_graph_dispatch_sources(const DexppCallGraph *g, uint32_t node, size_t *count);
+DEXPP_C_API uint32_t *dexpp_call_graph_dispatch_sources(const DexppCallGraph *g, uint32_t node,
+                                                        size_t *count);
 
 /** Every node @p node may call, dispatch targets included; no duplicates. */
-uint32_t *dexpp_call_graph_callees(const DexppCallGraph *g, uint32_t node, size_t *count);
+DEXPP_C_API uint32_t *dexpp_call_graph_callees(const DexppCallGraph *g, uint32_t node,
+                                               size_t *count);
 
 /** Every node that may call @p node, through dispatch included. */
-uint32_t *dexpp_call_graph_callers(const DexppCallGraph *g, uint32_t node, size_t *count);
+DEXPP_C_API uint32_t *dexpp_call_graph_callers(const DexppCallGraph *g, uint32_t node,
+                                               size_t *count);
 
 /** The dispatch targets that apply at edge @p edge: those of its callee for a
  *  DECLARED virtual or interface edge, none for every other edge. */
-uint32_t *dexpp_call_graph_edge_dispatch_targets(const DexppCallGraph *g, uint32_t edge,
-                                                 size_t *count);
+DEXPP_C_API uint32_t *dexpp_call_graph_edge_dispatch_targets(const DexppCallGraph *g, uint32_t edge,
+                                                             size_t *count);
 
 /** Indices of the edges that match both filters. `origin` is a
  *  DexppEdgeOrigin or -1 for any; `kind` is a DexppInvokeKind or -1 for any.
  *  The filtering runs in C++. */
-uint32_t *dexpp_call_graph_edges_where(const DexppCallGraph *g, int origin, int kind,
-                                       size_t *count);
+DEXPP_C_API uint32_t *dexpp_call_graph_edges_where(const DexppCallGraph *g, int origin, int kind,
+                                                   size_t *count);
 
 /** The method behind a resolved node, or NULL for an external node or an
  *  index out of range. Free with dexpp_method_free(). */
-DexppMethod *dexpp_call_graph_method_for(const DexppCallGraph *g, uint32_t node);
+DEXPP_C_API DexppMethod *dexpp_call_graph_method_for(const DexppCallGraph *g, uint32_t node);
 
 /** Free a call-graph handle. Accepts NULL. */
-void dexpp_call_graph_free(DexppCallGraph *g);
+DEXPP_C_API void dexpp_call_graph_free(DexppCallGraph *g);
 
 /** Free the strings of one DexppCallNode. */
-void dexpp_call_node_clear(DexppCallNode *node);
+DEXPP_C_API void dexpp_call_node_clear(DexppCallNode *node);
 
 /** Free an array of DexppCallNode. Accepts NULL. */
-void dexpp_call_node_array_free(DexppCallNode *nodes, size_t count);
+DEXPP_C_API void dexpp_call_node_array_free(DexppCallNode *nodes, size_t count);
 
 /** Free an array of DexppCallEdge. Accepts NULL. */
-void dexpp_call_edge_array_free(DexppCallEdge *edges, size_t count);
+DEXPP_C_API void dexpp_call_edge_array_free(DexppCallEdge *edges, size_t count);
 
 /** @} */
 
@@ -898,50 +930,53 @@ void dexpp_call_edge_array_free(DexppCallEdge *edges, size_t count);
 
 /** The direct superclass, then the directly implemented interfaces. Free
  *  string arrays with dexpp_string_array_free(). */
-char **dexpp_class_hierarchy_supertypes(const DexppClassHierarchy *h, const char *descriptor,
-                                        size_t *count);
+DEXPP_C_API char **dexpp_class_hierarchy_supertypes(const DexppClassHierarchy *h,
+                                                    const char *descriptor, size_t *count);
 
 /** The direct superclass, or NULL when none is recorded (java.lang.Object, a
  *  class outside the loaded files, or a descriptor the hierarchy does not
  *  know). */
-char *dexpp_class_hierarchy_superclass_of(const DexppClassHierarchy *h, const char *descriptor);
+DEXPP_C_API char *dexpp_class_hierarchy_superclass_of(const DexppClassHierarchy *h,
+                                                      const char *descriptor);
 
 /** The interfaces implemented (or, for an interface, extended) directly. */
-char **dexpp_class_hierarchy_direct_interfaces(const DexppClassHierarchy *h, const char *descriptor,
-                                               size_t *count);
+DEXPP_C_API char **dexpp_class_hierarchy_direct_interfaces(const DexppClassHierarchy *h,
+                                                           const char *descriptor, size_t *count);
 
 /** The classes that directly extend the class. */
-char **dexpp_class_hierarchy_subclasses(const DexppClassHierarchy *h, const char *descriptor,
-                                        size_t *count);
+DEXPP_C_API char **dexpp_class_hierarchy_subclasses(const DexppClassHierarchy *h,
+                                                    const char *descriptor, size_t *count);
 
 /** The classes that directly implement the interface. */
-char **dexpp_class_hierarchy_implementers(const DexppClassHierarchy *h, const char *descriptor,
-                                          size_t *count);
+DEXPP_C_API char **dexpp_class_hierarchy_implementers(const DexppClassHierarchy *h,
+                                                      const char *descriptor, size_t *count);
 
 /** Every ancestor class and interface; the class itself is not included. */
-char **dexpp_class_hierarchy_all_supertypes(const DexppClassHierarchy *h, const char *descriptor,
-                                            size_t *count);
+DEXPP_C_API char **dexpp_class_hierarchy_all_supertypes(const DexppClassHierarchy *h,
+                                                        const char *descriptor, size_t *count);
 
 /** Everything below the class, through extends and implements; the class
  *  itself is not included. */
-char **dexpp_class_hierarchy_all_descendants(const DexppClassHierarchy *h, const char *descriptor,
-                                             size_t *count);
+DEXPP_C_API char **dexpp_class_hierarchy_all_descendants(const DexppClassHierarchy *h,
+                                                         const char *descriptor, size_t *count);
 
 /** 1 when @p sub is @p super or has it among its ancestors. */
-int dexpp_class_hierarchy_is_subtype_of(const DexppClassHierarchy *h, const char *sub,
-                                        const char *super);
+DEXPP_C_API int dexpp_class_hierarchy_is_subtype_of(const DexppClassHierarchy *h, const char *sub,
+                                                    const char *super);
 
 /** 1 when the class is defined in a loaded file. */
-int dexpp_class_hierarchy_is_loaded(const DexppClassHierarchy *h, const char *descriptor);
+DEXPP_C_API int dexpp_class_hierarchy_is_loaded(const DexppClassHierarchy *h,
+                                                const char *descriptor);
 
 /** 1 when the class is loaded and is an interface. */
-int dexpp_class_hierarchy_is_interface(const DexppClassHierarchy *h, const char *descriptor);
+DEXPP_C_API int dexpp_class_hierarchy_is_interface(const DexppClassHierarchy *h,
+                                                   const char *descriptor);
 
 /** 1 when the hierarchy has no classes. */
-int dexpp_class_hierarchy_empty(const DexppClassHierarchy *h);
+DEXPP_C_API int dexpp_class_hierarchy_empty(const DexppClassHierarchy *h);
 
 /** Free a class-hierarchy handle. Accepts NULL. */
-void dexpp_class_hierarchy_free(DexppClassHierarchy *h);
+DEXPP_C_API void dexpp_class_hierarchy_free(DexppClassHierarchy *h);
 
 /** @} */
 
@@ -992,78 +1027,83 @@ typedef struct DexppMethodRefGroup
 } DexppMethodRefGroup;
 
 /** Number of referrers: methods that contain an indexed instruction. */
-size_t dexpp_xrefs_referrer_count(const DexppXrefs *x);
+DEXPP_C_API size_t dexpp_xrefs_referrer_count(const DexppXrefs *x);
 
 /** The identity of every referrer, in index order. Free with
  *  dexpp_method_id_array_free(). */
-DexppMethodId *dexpp_xrefs_referrers(const DexppXrefs *x, size_t *count);
+DEXPP_C_API DexppMethodId *dexpp_xrefs_referrers(const DexppXrefs *x, size_t *count);
 
 /** Fill @p out with the identity of one referrer (release with
  *  dexpp_method_id_clear()). Returns 0 when @p referrer is out of range. */
-int dexpp_xrefs_referrer_id(const DexppXrefs *x, uint32_t referrer, DexppMethodId *out);
+DEXPP_C_API int dexpp_xrefs_referrer_id(const DexppXrefs *x, uint32_t referrer, DexppMethodId *out);
 
 /** The method of one referrer, or NULL when @p referrer is out of range.
  *  Free with dexpp_method_free(). */
-DexppMethod *dexpp_xrefs_referrer_method(const DexppXrefs *x, uint32_t referrer);
+DEXPP_C_API DexppMethod *dexpp_xrefs_referrer_method(const DexppXrefs *x, uint32_t referrer);
 
 /** The call sites whose target, as the bytecode names it, is exactly this
  *  method. Free with dexpp_method_xref_array_free(). */
-DexppMethodXref *dexpp_xrefs_method_refs(const DexppXrefs *x, const char *class_descriptor,
-                                         const char *name, const char *proto, size_t *count);
+DEXPP_C_API DexppMethodXref *dexpp_xrefs_method_refs(const DexppXrefs *x,
+                                                     const char *class_descriptor, const char *name,
+                                                     const char *proto, size_t *count);
 
 /** The call sites of every method with this name, in any class and with any
  *  prototype, grouped by called method. Free with
  *  dexpp_method_ref_group_array_free(). */
-DexppMethodRefGroup *dexpp_xrefs_method_refs_by_name(const DexppXrefs *x, const char *name,
-                                                     size_t *count);
+DEXPP_C_API DexppMethodRefGroup *dexpp_xrefs_method_refs_by_name(const DexppXrefs *x,
+                                                                 const char *name, size_t *count);
 
 /** Every read and write of this field. Free with
  *  dexpp_field_xref_array_free(). */
-DexppFieldXref *dexpp_xrefs_field_refs(const DexppXrefs *x, const char *class_descriptor,
-                                       const char *name, const char *type, size_t *count);
+DEXPP_C_API DexppFieldXref *dexpp_xrefs_field_refs(const DexppXrefs *x,
+                                                   const char *class_descriptor, const char *name,
+                                                   const char *type, size_t *count);
 
 /** Only the reads of this field. */
-DexppFieldXref *dexpp_xrefs_field_reads(const DexppXrefs *x, const char *class_descriptor,
-                                        const char *name, const char *type, size_t *count);
+DEXPP_C_API DexppFieldXref *dexpp_xrefs_field_reads(const DexppXrefs *x,
+                                                    const char *class_descriptor, const char *name,
+                                                    const char *type, size_t *count);
 
 /** Only the writes of this field. */
-DexppFieldXref *dexpp_xrefs_field_writes(const DexppXrefs *x, const char *class_descriptor,
-                                         const char *name, const char *type, size_t *count);
+DEXPP_C_API DexppFieldXref *dexpp_xrefs_field_writes(const DexppXrefs *x,
+                                                     const char *class_descriptor, const char *name,
+                                                     const char *type, size_t *count);
 
 /** The const-string instructions that load exactly this string, given as
  *  @p length bytes (it may contain NUL bytes). Free with
  *  dexpp_string_xref_array_free(). */
-DexppStringXref *dexpp_xrefs_string_refs(const DexppXrefs *x, const char *value, size_t length,
-                                         size_t *count);
+DEXPP_C_API DexppStringXref *dexpp_xrefs_string_refs(const DexppXrefs *x, const char *value,
+                                                     size_t length, size_t *count);
 
 /** Every distinct string that some const-string instruction loads. Free with
  *  dexpp_text_array_free(). */
-DexppText *dexpp_xrefs_referenced_strings(const DexppXrefs *x, size_t *count);
+DEXPP_C_API DexppText *dexpp_xrefs_referenced_strings(const DexppXrefs *x, size_t *count);
 
 /** The instructions that name this type. Free with
  *  dexpp_type_xref_array_free(). */
-DexppTypeXref *dexpp_xrefs_type_refs(const DexppXrefs *x, const char *descriptor, size_t *count);
+DEXPP_C_API DexppTypeXref *dexpp_xrefs_type_refs(const DexppXrefs *x, const char *descriptor,
+                                                 size_t *count);
 
 /** 1 when nothing is indexed. */
-int dexpp_xrefs_empty(const DexppXrefs *x);
+DEXPP_C_API int dexpp_xrefs_empty(const DexppXrefs *x);
 
 /** Free a cross-reference handle. Accepts NULL. */
-void dexpp_xrefs_free(DexppXrefs *x);
+DEXPP_C_API void dexpp_xrefs_free(DexppXrefs *x);
 
 /** Free an array of DexppMethodXref. Accepts NULL. */
-void dexpp_method_xref_array_free(DexppMethodXref *xrefs, size_t count);
+DEXPP_C_API void dexpp_method_xref_array_free(DexppMethodXref *xrefs, size_t count);
 
 /** Free an array of DexppMethodRefGroup and their sites. Accepts NULL. */
-void dexpp_method_ref_group_array_free(DexppMethodRefGroup *groups, size_t count);
+DEXPP_C_API void dexpp_method_ref_group_array_free(DexppMethodRefGroup *groups, size_t count);
 
 /** Free an array of DexppFieldXref. Accepts NULL. */
-void dexpp_field_xref_array_free(DexppFieldXref *xrefs, size_t count);
+DEXPP_C_API void dexpp_field_xref_array_free(DexppFieldXref *xrefs, size_t count);
 
 /** Free an array of DexppStringXref. Accepts NULL. */
-void dexpp_string_xref_array_free(DexppStringXref *xrefs, size_t count);
+DEXPP_C_API void dexpp_string_xref_array_free(DexppStringXref *xrefs, size_t count);
 
 /** Free an array of DexppTypeXref. Accepts NULL. */
-void dexpp_type_xref_array_free(DexppTypeXref *xrefs, size_t count);
+DEXPP_C_API void dexpp_type_xref_array_free(DexppTypeXref *xrefs, size_t count);
 
 /** @} */
 
@@ -1163,62 +1203,64 @@ typedef struct DexppSigningInfo
 } DexppSigningInfo;
 
 /** Open an APK file. Errors: FILE_NOT_FOUND, CANNOT_READ, INVALID_APK. */
-DexppApk *dexpp_apk_open(const char *path, DexppError **err);
+DEXPP_C_API DexppApk *dexpp_apk_open(const char *path, DexppError **err);
 
 /** Free an APK handle. Accepts NULL. */
-void dexpp_apk_free(DexppApk *apk);
+DEXPP_C_API void dexpp_apk_free(DexppApk *apk);
 
 /** The name of every archive entry. Free with dexpp_string_array_free(). */
-char **dexpp_apk_entries(const DexppApk *apk, size_t *count);
+DEXPP_C_API char **dexpp_apk_entries(const DexppApk *apk, size_t *count);
 
 /** The uncompressed bytes of the entry @p name. Returns 1 and sets @p out
  *  (free with dexpp_buffer_free(); NULL for an empty entry) and @p length when
  *  the entry exists; returns 0 when it does not. */
-int dexpp_apk_read(const DexppApk *apk, const char *name, uint8_t **out, size_t *length);
+DEXPP_C_API int dexpp_apk_read(const DexppApk *apk, const char *name, uint8_t **out,
+                               size_t *length);
 
 /** The manifest's package name, or NULL when there is no decodable
  *  manifest. */
-char *dexpp_apk_package(const DexppApk *apk);
+DEXPP_C_API char *dexpp_apk_package(const DexppApk *apk);
 
 /** Fill @p out with the decoded manifest. Returns 0 when the APK has no
  *  manifest or it cannot be decoded (then @p out is untouched). */
-int dexpp_apk_manifest(const DexppApk *apk, DexppManifest *out);
+DEXPP_C_API int dexpp_apk_manifest(const DexppApk *apk, DexppManifest *out);
 
 /** Free everything a DexppManifest owns. */
-void dexpp_manifest_clear(DexppManifest *manifest);
+DEXPP_C_API void dexpp_manifest_clear(DexppManifest *manifest);
 
 /** 1 when the APK has a decodable resources.arsc table. */
-int dexpp_apk_has_resources(const DexppApk *apk);
+DEXPP_C_API int dexpp_apk_has_resources(const DexppApk *apk);
 
 /** 1 when the APK has no resource table, or the table has no entries. */
-int dexpp_apk_resources_empty(const DexppApk *apk);
+DEXPP_C_API int dexpp_apk_resources_empty(const DexppApk *apk);
 
 /** Fill @p out with the name of resource @p id (release with
  *  dexpp_resource_name_clear()). Returns 0 when there is no such id. */
-int dexpp_apk_resource_name(const DexppApk *apk, uint32_t id, DexppResourceName *out);
+DEXPP_C_API int dexpp_apk_resource_name(const DexppApk *apk, uint32_t id, DexppResourceName *out);
 
 /** Free the strings of a DexppResourceName. */
-void dexpp_resource_name_clear(DexppResourceName *name);
+DEXPP_C_API void dexpp_resource_name_clear(DexppResourceName *name);
 
 /** The value of string resource @p id: returns 1 and fills @p out (release
  *  with dexpp_text_clear()); returns 0 when the id is missing or its value
  *  is not a string. */
-int dexpp_apk_resolve_string(const DexppApk *apk, uint32_t id, DexppText *out);
+DEXPP_C_API int dexpp_apk_resolve_string(const DexppApk *apk, uint32_t id, DexppText *out);
 
 /** The id of the resource with this type and entry name. Returns 1 and sets
  *  @p out, or 0 when there is none. */
-int dexpp_apk_resource_id(const DexppApk *apk, const char *type, const char *entry, uint32_t *out);
+DEXPP_C_API int dexpp_apk_resource_id(const DexppApk *apk, const char *type, const char *entry,
+                                      uint32_t *out);
 
 /** Fill @p out with the signature schemes and certificates (release with
  *  dexpp_signing_info_clear()). An unsigned APK gives all zeros. */
-void dexpp_apk_signing(const DexppApk *apk, DexppSigningInfo *out);
+DEXPP_C_API void dexpp_apk_signing(const DexppApk *apk, DexppSigningInfo *out);
 
 /** Free everything a DexppSigningInfo owns. */
-void dexpp_signing_info_clear(DexppSigningInfo *info);
+DEXPP_C_API void dexpp_signing_info_clear(DexppSigningInfo *info);
 
 /** A code-analysis context over every classes*.dex of the APK, in multidex
  *  order. Errors: INVALID_APK, INVALID_DEX. */
-DexppContext *dexpp_apk_analysis(const DexppApk *apk, DexppError **err);
+DEXPP_C_API DexppContext *dexpp_apk_analysis(const DexppApk *apk, DexppError **err);
 
 /** @} */
 

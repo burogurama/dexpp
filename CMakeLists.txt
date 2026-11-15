@@ -11,6 +11,9 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 option(DEXPP_BUILD_PYTHON "Build the dexpp Python extension module" OFF)
 option(DEXPP_BUILD_TESTS "Build the unit tests and demo CLI" ON)
 option(DEXPP_BUILD_C "Build the C ABI shim (bindings/c, for Go/cgo and other FFI)" ON)
+option(DEXPP_BUILD_C_SHARED
+       "Also build the C ABI shim as a shared library (for Java and other FFI that load a library)"
+       OFF)
 set(DEXPP_SANITIZE "" CACHE STRING
     "Sanitizers to build everything with, e.g. 'address,undefined' (empty = off)")
 option(DEXPP_WERROR "Treat compiler warnings in dex++'s own sources as errors" OFF)
@@ -21,6 +24,7 @@ if(SKBUILD)
     set(DEXPP_BUILD_PYTHON ON)
     set(DEXPP_BUILD_TESTS OFF)
     set(DEXPP_BUILD_C OFF)
+    set(DEXPP_BUILD_C_SHARED OFF)
 endif()
 
 # Sanitizer instrumentation is applied directory-wide (before any target is
@@ -141,16 +145,59 @@ set_target_properties(dexpp_core PROPERTIES C_STANDARD 11 C_EXTENSIONS OFF)
 # Required for linking into the Python shared module.
 set_target_properties(dexpp_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
+set(DEXPP_C_SOURCES
+    bindings/c/dexpp_c.cpp
+    bindings/c/dexpp_c_code.cpp
+    bindings/c/dexpp_c_graph.cpp
+    bindings/c/dexpp_c_apk.cpp
+    bindings/c/dexpp_model.cpp
+)
+
 # C ABI shim: a static library (libdexpp_c.a) exposing bindings/c/dexpp.h, for
 # consumers that speak C rather than C++ (e.g. Go via cgo). Bundles dexpp_core.
 if(DEXPP_BUILD_C)
-    add_library(dexpp_c STATIC bindings/c/dexpp_c.cpp bindings/c/dexpp_c_code.cpp
-                               bindings/c/dexpp_c_graph.cpp bindings/c/dexpp_c_apk.cpp
-                               bindings/c/dexpp_model.cpp)
+    add_library(dexpp_c STATIC ${DEXPP_C_SOURCES})
     target_include_directories(dexpp_c PUBLIC bindings/c)
     target_link_libraries(dexpp_c PUBLIC dexpp_core)
     target_compile_options(dexpp_c PRIVATE ${DEXPP_WARNING_FLAGS})
     set_target_properties(dexpp_c PROPERTIES POSITION_INDEPENDENT_CODE ON)
+endif()
+
+# The same C ABI as one shared library, with dexpp_core inside it:
+# libdexpp_c_shared.so, libdexpp_c_shared.dylib or dexpp_c_shared.dll.  The
+# Java binding loads it at run time.  It exports the dexpp_* functions and
+# nothing else:
+#   - DEXPP_C_BUILD_SHARED makes DEXPP_C_API (dexpp.h) export each function:
+#     __declspec(dllexport) with MSVC, which exports nothing else from a DLL;
+#   - elsewhere the shim is compiled with hidden visibility, and a linker list
+#     (a version script, or an exported-symbols list on macOS) also hides the
+#     symbols of dexpp_core and of the C++ standard library templates.
+# The file goes straight into the build folder, also with multi-config
+# generators, so the Java build finds it in build/ on every system.
+if(DEXPP_BUILD_C_SHARED)
+    add_library(dexpp_c_shared SHARED ${DEXPP_C_SOURCES})
+    target_include_directories(dexpp_c_shared PUBLIC bindings/c)
+    target_link_libraries(dexpp_c_shared PRIVATE dexpp_core)
+    target_compile_options(dexpp_c_shared PRIVATE ${DEXPP_WARNING_FLAGS})
+    target_compile_definitions(dexpp_c_shared PRIVATE DEXPP_C_BUILD_SHARED)
+    set_target_properties(dexpp_c_shared PROPERTIES
+        CXX_VISIBILITY_PRESET hidden
+        VISIBILITY_INLINES_HIDDEN ON
+        LIBRARY_OUTPUT_DIRECTORY "$<1:${CMAKE_BINARY_DIR}>"
+        RUNTIME_OUTPUT_DIRECTORY "$<1:${CMAKE_BINARY_DIR}>")
+    if(APPLE)
+        set(DEXPP_C_EXPORT_LIST ${CMAKE_CURRENT_BINARY_DIR}/dexpp_c_shared.exported)
+        file(WRITE ${DEXPP_C_EXPORT_LIST} "_dexpp_*\n")
+        target_link_options(dexpp_c_shared PRIVATE
+                            "LINKER:-exported_symbols_list,${DEXPP_C_EXPORT_LIST}")
+    elseif(UNIX)
+        set(DEXPP_C_EXPORT_LIST ${CMAKE_CURRENT_BINARY_DIR}/dexpp_c_shared.map)
+        file(WRITE ${DEXPP_C_EXPORT_LIST} "{\n  global: dexpp_*;\n  local: *;\n};\n")
+        target_link_options(dexpp_c_shared PRIVATE "LINKER:--version-script=${DEXPP_C_EXPORT_LIST}")
+    endif()
+    if(DEXPP_C_EXPORT_LIST)
+        set_target_properties(dexpp_c_shared PROPERTIES LINK_DEPENDS ${DEXPP_C_EXPORT_LIST})
+    endif()
 endif()
 
 if(DEXPP_BUILD_TESTS)
