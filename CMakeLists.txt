@@ -144,6 +144,15 @@ target_include_directories(dexpp_core PRIVATE ${libdeflate_SOURCE_DIR})
 set_target_properties(dexpp_core PROPERTIES C_STANDARD 11 C_EXTENSIONS OFF)
 # Required for linking into the Python shared module.
 set_target_properties(dexpp_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
+# Since Visual Studio 2022 17.10, std::mutex has a constexpr constructor, and
+# locking such a mutex crashes with an older msvcp140.dll.  A DLL or module
+# does not choose that runtime: the process does.  A JVM loads the one in the
+# JDK's bin folder (JDK 22 ships an older one), and a Python process may have
+# loaded an older one too.  This macro, from Microsoft, keeps the old
+# constructor.  PUBLIC, so every target that links dexpp_core agrees on it.
+if(MSVC)
+    target_compile_definitions(dexpp_core PUBLIC _DISABLE_CONSTEXPR_MUTEX_CONSTRUCTOR)
+endif()
 
 set(DEXPP_C_SOURCES
     bindings/c/dexpp_c.cpp

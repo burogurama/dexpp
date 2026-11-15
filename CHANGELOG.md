@@ -12,6 +12,12 @@
 - The Go package links libc++ on macOS. It does not support Windows.
 - The Python module is now placed directly in the build folder with every
   CMake generator, so `PYTHONPATH=build` works with Visual Studio too.
+- With MSVC, the library is compiled with Microsoft's
+  `_DISABLE_CONSTEXPR_MUTEX_CONSTRUCTOR`. Without it, code built with Visual
+  Studio 2022 17.10 or newer crashes the first time it takes a lock when the
+  process has loaded an older `msvcp140.dll`. A JVM loads the one in the
+  JDK's `bin` folder, and JDK 22 ships an older one; a Python process can
+  have loaded an older one too.
 
 ### Packaging
 
