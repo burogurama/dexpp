@@ -33,7 +33,7 @@ jobs:
       CC: ${{ matrix.cc }}
       CXX: ${{ matrix.cxx }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install Clang
         if: matrix.clang_version != ''
         run: |
@@ -58,7 +58,7 @@ jobs:
       CC: gcc-13
       CXX: g++-13
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install toolchain
         run: sudo apt-get update && sudo apt-get install -y g++-13
       - name: Configure
@@ -75,7 +75,7 @@ jobs:
     name: clang-format
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install clang-format
         run: sudo apt-get update && sudo apt-get install -y clang-format-18
       - name: Check formatting
@@ -92,7 +92,7 @@ jobs:
       CC: gcc-13
       CXX: g++-13
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install toolchain
         run: sudo apt-get update && sudo apt-get install -y g++-13
       # Newer kernels raise vm.mmap_rnd_bits to 32, which TSan cannot map its
@@ -116,8 +116,8 @@ jobs:
       CC: gcc-13
       CXX: g++-13
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.14"
       - name: Install toolchain
@@ -147,8 +147,8 @@ jobs:
       CC: gcc-13
       CXX: g++-13
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version: "1.22"
       - name: Install toolchain
