@@ -578,7 +578,7 @@ CallGraph build_call_graph(std::shared_ptr<const detail::AnalysisContextImpl> im
         return it->second;
     };
 
-    // A. Register every defined method as a resolved node.  A defined method is
+    // A. Register every defined method as a Defined node.  A defined method is
     // keyed by its class_def's class, which in a well-formed DEX is also its
     // method_id's class.
     //

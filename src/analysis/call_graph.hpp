@@ -140,7 +140,7 @@ struct CallNode
  *  A class defined in more than one loaded DEX file (or twice in one) follows
  *  Android's rule: the first definition wins, in load order (multidex order
  *  for an APK: classes.dex, classes2.dex, ...).  Only that definition's
- *  methods are nodes with `resolved == true`, `method_for()` returns that
+ *  methods are Defined nodes, `method_for()` returns that
  *  definition's method, and only its code adds edges; the methods and code
  *  of a later definition are left out, as Android never loads them.  This is
  *  the definition `AnalysisContext::find_class()` returns, and the class

@@ -186,7 +186,7 @@ class loader searches the DEX files in that order and stops at the first one
 that defines the class, so a later definition is never loaded and its code
 never runs. The graph does the same:
 
-- only the first definition's methods are resolved nodes, and `node.method`
+- only the first definition's methods are `DEFINED` nodes, and `node.method`
   returns the method of that definition;
 - only the code of that definition adds edges. A method that only a later
   definition has gets no node from it, and calls made in a later definition's
