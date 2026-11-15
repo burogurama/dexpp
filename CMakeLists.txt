@@ -141,6 +141,10 @@ if(DEXPP_BUILD_TESTS)
     file(GLOB_RECURSE TEST_SOURCES
         tests/*.cc
     )
+    # tests/c/ calls the C ABI shim, so it is built only when the shim is.
+    if(NOT DEXPP_BUILD_C)
+        list(FILTER TEST_SOURCES EXCLUDE REGEX "/tests/c/")
+    endif()
 
     add_executable(unit_tests
         ${TEST_SOURCES}
@@ -150,6 +154,9 @@ if(DEXPP_BUILD_TESTS)
         dexpp_core
         GTest::gtest_main
     )
+    if(DEXPP_BUILD_C)
+        target_link_libraries(unit_tests dexpp_c)
+    endif()
     target_compile_options(unit_tests PRIVATE ${DEXPP_WARNING_FLAGS})
 
     include(GoogleTest)

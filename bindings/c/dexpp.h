@@ -54,7 +54,7 @@ void dexpp_string_array_free(char **strings, size_t count);
 /* ---- Class -------------------------------------------------------------- */
 
 char *dexpp_class_name(const DexppClass *cls);       /* "Lpkg/Name;" */
-char *dexpp_class_package(const DexppClass *cls);    /* "pkg.sub" */
+char *dexpp_class_package(const DexppClass *cls);    /* "pkg/sub"; "" for none */
 char *dexpp_class_superclass(const DexppClass *cls); /* descriptor, or NULL */
 unsigned int dexpp_class_access_flags(const DexppClass *cls);
 int dexpp_class_is_interface(const DexppClass *cls);

@@ -56,6 +56,11 @@
   an `Io` error.
 - Every loader now reads its file through one function,
   `raw::read_whole_file`, which does not trust a file size it did not read.
+- C API: a function that returns an empty string no longer passes a null
+  pointer to `memcpy`, which is undefined behaviour. `dexpp_class_package` did
+  this for every class in the default package. The comment on
+  `dexpp_class_package` in `dexpp.h` also said the package comes back as
+  `pkg.sub`; it comes back as `pkg/sub`, and the comment now says so.
 
 ### Build
 
@@ -64,6 +69,9 @@
   `DEXPP_WERROR=ON` turns a warning into an error. It is off by default, so a
   newer compiler that warns about something new does not break a build from
   source; CI builds with it on.
+- The C API now has its own tests (`tests/c/`), which call every function of
+  `dexpp.h` and `dexpp_model.h`. They are part of the unit tests, so the
+  sanitizer run reports a leak or a double free in the C layer.
 
 ## 0.2.0
 

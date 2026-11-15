@@ -18,7 +18,10 @@ char *cstr(std::string_view sv)
     if (p == nullptr) {
         return nullptr;
     }
-    std::memcpy(p, sv.data(), sv.size());
+    // An empty view may have a null data pointer, which memcpy must not get.
+    if (!sv.empty()) {
+        std::memcpy(p, sv.data(), sv.size());
+    }
     p[sv.size()] = '\0';
     return p;
 }
