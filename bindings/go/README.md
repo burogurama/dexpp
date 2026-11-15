@@ -61,7 +61,7 @@ defer ctx.Close()
 for _, cls := range ctx.Classes() {
     for _, m := range cls.Methods() {
         for _, call := range m.Calls() {
-            fmt.Println(cls.Name(), m.Name(), "calls", call.Target)
+            fmt.Println(cls.Descriptor(), m.Name(), "calls", call.Target)
         }
     }
 }

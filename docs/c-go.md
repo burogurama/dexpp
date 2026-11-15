@@ -82,9 +82,9 @@ int main(void)
     size_t count = 0;
     DexppClass **classes = dexpp_context_classes(ctx, &count);
     for (size_t i = 0; i < count; ++i) {
-        char *name = dexpp_class_name(classes[i]);
-        puts(name);
-        dexpp_string_free(name);
+        char *descriptor = dexpp_class_descriptor(classes[i]);
+        puts(descriptor);
+        dexpp_string_free(descriptor);
     }
     dexpp_class_array_free(classes, count);
     dexpp_context_free(ctx);

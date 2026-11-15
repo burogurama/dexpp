@@ -238,7 +238,7 @@ TEST(CallGraphTest, AbstractMethodNoOutgoingEdges)
         proto.append(m.return_type().descriptor());
 
         const CallNode *node =
-            g.find(MethodId{std::string(cls->name()), std::string(m.name()), proto});
+            g.find(MethodId{std::string(cls->descriptor()), std::string(m.name()), proto});
         ASSERT_NE(node, nullptr);
         EXPECT_TRUE(node->outgoing.empty())
             << "Abstract method " << m.name() << " must have no outgoing edges";

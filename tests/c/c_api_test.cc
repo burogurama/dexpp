@@ -29,7 +29,7 @@ TEST(CApiContext, LoadsADexFileAndListsItsClasses)
     ASSERT_EQ(count, 4u);
     std::set<std::string> names;
     for (size_t i = 0; i < count; ++i)
-        names.insert(take(dexpp_class_name(classes[i])));
+        names.insert(take(dexpp_class_descriptor(classes[i])));
     EXPECT_EQ(names,
               (std::set<std::string>{"LShape;", "LAbstractShape;", "LCircle;", "LRectangle;"}));
 
@@ -48,8 +48,8 @@ TEST(CApiContext, LoadsAnApkInMultidexOrderWithAnyThreadCount)
         size_t count = 0;
         DexppClass **classes = dexpp_context_classes(ctx, &count);
         ASSERT_EQ(count, 2u);
-        EXPECT_EQ(take(dexpp_class_name(classes[0])), "LTestDex;");
-        EXPECT_EQ(take(dexpp_class_name(classes[1])), "LFibonacci;");
+        EXPECT_EQ(take(dexpp_class_descriptor(classes[0])), "LTestDex;");
+        EXPECT_EQ(take(dexpp_class_descriptor(classes[1])), "LFibonacci;");
         dexpp_class_array_free(classes, count);
         dexpp_context_free(ctx);
     }
@@ -133,7 +133,7 @@ TEST(CApiContext, FindsAClassByDescriptor)
 
     DexppClass *circle = dexpp_context_find_class(ctx, "LCircle;");
     ASSERT_NE(circle, nullptr);
-    EXPECT_EQ(take(dexpp_class_name(circle)), "LCircle;");
+    EXPECT_EQ(take(dexpp_class_descriptor(circle)), "LCircle;");
     dexpp_class_free(circle);
 
     EXPECT_EQ(dexpp_context_find_class(ctx, "Lno/such/Class;"), nullptr);
@@ -181,7 +181,7 @@ TEST(CApiClass, DescribesAClass)
     EXPECT_EQ(dexpp_class_ref_is_resolved(sup), 1);
     DexppClass *resolved = dexpp_class_ref_resolve(sup);
     ASSERT_NE(resolved, nullptr);
-    EXPECT_EQ(take(dexpp_class_name(resolved)), "LAbstractShape;");
+    EXPECT_EQ(take(dexpp_class_descriptor(resolved)), "LAbstractShape;");
     dexpp_class_free(resolved);
     dexpp_class_ref_free(sup);
 
@@ -394,7 +394,7 @@ TEST(CApiLifetime, HandlesStayValidAfterTheContextIsFreed)
 
     // Free the owners first: the context, then the class.
     dexpp_context_free(ctx);
-    EXPECT_EQ(take(dexpp_class_name(cls)), "LTestDex;");
+    EXPECT_EQ(take(dexpp_class_descriptor(cls)), "LTestDex;");
     dexpp_class_free(cls);
 
     EXPECT_EQ(take(dexpp_class_ref_descriptor(sup)), "Ljava/lang/Object;");

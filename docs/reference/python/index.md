@@ -18,8 +18,8 @@ type checker see.
 
 ## Conventions
 
-- **Descriptors.** Class names and types are DEX descriptors, such as
-  `Lcom/example/Foo;`. See [Concepts](../../guide/concepts.md#descriptors).
+- **Descriptors.** Classes and types are named by DEX descriptors, such as
+  `Lcom/example/Foo;`, and `Class.descriptor` gives a class's own one. See [Concepts](../../guide/concepts.md#descriptors).
 - **Not found is `None`.** A lookup that finds nothing returns `None`. It does
   not raise.
 - **Errors.** A path that does not exist raises the built-in

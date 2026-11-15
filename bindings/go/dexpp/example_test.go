@@ -30,7 +30,7 @@ func ExampleFromDEX() {
 	defer ctx.Close()
 
 	for _, cls := range ctx.Classes() {
-		fmt.Println(cls.Name())
+		fmt.Println(cls.Descriptor())
 		for _, m := range cls.Methods() {
 			fmt.Printf("  %s%s  %v\n", m.Name(), m.Descriptor(), m.AccessFlags())
 		}

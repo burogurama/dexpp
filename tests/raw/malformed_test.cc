@@ -111,9 +111,9 @@ TEST(MalformedTest, TruncationNeverCrashes)
     SUCCEED();
 }
 
-// F3: an out-of-range class_idx must make Class::name() return empty, not read
-// past the type-id table.
-TEST(MalformedTest, OutOfRangeClassIdxYieldsEmptyName)
+// F3: an out-of-range class_idx must make Class::descriptor() return empty, not
+// read past the type-id table.
+TEST(MalformedTest, OutOfRangeClassIdxYieldsEmptyDescriptor)
 {
     auto buf = load_buf("tests/data/classes.dex");
     uint32_t class_defs_off = get_u32(buf, CLASS_DEFS_OFF);
@@ -128,8 +128,8 @@ TEST(MalformedTest, OutOfRangeClassIdxYieldsEmptyName)
     auto classes = ctx->classes();
     ASSERT_FALSE(classes.empty());
     for (const auto &c : classes) {
-        auto name = c.name(); // must not OOB-read
-        EXPECT_TRUE(name.empty() || name.front() == 'L');
+        auto descriptor = c.descriptor(); // must not OOB-read
+        EXPECT_TRUE(descriptor.empty() || descriptor.front() == 'L');
         // Touching members must also be safe.
         for (const auto &m : c.methods()) {
             (void)m.name();

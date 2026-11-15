@@ -37,7 +37,7 @@ int main(int argc, char **argv)
     }
 
     for (const dex::Class &cls : ctx->classes()) {
-        std::cout << cls.name() << '\n';
+        std::cout << cls.descriptor() << '\n';
         for (const dex::Method &method : cls.methods()) {
             std::cout << "  " << method.name() << '\n';
             for (const dex::Instruction &insn : method.instructions()) {

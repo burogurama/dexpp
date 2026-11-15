@@ -34,8 +34,9 @@ class Class
     Class(std::shared_ptr<const detail::AnalysisContextImpl> impl, std::size_t dex_idx,
           uint32_t class_def_idx);
 
-    /** The 'L...;' type descriptor that names this class (e.g. "LTestDex;"). */
-    std::string_view name() const;
+    /** The class descriptor, such as "Lcom/example/Foo;".  Method::name() and
+     *  Field::name() are simple names; a class is named by its descriptor. */
+    std::string_view descriptor() const;
 
     /** The package name in slash-separated form (e.g. "java/lang" for
      *  "Ljava/lang/Object;").  Returns an empty string_view for classes in the

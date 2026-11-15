@@ -21,4 +21,4 @@ ctx: dexpp.AnalysisContext = apk.analysis()
 classes: list[dexpp.Class] = ctx.classes()
 for cls in classes:
     method_names: list[str] = [method.name for method in cls.methods]
-    print(cls.name, method_names)
+    print(cls.descriptor, method_names)

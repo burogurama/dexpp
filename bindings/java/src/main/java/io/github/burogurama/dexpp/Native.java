@@ -349,12 +349,12 @@ final class Native {
         }
     }
 
-    private static final MethodHandle dexpp_class_name =
-            downcall("dexpp_class_name", ADDRESS, ADDRESS);
+    private static final MethodHandle dexpp_class_descriptor =
+            downcall("dexpp_class_descriptor", ADDRESS, ADDRESS);
 
-    static MemorySegment dexpp_class_name(MemorySegment cls) {
+    static MemorySegment dexpp_class_descriptor(MemorySegment cls) {
         try {
-            return (MemorySegment) dexpp_class_name.invokeExact(cls);
+            return (MemorySegment) dexpp_class_descriptor.invokeExact(cls);
         } catch (Throwable t) {
             throw failure(t);
         }

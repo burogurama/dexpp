@@ -422,7 +422,7 @@ DEXPP_C_API DexppXrefs *dexpp_context_xrefs(const DexppContext *ctx, DexppError 
 /** @{ */
 
 /** The class descriptor, e.g. "Lcom/example/Foo;". */
-DEXPP_C_API char *dexpp_class_name(const DexppClass *cls);
+DEXPP_C_API char *dexpp_class_descriptor(const DexppClass *cls);
 
 /** The package with `/` between its parts, e.g. "com/example"; empty for the
  *  default package. */

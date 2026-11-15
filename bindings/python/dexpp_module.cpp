@@ -727,7 +727,8 @@ PYBIND11_MODULE(dexpp, m)
         });
 
     py::class_<Class>(m, "Class")
-        .def_property_readonly("name", [](const Class &c) { return std::string(c.name()); })
+        .def_property_readonly("descriptor",
+                               [](const Class &c) { return std::string(c.descriptor()); })
         .def_property_readonly("package", [](const Class &c) { return std::string(c.package()); })
         .def_property_readonly("superclass", &Class::superclass)
         .def_property_readonly("interfaces", &Class::interfaces)
@@ -753,7 +754,8 @@ PYBIND11_MODULE(dexpp, m)
         .def_property_readonly("is_enum", &Class::is_enum)
         .def(py::self == py::self)
         .def("__hash__", [](const Class &c) { return std::hash<Class>{}(c); })
-        .def("__repr__", [](const Class &c) { return "Class(" + std::string(c.name()) + ")"; });
+        .def("__repr__",
+             [](const Class &c) { return "Class(" + std::string(c.descriptor()) + ")"; });
 
     // ===== call graph =====
 

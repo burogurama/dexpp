@@ -35,12 +35,12 @@ import java.util.regex.Pattern;
 
 /** Loading, classes, methods, fields, annotations, handles and errors. */
 class AnalysisTest {
-    private static List<String> classNames(AnalysisContext ctx) {
-        List<String> names = new ArrayList<>();
+    private static List<String> classDescriptors(AnalysisContext ctx) {
+        List<String> descriptors = new ArrayList<>();
         for (DexClass c : ctx.classes()) {
-            names.add(c.name());
+            descriptors.add(c.descriptor());
         }
-        return names;
+        return descriptors;
     }
 
     // ---- loading --------------------------------------------------------------
@@ -57,7 +57,7 @@ class AnalysisTest {
     @Test
     void loadAndFindClasses() {
         try (AnalysisContext ctx = dex("classes.dex")) {
-            assertTrue(classNames(ctx).contains("LTestDex;"));
+            assertTrue(classDescriptors(ctx).contains("LTestDex;"));
             assertTrue(cls(ctx, "LTestDex;").isPublic());
             assertEquals(Optional.empty(), ctx.findClass("LNoSuch;"));
         }
@@ -76,16 +76,16 @@ class AnalysisTest {
         // multidex.apk has four deflated DEX entries, enough for the parallel path.
         List<String> serial;
         try (AnalysisContext ctx = AnalysisContext.fromApk(data("multidex.apk"), 1)) {
-            serial = classNames(ctx);
+            serial = classDescriptors(ctx);
         }
         assertEquals("LTestDex;", serial.get(0));
         for (int threads : new int[] {4, 0, -3}) {
             try (AnalysisContext ctx = AnalysisContext.fromApk(data("multidex.apk"), threads)) {
-                assertEquals(serial, classNames(ctx), "threads " + threads);
+                assertEquals(serial, classDescriptors(ctx), "threads " + threads);
             }
         }
         try (AnalysisContext ctx = AnalysisContext.fromApk(data("multidex.apk"))) {
-            assertEquals(serial, classNames(ctx));
+            assertEquals(serial, classDescriptors(ctx));
         }
     }
 
@@ -95,13 +95,13 @@ class AnalysisTest {
         List<String> want = new ArrayList<>();
         try (AnalysisContext a = dex("inherit_a.dex");
                 AnalysisContext b = dex("inherit_b.dex")) {
-            want.addAll(classNames(a));
-            want.addAll(classNames(b));
+            want.addAll(classDescriptors(a));
+            want.addAll(classDescriptors(b));
         }
         try (AnalysisContext ctx =
                 AnalysisContext.fromDexFiles(
                         List.of(data("inherit_a.dex"), data("inherit_b.dex")))) {
-            assertEquals(want, classNames(ctx));
+            assertEquals(want, classDescriptors(ctx));
         }
         try (AnalysisContext empty = AnalysisContext.fromDexFiles(List.of())) {
             assertEquals(List.of(), empty.classes());
@@ -219,12 +219,12 @@ class AnalysisTest {
     void classes() {
         try (AnalysisContext ctx = dex("shapes.dex")) {
             DexClass circle = cls(ctx, "LCircle;");
-            assertEquals("LCircle;", circle.name());
+            assertEquals("LCircle;", circle.descriptor());
             assertEquals("", circle.packageName());
             ClassRef sup = circle.superclass().orElseThrow();
             assertEquals("LAbstractShape;", sup.descriptor());
             assertTrue(sup.isResolved());
-            assertEquals("LAbstractShape;", sup.resolve().orElseThrow().name());
+            assertEquals("LAbstractShape;", sup.resolve().orElseThrow().descriptor());
             assertEquals(Optional.of("Shapes.java"), circle.sourceFile());
 
             DexClass abstractShape = cls(ctx, "LAbstractShape;");
@@ -483,7 +483,7 @@ class AnalysisTest {
         ctx.close();
         ctx.close(); // a second close does nothing
         System.gc();
-        assertEquals("LTestDex;", cls.name());
+        assertEquals("LTestDex;", cls.descriptor());
         cls.close();
         for (DexMethod m : methods) {
             assertFalse(m.name().isEmpty());
@@ -498,7 +498,7 @@ class AnalysisTest {
     @Test
     void chainedCallsSurviveGc() {
         for (int i = 0; i < 50; i++) {
-            String name =
+            String descriptor =
                     dex("fibonacci.dex")
                             .findClass("LFibonacci;")
                             .orElseThrow()
@@ -507,8 +507,8 @@ class AnalysisTest {
                             .declaringClass()
                             .resolve()
                             .orElseThrow()
-                            .name();
-            assertEquals("LFibonacci;", name);
+                            .descriptor();
+            assertEquals("LFibonacci;", descriptor);
             System.gc();
         }
     }
@@ -538,7 +538,7 @@ class AnalysisTest {
             }
             Map<String, Executable> uses =
                     Map.of(
-                            "DexClass", cls::name,
+                            "DexClass", cls::descriptor,
                             "DexMethod", method::instructions,
                             "DexField", field::type,
                             "ClassRef", ref::descriptor,

@@ -1194,8 +1194,11 @@ class Class:
     """
 
     @property
-    def name(self) -> str:
-        """The class descriptor, such as `Lcom/example/Foo;`."""
+    def descriptor(self) -> str:
+        """The class descriptor, such as `Lcom/example/Foo;`. A class has no simple name
+        here: `Method.name` and `Field.name` are simple names, and a class is named by
+        its descriptor.
+        """
     @property
     def package(self) -> str:
         """The package, with `/` between its parts, such as `com/example`. Empty for a

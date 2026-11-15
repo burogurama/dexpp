@@ -39,6 +39,18 @@
 - The examples in the guides are run by the tests, with the output the guides
   show.
 
+### One vocabulary in every language (breaking)
+
+These renames make C++, Python, C, Go and Java use the same word for the same
+thing. The old names are gone; there are no aliases.
+
+- `Class.name` is now `Class.descriptor`. It always returned the class
+  descriptor, such as `"Lcom/example/Foo;"`, while `Method.name` and
+  `Field.name` are simple names, and every other place calls this string a
+  descriptor. The new names are `Class::descriptor()` in C++,
+  `Class.descriptor` in Python, `dexpp_class_descriptor` in C,
+  `Class.Descriptor()` in Go and `DexClass.descriptor()` in Java.
+
 ### Python bindings
 
 - The enums `InvokeKind`, `EdgeOrigin`, `EdgeKind`, `TypeRefKind`,

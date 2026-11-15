@@ -128,7 +128,7 @@ class ExamplesTest {
         Path path = Path.of("../../tests/data/classes.dex");
         try (AnalysisContext ctx = AnalysisContext.fromDex(path)) {
             for (DexClass cls : ctx.classes()) {
-                System.out.println(cls.name());
+                System.out.println(cls.descriptor());
                 for (DexMethod m : cls.methods()) {
                     System.out.println("  " + m.name() + m.descriptor() + "  " + m.accessFlags());
                 }

@@ -41,7 +41,7 @@ final class TestData {
                 return m;
             }
         }
-        throw new AssertionError(cls.name() + " has no method " + name);
+        throw new AssertionError(cls.descriptor() + " has no method " + name);
     }
 
     /** The field with this name; fails the test when there is none. */
@@ -51,6 +51,6 @@ final class TestData {
                 return f;
             }
         }
-        throw new AssertionError(cls.name() + " has no field " + name);
+        throw new AssertionError(cls.descriptor() + " has no field " + name);
     }
 }

@@ -28,7 +28,7 @@ std::vector<std::string> class_names(const AnalysisContext &ctx)
 {
     std::vector<std::string> names;
     for (const auto &c : ctx.classes())
-        names.emplace_back(c.name());
+        names.emplace_back(c.descriptor());
     return names;
 }
 
@@ -73,7 +73,7 @@ TEST(FromApkTest, LoadsMultidexInOrder)
     // first class overall must come from classes.dex.
     auto classes = ctx->classes();
     ASSERT_GE(classes.size(), 2u);
-    EXPECT_EQ(classes.front().name(), "LTestDex;");
+    EXPECT_EQ(classes.front().descriptor(), "LTestDex;");
 }
 
 TEST(FromApkTest, AnalysesWorkOnApkContext)

@@ -75,7 +75,7 @@ inline std::vector<std::string> describe(const dex::AnalysisContext &ctx)
 {
     std::vector<std::string> out;
     for (const dex::Class &c : ctx.classes()) {
-        std::string cls = std::string(c.name());
+        std::string cls = std::string(c.descriptor());
         std::string head =
             std::format("class {} {:x}", cls, static_cast<uint32_t>(c.access_flags()));
         if (auto s = c.superclass())

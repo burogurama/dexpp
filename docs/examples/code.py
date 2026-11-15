@@ -11,7 +11,7 @@ for cls in classes:
     superclass: dexpp.ClassRef | None = cls.superclass
     parent: str | None = superclass.descriptor if superclass is not None else None
     interfaces: list[str] = [interface.descriptor for interface in cls.interfaces]
-    print(kind, cls.name, "extends", parent, "implements", interfaces)
+    print(kind, cls.descriptor, "extends", parent, "implements", interfaces)
 
 circle: dexpp.Class | None = ctx.find_class("LCircle;")
 assert circle is not None

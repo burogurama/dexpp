@@ -16,7 +16,10 @@ are. It does not convert them to Java source names.
 | `int[]`, `String[][]` | `[I`, `[[Ljava/lang/String;` |
 
 A class descriptor starts with `L`, uses `/` between package parts, and ends
-with `;`. Every function that takes a class name wants this form:
+with `;`. Every function that takes a class wants it in this form, and a class
+gives its own descriptor as `Class.descriptor`. A class has no other name in
+dex++: `Method.name` and `Field.name` are simple names, such as `toString`, but
+a class is always named by its descriptor.
 
 ```python
 found: dexpp.Class | None = ctx.find_class("Lcom/example/Foo;")   # the class

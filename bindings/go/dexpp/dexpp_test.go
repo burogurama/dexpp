@@ -45,7 +45,7 @@ func mustMethod(t *testing.T, cls *Class, name string) *Method {
 			return m
 		}
 	}
-	t.Fatalf("%s has no method %s", cls.Name(), name)
+	t.Fatalf("%s has no method %s", cls.Descriptor(), name)
 	return nil
 }
 
@@ -56,16 +56,16 @@ func mustField(t *testing.T, cls *Class, name string) *Field {
 			return f
 		}
 	}
-	t.Fatalf("%s has no field %s", cls.Name(), name)
+	t.Fatalf("%s has no field %s", cls.Descriptor(), name)
 	return nil
 }
 
-func classNames(ctx *Context) []string {
-	var names []string
+func classDescriptors(ctx *Context) []string {
+	var descriptors []string
 	for _, c := range ctx.Classes() {
-		names = append(names, c.Name())
+		descriptors = append(descriptors, c.Descriptor())
 	}
-	return names
+	return descriptors
 }
 
 // ---- Loading --------------------------------------------------------------
@@ -84,8 +84,8 @@ func TestVersion(t *testing.T) {
 
 func TestLoadAndFindClasses(t *testing.T) {
 	ctx := mustDEX(t, "classes.dex")
-	if !slices.Contains(classNames(ctx), "LTestDex;") {
-		t.Fatalf("classes = %v, want LTestDex;", classNames(ctx))
+	if !slices.Contains(classDescriptors(ctx), "LTestDex;") {
+		t.Fatalf("classes = %v, want LTestDex;", classDescriptors(ctx))
 	}
 	cls := mustClass(t, ctx, "LTestDex;")
 	if !cls.IsPublic() {
@@ -117,7 +117,7 @@ func TestFromAPKWithAnyThreadCount(t *testing.T) {
 			t.Fatalf("FromAPK: %v", err)
 		}
 		defer ctx.Close()
-		return classNames(ctx)
+		return classDescriptors(ctx)
 	}
 	serial := load(WithThreads(1))
 	if len(serial) == 0 || serial[0] != "LTestDex;" {
@@ -138,8 +138,8 @@ func TestFromDEXFiles(t *testing.T) {
 	}
 	defer ctx.Close()
 	a, b := mustDEX(t, "inherit_a.dex"), mustDEX(t, "inherit_b.dex")
-	want := append(classNames(a), classNames(b)...)
-	if got := classNames(ctx); !slices.Equal(got, want) {
+	want := append(classDescriptors(a), classDescriptors(b)...)
+	if got := classDescriptors(ctx); !slices.Equal(got, want) {
 		t.Errorf("classes = %v, want %v", got, want)
 	}
 
@@ -271,7 +271,7 @@ func TestErrorCodesHaveNames(t *testing.T) {
 func TestClass(t *testing.T) {
 	ctx := mustDEX(t, "shapes.dex")
 	circle := mustClass(t, ctx, "LCircle;")
-	if got := circle.Name(); got != "LCircle;" {
+	if got := circle.Descriptor(); got != "LCircle;" {
 		t.Errorf("Name = %q", got)
 	}
 	if got := circle.Package(); got != "" {
@@ -281,7 +281,7 @@ func TestClass(t *testing.T) {
 	if sup == nil || sup.Descriptor() != "LAbstractShape;" || !sup.IsResolved() {
 		t.Fatalf("Superclass = %v, want the resolved LAbstractShape;", sup)
 	}
-	if c := sup.Resolve(); c == nil || c.Name() != "LAbstractShape;" {
+	if c := sup.Resolve(); c == nil || c.Descriptor() != "LAbstractShape;" {
 		t.Errorf("Resolve() = %v", c)
 	}
 	if file, ok := circle.SourceFile(); !ok || file != "Shapes.java" {
@@ -572,7 +572,7 @@ func TestHandlesOutliveTheirContext(t *testing.T) {
 	ctx.Close()
 	ctx.Close() // a second Close does nothing
 	runtime.GC()
-	if got := cls.Name(); got != "LTestDex;" {
+	if got := cls.Descriptor(); got != "LTestDex;" {
 		t.Errorf("Name after Close = %q", got)
 	}
 	cls.Close()
@@ -591,9 +591,9 @@ func TestChainedCallsSurviveGC(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		name := ctx.FindClass("LFibonacci;").Methods()[0].DeclaringClass().Resolve().Name()
-		if name != "LFibonacci;" {
-			t.Fatalf("name = %q", name)
+		descriptor := ctx.FindClass("LFibonacci;").Methods()[0].DeclaringClass().Resolve().Descriptor()
+		if descriptor != "LFibonacci;" {
+			t.Fatalf("descriptor = %q", descriptor)
 		}
 		runtime.GC()
 	}
@@ -631,7 +631,7 @@ func TestClosedAndNilHandlesPanic(t *testing.T) {
 		h.Close()
 		h.Close()
 	}
-	expectPanic(t, "*Class used after Close", func() { cls.Name() })
+	expectPanic(t, "*Class used after Close", func() { cls.Descriptor() })
 	expectPanic(t, "*Method used after Close", func() { method.Instructions() })
 	expectPanic(t, "*Field used after Close", func() { field.Type() })
 	expectPanic(t, "*ClassRef used after Close", func() { ref.Descriptor() })

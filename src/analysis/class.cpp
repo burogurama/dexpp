@@ -16,7 +16,7 @@ Class::Class(std::shared_ptr<const detail::AnalysisContextImpl> impl, std::size_
 {
 }
 
-std::string_view Class::name() const
+std::string_view Class::descriptor() const
 {
     const auto &cdef = impl_->dex_files()[dex_idx_].class_defs()[class_def_idx_];
     return impl_->type_descriptor_of(dex_idx_, cdef.class_idx);
@@ -24,7 +24,7 @@ std::string_view Class::name() const
 
 std::string_view Class::package() const
 {
-    auto n = name();
+    auto n = descriptor();
     // Strip 'L' prefix and ';' suffix to get the internal form, then find the last '/'.
     if (n.size() < 2 || n.front() != 'L' || n.back() != ';')
         return {};

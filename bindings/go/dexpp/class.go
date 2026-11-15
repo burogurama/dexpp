@@ -62,10 +62,12 @@ func (c *Class) p() *C.DexppClass {
 	return c.ptr
 }
 
-// Name returns the class descriptor, such as "Lcom/example/Foo;".
-func (c *Class) Name() string {
+// Descriptor returns the class descriptor, such as "Lcom/example/Foo;".
+// Method.Name and Field.Name are simple names; a class is named by its
+// descriptor.
+func (c *Class) Descriptor() string {
 	defer runtime.KeepAlive(c)
-	return takeString(C.dexpp_class_name(c.p()))
+	return takeString(C.dexpp_class_descriptor(c.p()))
 }
 
 // Package returns the package with "/" between its parts, such as

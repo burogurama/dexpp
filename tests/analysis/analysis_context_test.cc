@@ -79,7 +79,7 @@ TEST(ClassTest, NameReturnsDescriptor)
 
     auto cls = ctx->find_class("LTestDex;");
     ASSERT_TRUE(cls.has_value());
-    EXPECT_EQ(cls->name(), "LTestDex;");
+    EXPECT_EQ(cls->descriptor(), "LTestDex;");
 }
 
 TEST(ClassTest, PackageIsEmptyForDefaultPackageClass)
@@ -352,7 +352,7 @@ TEST(ClassRefTest, ResolveHitsForKnownClass)
 
     auto cls = ref.resolve();
     ASSERT_TRUE(cls.is_valid());
-    EXPECT_EQ(cls.name(), "LTestDex;");
+    EXPECT_EQ(cls.descriptor(), "LTestDex;");
 }
 
 TEST(ClassRefTest, ResolveMissesForUnknownClass)
@@ -574,7 +574,7 @@ TEST(LifetimeTest, HandleSurvivesContextCopyDrop)
 
     ctx_a.reset();
 
-    EXPECT_EQ(cls->name(), "LTestDex;");
+    EXPECT_EQ(cls->descriptor(), "LTestDex;");
     EXPECT_FALSE(cls->methods().empty());
 }
 
@@ -587,6 +587,6 @@ TEST(LifetimeTest, HandleSurvivesAllContextsDropped)
         cls = exp->find_class("LTestDex;");
     }
     ASSERT_TRUE(cls.has_value());
-    EXPECT_EQ(cls->name(), "LTestDex;");
+    EXPECT_EQ(cls->descriptor(), "LTestDex;");
     EXPECT_FALSE(cls->methods().empty());
 }

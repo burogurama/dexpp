@@ -22,7 +22,7 @@ int main(int argc, const char *argv[])
     }
 
     for (const auto &cls : ctx->classes()) {
-        std::cout << "Class: " << cls.name() << '\n';
+        std::cout << "Class: " << cls.descriptor() << '\n';
 
         for (const auto &method : cls.methods()) {
             std::printf("  %s\n", method.name().data());

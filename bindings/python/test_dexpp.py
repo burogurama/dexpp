@@ -28,7 +28,7 @@ def test_version():
 
 def test_load_and_classes():
     ctx = dexpp.AnalysisContext.from_dex("tests/data/classes.dex")
-    names = [c.name for c in ctx.classes()]
+    names = [c.descriptor for c in ctx.classes()]
     assert "LTestDex;" in names
     # A method makes a new list, of equal classes, on each call.
     classes = ctx.classes()
@@ -75,7 +75,7 @@ def test_from_apk():
 def test_from_apk_threads():
     # multidex.apk has four deflated DEX entries, enough for the parallel path.
     def names(ctx):
-        return [c.name for c in ctx.classes()]
+        return [c.descriptor for c in ctx.classes()]
 
     serial = dexpp.AnalysisContext.from_apk("tests/data/multidex.apk", threads=1)
     parallel = dexpp.AnalysisContext.from_apk("tests/data/multidex.apk", threads=4)
@@ -607,7 +607,7 @@ def test_handles_outlive_context():
     cls = ctx.find_class("LTestDex;")
     del ctx
     # The Class handle holds its own shared_ptr to the impl.
-    assert cls.name == "LTestDex;"
+    assert cls.descriptor == "LTestDex;"
     assert [m.name for m in cls.methods]
 
 
@@ -1351,7 +1351,7 @@ def test_keyword_arguments_work():
     # above reads: a pybind11 method, a pybind11 static method, a keyword-only
     # argument, and a class written in Python.
     ctx = dexpp.AnalysisContext.from_apk(path="tests/data/app.apk", threads=1)
-    assert ctx.find_class(descriptor="LTestDex;").name == "LTestDex;"
+    assert ctx.find_class(descriptor="LTestDex;").descriptor == "LTestDex;"
     sites = ctx.xrefs.string_refs(value="Hello Dex++!!")
     assert len(sites) == 1
     assert ctx.xrefs.referrer_id(referrer=sites[0].referrer).name == "helloDex"

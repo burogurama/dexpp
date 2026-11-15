@@ -174,7 +174,7 @@ DexppXrefs *dexpp_context_xrefs(const DexppContext *ctx, DexppError **err)
 
 /* ---- Classes ------------------------------------------------------------ */
 
-char *dexpp_class_name(const DexppClass *cls) { return cstr(cls->cls.name()); }
+char *dexpp_class_descriptor(const DexppClass *cls) { return cstr(cls->cls.descriptor()); }
 
 char *dexpp_class_package(const DexppClass *cls) { return cstr(cls->cls.package()); }
 

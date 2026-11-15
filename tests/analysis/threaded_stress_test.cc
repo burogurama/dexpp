@@ -59,7 +59,7 @@ Observed walk(const AnalysisContext &ctx)
     // table, which the first of the racing threads to get here builds.
     for (const auto &c : ctx.classes()) {
         ++o.classes;
-        (void)ctx.find_class(c.name());
+        (void)ctx.find_class(c.descriptor());
         for (const auto &f : c.fields()) {
             o.annotations += f.annotations().size();
             if (f.initial_value().has_value())

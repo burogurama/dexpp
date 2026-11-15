@@ -25,12 +25,13 @@ public final class DexClass implements AutoCloseable {
     }
 
     /**
-     * The class descriptor, such as {@code "Lcom/example/Foo;"}.
+     * The class descriptor, such as {@code "Lcom/example/Foo;"}. {@link DexMethod#name()} and
+     * {@link DexField#name()} are simple names; a class is named by its descriptor.
      *
      * @return the descriptor
      */
-    public String name() {
-        return handle.call(p -> Mem.takeString(Native.dexpp_class_name(p)));
+    public String descriptor() {
+        return handle.call(p -> Mem.takeString(Native.dexpp_class_descriptor(p)));
     }
 
     /**
@@ -175,7 +176,7 @@ public final class DexClass implements AutoCloseable {
     @Override
     public String toString() {
         try {
-            return name();
+            return descriptor();
         } catch (IllegalStateException closed) {
             return "DexClass (closed)";
         }
