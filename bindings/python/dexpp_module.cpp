@@ -441,6 +441,9 @@ PYBIND11_MODULE(dexpp, m)
 
     py::class_<NopInstruction>(m, "NopInstruction").def_readonly("base", &NopInstruction::base);
 
+    py::class_<InvalidInstruction>(m, "InvalidInstruction")
+        .def_readonly("base", &InvalidInstruction::base);
+
     py::class_<GotoInstruction>(m, "GotoInstruction")
         .def_readonly("base", &GotoInstruction::base)
         .def_readonly("branch_offset", &GotoInstruction::branch_offset);
@@ -498,10 +501,15 @@ PYBIND11_MODULE(dexpp, m)
         .def_readonly("dest", &ConstClassInstruction::dest)
         .def_readonly("type_index", &ConstClassInstruction::type_index);
 
-    py::class_<ConstHandleInstruction>(m, "ConstHandleInstruction")
-        .def_readonly("base", &ConstHandleInstruction::base)
-        .def_readonly("dest", &ConstHandleInstruction::dest)
-        .def_readonly("index", &ConstHandleInstruction::index);
+    py::class_<ConstMethodHandleInstruction>(m, "ConstMethodHandleInstruction")
+        .def_readonly("base", &ConstMethodHandleInstruction::base)
+        .def_readonly("dest", &ConstMethodHandleInstruction::dest)
+        .def_readonly("method_handle_index", &ConstMethodHandleInstruction::method_handle_index);
+
+    py::class_<ConstMethodTypeInstruction>(m, "ConstMethodTypeInstruction")
+        .def_readonly("base", &ConstMethodTypeInstruction::base)
+        .def_readonly("dest", &ConstMethodTypeInstruction::dest)
+        .def_readonly("proto_index", &ConstMethodTypeInstruction::proto_index);
 
     py::class_<TypeInstruction>(m, "TypeInstruction")
         .def_readonly("base", &TypeInstruction::base)
@@ -539,6 +547,11 @@ PYBIND11_MODULE(dexpp, m)
         .def_readonly("is_write", &ArrayOpInstruction::is_write)
         .def_readonly("width", &ArrayOpInstruction::width);
 
+    py::class_<ArrayLengthInstruction>(m, "ArrayLengthInstruction")
+        .def_readonly("base", &ArrayLengthInstruction::base)
+        .def_readonly("dest", &ArrayLengthInstruction::dest)
+        .def_readonly("array_reg", &ArrayLengthInstruction::array_reg);
+
     py::class_<FieldInstruction>(m, "FieldInstruction")
         .def_readonly("base", &FieldInstruction::base)
         .def_readonly("field_index", &FieldInstruction::field_index)
@@ -552,6 +565,12 @@ PYBIND11_MODULE(dexpp, m)
         .def_readonly("base", &InvokeInstruction::base)
         .def_readonly("method_index", &InvokeInstruction::method_index)
         .def_readonly("arg_regs", &InvokeInstruction::arg_regs);
+
+    py::class_<InvokePolymorphicInstruction>(m, "InvokePolymorphicInstruction")
+        .def_readonly("base", &InvokePolymorphicInstruction::base)
+        .def_readonly("method_index", &InvokePolymorphicInstruction::method_index)
+        .def_readonly("proto_index", &InvokePolymorphicInstruction::proto_index)
+        .def_readonly("arg_regs", &InvokePolymorphicInstruction::arg_regs);
 
     py::class_<InvokeCustomInstruction>(m, "InvokeCustomInstruction")
         .def_readonly("base", &InvokeCustomInstruction::base)
@@ -1294,15 +1313,34 @@ PYBIND11_MODULE(dexpp, m)
         py::object union_of = py::module_::import("typing").attr("Union");
         py::object builtins = py::module_::import("builtins");
         py::list instructions;
-        for (const char *name :
-             {"NopInstruction",         "GotoInstruction",           "IfInstruction",
-              "IfZeroInstruction",      "SwitchInstruction",         "ReturnInstruction",
-              "ThrowInstruction",       "MoveInstruction",           "ConstInstruction",
-              "ConstStringInstruction", "ConstClassInstruction",     "ConstHandleInstruction",
-              "TypeInstruction",        "FilledNewArrayInstruction", "MonitorInstruction",
-              "FillArrayInstruction",   "CompareInstruction",        "ArrayOpInstruction",
-              "FieldInstruction",       "InvokeInstruction",         "InvokeCustomInstruction",
-              "UnaryOpInstruction",     "BinaryOpInstruction",       "BinaryLitInstruction"})
+        for (const char *name : {"NopInstruction",
+                                 "GotoInstruction",
+                                 "IfInstruction",
+                                 "IfZeroInstruction",
+                                 "SwitchInstruction",
+                                 "ReturnInstruction",
+                                 "ThrowInstruction",
+                                 "MoveInstruction",
+                                 "ConstInstruction",
+                                 "ConstStringInstruction",
+                                 "ConstClassInstruction",
+                                 "ConstMethodHandleInstruction",
+                                 "ConstMethodTypeInstruction",
+                                 "TypeInstruction",
+                                 "FilledNewArrayInstruction",
+                                 "MonitorInstruction",
+                                 "FillArrayInstruction",
+                                 "CompareInstruction",
+                                 "ArrayOpInstruction",
+                                 "ArrayLengthInstruction",
+                                 "FieldInstruction",
+                                 "InvokeInstruction",
+                                 "InvokePolymorphicInstruction",
+                                 "InvokeCustomInstruction",
+                                 "UnaryOpInstruction",
+                                 "BinaryOpInstruction",
+                                 "BinaryLitInstruction",
+                                 "InvalidInstruction"})
             instructions.append(m.attr(name));
         m.attr("Instruction") = union_of[py::tuple(instructions)];
 

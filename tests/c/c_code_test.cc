@@ -40,6 +40,7 @@ TEST(CApiCode, DecodesInstructionsAndRendersThem)
     EXPECT_EQ(insns[1].kind, DEXPP_INSN_INVOKE);
     EXPECT_EQ(insns[1].arg_count, 0u);
     EXPECT_EQ(insns[2].kind, DEXPP_INSN_MOVE);
+    EXPECT_EQ(insns[2].has_src, 0); // move-result-object names no source register
     EXPECT_EQ(insns[3].kind, DEXPP_INSN_INVOKE);
     ASSERT_EQ(insns[3].arg_count, 2u);
     EXPECT_EQ(insns[3].arg_regs[0], 1u);
@@ -70,7 +71,8 @@ TEST(CApiCode, RendersEveryInstructionOfEveryFixtureLikeTheCppApi)
     for (const char *path :
          {"tests/data/classes.dex", "tests/data/fibonacci.dex", "tests/data/trycatch.dex",
           "tests/data/shapes.dex", "tests/data/polymorphic.dex", "tests/data/annotated.dex",
-          "tests/data/inherit.dex", "tests/data/multistring.dex", "tests/data/casts.dex"}) {
+          "tests/data/inherit.dex", "tests/data/multistring.dex", "tests/data/casts.dex",
+          "tests/data/handles.dex", "tests/data/switches.dex"}) {
         SCOPED_TRACE(path);
         DexppContext *ctx = open_dex(path);
         ASSERT_NE(ctx, nullptr);
@@ -119,12 +121,64 @@ TEST(CApiCode, AnUnknownKindRendersAsItsOpcodeName)
     EXPECT_EQ(take(dexpp_instruction_to_string(&insn)), "return-void");
 }
 
+TEST(CApiCode, DecodesHandlesPolymorphicCallsAndArrayLength)
+{
+    // handles.dex, Handles.run: invoke-polymorphic {v4, v5}; move-result-object v0;
+    // array-length v1, v5; const-method-handle v2; const-method-type v3;
+    // invoke-custom {v1}; return-object v0.
+    DexppContext *ctx = open_dex("tests/data/handles.dex");
+    ASSERT_NE(ctx, nullptr);
+    DexppMethod *run = find_method(ctx, "LHandles;", "run");
+    ASSERT_NE(run, nullptr);
+    size_t count = 0;
+    DexppInstruction *insns = dexpp_method_instructions(run, &count);
+    ASSERT_EQ(count, 7u);
+
+    EXPECT_EQ(insns[0].kind, DEXPP_INSN_INVOKE_POLYMORPHIC);
+    ASSERT_EQ(insns[0].arg_count, 2u);
+    EXPECT_EQ(insns[0].arg_regs[0], 4u);
+    EXPECT_EQ(insns[0].arg_regs[1], 5u);
+    EXPECT_EQ(take(dexpp_instruction_to_string(&insns[0])),
+              "invoke-polymorphic method@" + std::to_string(insns[0].method_index) + " proto@" +
+                  std::to_string(insns[0].proto_index) + " {v4, v5}");
+    EXPECT_EQ(insns[1].kind, DEXPP_INSN_MOVE);
+    EXPECT_EQ(insns[1].has_src, 0);
+    EXPECT_EQ(insns[2].kind, DEXPP_INSN_ARRAY_LENGTH);
+    EXPECT_EQ(insns[2].dest, 1u);
+    EXPECT_EQ(insns[2].array_reg, 5u);
+    EXPECT_EQ(take(dexpp_instruction_to_string(&insns[2])), "array-length v1, v5");
+    EXPECT_EQ(insns[3].kind, DEXPP_INSN_CONST_METHOD_HANDLE);
+    EXPECT_EQ(insns[3].dest, 2u);
+    EXPECT_EQ(take(dexpp_instruction_to_string(&insns[3])),
+              "const-method-handle v2, method_handle@" +
+                  std::to_string(insns[3].method_handle_index));
+    EXPECT_EQ(insns[4].kind, DEXPP_INSN_CONST_METHOD_TYPE);
+    EXPECT_EQ(insns[4].dest, 3u);
+    EXPECT_EQ(take(dexpp_instruction_to_string(&insns[4])),
+              "const-method-type v3, proto@" + std::to_string(insns[4].proto_index));
+    EXPECT_EQ(insns[5].kind, DEXPP_INSN_INVOKE_CUSTOM);
+
+    dexpp_instruction_array_free(insns, count);
+    dexpp_method_free(run);
+    dexpp_context_free(ctx);
+}
+
+TEST(CApiCode, AnInvalidInstructionRendersAsItsOpcodeName)
+{
+    DexppInstruction insn{};
+    insn.kind = DEXPP_INSN_INVALID;
+    insn.opcode = 0x3e;
+    insn.size = 1;
+    EXPECT_EQ(take(dexpp_instruction_to_string(&insn)), "unused-3e");
+}
+
 TEST(CApiCode, AnUnknownWidthCountsAsSingle)
 {
     DexppInstruction insn{};
     insn.kind = DEXPP_INSN_MOVE;
     insn.opcode = 0x01; // move
     insn.dest = 2;
+    insn.has_src = 1;
     insn.src = 3;
     store_raw(insn.width, 7);
     EXPECT_EQ(take(dexpp_instruction_to_string(&insn)), "move v2, v3");

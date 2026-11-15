@@ -105,7 +105,7 @@ in a method that declares `throws IOException`.
 ## Bytecode and the control-flow graph
 
 `DexMethod.instructions()` returns the decoded bytecode. `Instruction` is a
-sealed interface. Each instruction is one of 24 records, one per family of
+sealed interface. Each instruction is one of 28 records, one per family of
 opcodes, so a pattern-matching `switch` tells them apart:
 
 ```java

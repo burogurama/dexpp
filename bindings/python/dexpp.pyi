@@ -603,10 +603,10 @@ class MoveInstruction:
     """The fields every instruction has: `offset`, `opcode` and `size`."""
     dest: int
     """The register written."""
-    src: int
-    """The register read. It is 0 for the `move-result` instructions and
+    src: Optional[int]
+    """The register read. `None` for the `move-result` instructions and
     `move-exception`, which take their value from the last call or the caught
-    exception and have no source register.
+    exception and name no source register.
     """
     width: OperandWidth
     """The width of the value moved."""
@@ -652,17 +652,25 @@ class ConstClassInstruction:
     the descriptor.
     """
 
-class ConstHandleInstruction:
-    """`const-method-handle`, `const-method-type`."""
+class ConstMethodHandleInstruction:
+    """`const-method-handle`: load a `java.lang.invoke.MethodHandle` into a register."""
 
     base: InstructionBase
     """The fields every instruction has: `offset`, `opcode` and `size`."""
     dest: int
     """The register written."""
-    index: int
-    """Index into the method handle table for `const-method-handle`, or into the
-    prototype table for `const-method-type`.
-    """
+    method_handle_index: int
+    """Index of the handle in the DEX file's method handle table."""
+
+class ConstMethodTypeInstruction:
+    """`const-method-type`: load a `java.lang.invoke.MethodType` into a register."""
+
+    base: InstructionBase
+    """The fields every instruction has: `offset`, `opcode` and `size`."""
+    dest: int
+    """The register written."""
+    proto_index: int
+    """Index of the prototype in the DEX file's prototype table."""
 
 class TypeInstruction:
     """`check-cast`, `instance-of`, `new-instance`, `new-array`."""
@@ -751,6 +759,16 @@ class ArrayOpInstruction:
     width: OperandWidth
     """The width of the element."""
 
+class ArrayLengthInstruction:
+    """`array-length`: store the length of an array in a register."""
+
+    base: InstructionBase
+    """The fields every instruction has: `offset`, `opcode` and `size`."""
+    dest: int
+    """The register that gets the length."""
+    array_reg: int
+    """The register that holds the array."""
+
 class FieldInstruction:
     """The `iget`, `iput`, `sget` and `sput` instructions: read or write a field."""
 
@@ -786,6 +804,24 @@ class InvokeInstruction:
     """The argument registers, in order. For a call on an object the first one holds the
     object. A `long` or `double` argument takes two entries.
     """
+
+class InvokePolymorphicInstruction:
+    """`invoke-polymorphic`, `invoke-polymorphic/range`: call a signature-polymorphic
+    method, such as `MethodHandle.invokeExact`, with the prototype of this call.
+    """
+
+    base: InstructionBase
+    """The fields every instruction has: `offset`, `opcode` and `size`."""
+    method_index: int
+    """Index of the method in the DEX file's method table, such as
+    `MethodHandle.invokeExact`. `Method.calls()` gives the `MethodId`.
+    """
+    proto_index: int
+    """Index in the DEX file's prototype table of the prototype of this call: the
+    types the call site passes and expects back.
+    """
+    arg_regs: list[int]
+    """The argument registers, in order. The first one holds the method handle."""
 
 class InvokeCustomInstruction:
     """`invoke-custom`, `invoke-custom/range`: call through a call site bound at
@@ -845,17 +881,27 @@ class BinaryLitInstruction:
     literal: int
     """The constant operand."""
 
+class InvalidInstruction:
+    """An opcode the Dalvik format does not use, as found in a damaged or deliberately
+    broken method. `base.opcode` is the raw byte and `base.size` is 1. Android
+    rejects such a method, so it never runs; the control-flow graph treats the
+    instruction like a `nop`.
+    """
+
+    base: InstructionBase
+    """The fields every instruction has: `offset`, `opcode` and `size`."""
+
 Instruction = Union[
     NopInstruction, GotoInstruction, IfInstruction, IfZeroInstruction,
     SwitchInstruction, ReturnInstruction, ThrowInstruction, MoveInstruction,
     ConstInstruction, ConstStringInstruction, ConstClassInstruction,
-    ConstHandleInstruction, TypeInstruction, FilledNewArrayInstruction,
-    MonitorInstruction, FillArrayInstruction, CompareInstruction,
-    ArrayOpInstruction, FieldInstruction, InvokeInstruction,
-    InvokeCustomInstruction, UnaryOpInstruction, BinaryOpInstruction,
-    BinaryLitInstruction,
+    ConstMethodHandleInstruction, ConstMethodTypeInstruction, TypeInstruction,
+    FilledNewArrayInstruction, MonitorInstruction, FillArrayInstruction,
+    CompareInstruction, ArrayOpInstruction, ArrayLengthInstruction, FieldInstruction,
+    InvokeInstruction, InvokePolymorphicInstruction, InvokeCustomInstruction,
+    UnaryOpInstruction, BinaryOpInstruction, BinaryLitInstruction, InvalidInstruction,
 ]
-"""Any decoded instruction: one of the 24 instruction classes.
+"""Any decoded instruction: one of the 28 instruction classes.
 
 Use `isinstance` to find out which one. Every class has a `base` with the offset, the
 opcode and the size.

@@ -1,7 +1,7 @@
 package io.github.burogurama.dexpp;
 
 /**
- * {@code nop}, which does nothing. Unused opcodes decode to it too.
+ * {@code nop}, which does nothing.
  *
  * @param offset the position of the instruction in the method, in 16-bit code units from the start
  *     of the code

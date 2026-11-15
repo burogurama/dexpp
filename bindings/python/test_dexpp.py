@@ -129,6 +129,50 @@ def test_method_and_field_ids():
     assert magic.id == dexpp.FieldId("LAnnotated;", "MAGIC", "I")
 
 
+def test_instruction_shapes():
+    # handles.dex, Handles.run: invoke-polymorphic {v4, v5}; move-result-object v0;
+    # array-length v1, v5; const-method-handle v2; const-method-type v3;
+    # invoke-custom {v1}; return-object v0.  Handles.spread: invoke-polymorphic/range.
+    handles = dexpp.AnalysisContext.from_dex("tests/data/handles.dex").find_class("LHandles;")
+    methods = {m.name: m for m in handles.methods}
+    run = methods["run"].instructions
+    assert [type(i).__name__ for i in run] == [
+        "InvokePolymorphicInstruction", "MoveInstruction", "ArrayLengthInstruction",
+        "ConstMethodHandleInstruction", "ConstMethodTypeInstruction",
+        "InvokeCustomInstruction", "ReturnInstruction",
+    ]
+    poly = run[0]
+    assert poly.arg_regs == [4, 5]
+    assert dexpp.to_string(poly) == (
+        f"invoke-polymorphic method@{poly.method_index} proto@{poly.proto_index} {{v4, v5}}"
+    )
+    assert run[1].src is None and run[1].dest == 0
+    assert (run[2].dest, run[2].array_reg) == (1, 5)
+    assert dexpp.to_string(run[2]) == "array-length v1, v5"
+    assert run[3].dest == 2
+    assert dexpp.to_string(run[3]) == f"const-method-handle v2, method_handle@{run[3].method_handle_index}"
+    assert run[4].dest == 3
+    assert dexpp.to_string(run[4]) == f"const-method-type v3, proto@{run[4].proto_index}"
+    spread = methods["spread"].instructions[0]
+    assert isinstance(spread, dexpp.InvokePolymorphicInstruction)
+    assert spread.arg_regs == [0, 1, 2, 3, 4, 5] and spread.proto_index != poly.proto_index
+
+    # The call is a forward reference with the polymorphic kind.
+    calls = methods["run"].calls()
+    assert [(c.target.name, c.kind) for c in calls] == [
+        ("invokeExact", dexpp.InvokeKind.POLYMORPHIC)
+    ]
+
+    # A plain move has a source register; move-exception has none.
+    trycatch = dexpp.AnalysisContext.from_dex("tests/data/trycatch.dex").find_class("LTryCatch;")
+    safe = next(m for m in trycatch.methods if m.name == "safeParse")
+    moves = [i for i in safe.instructions if isinstance(i, dexpp.MoveInstruction)]
+    exception = [i for i in moves if dexpp.opcode_name(i.base.opcode) == "move-exception"]
+    assert exception and all(i.src is None for i in exception)
+    assert all(isinstance(i.src, int) for i in moves
+               if not dexpp.opcode_name(i.base.opcode).startswith(("move-result", "move-exception")))
+
+
 def test_instruction_view():
     import collections.abc
     import gc

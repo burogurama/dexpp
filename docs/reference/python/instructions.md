@@ -24,7 +24,9 @@ Decoded Dalvik bytecode. `Method.instructions` returns a list of these objects. 
 
 ::: dexpp.ConstClassInstruction
 
-::: dexpp.ConstHandleInstruction
+::: dexpp.ConstMethodHandleInstruction
+
+::: dexpp.ConstMethodTypeInstruction
 
 ::: dexpp.ReturnInstruction
 
@@ -52,9 +54,13 @@ Decoded Dalvik bytecode. `Method.instructions` returns a list of these objects. 
 
 ::: dexpp.ArrayOpInstruction
 
+::: dexpp.ArrayLengthInstruction
+
 ::: dexpp.FieldInstruction
 
 ::: dexpp.InvokeInstruction
+
+::: dexpp.InvokePolymorphicInstruction
 
 ::: dexpp.InvokeCustomInstruction
 
@@ -63,3 +69,5 @@ Decoded Dalvik bytecode. `Method.instructions` returns a list of these objects. 
 ::: dexpp.BinaryOpInstruction
 
 ::: dexpp.BinaryLitInstruction
+
+::: dexpp.InvalidInstruction

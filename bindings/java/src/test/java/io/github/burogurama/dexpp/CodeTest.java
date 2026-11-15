@@ -50,6 +50,7 @@ class CodeTest {
                     List.of(), assertInstanceOf(InvokeInstruction.class, main.get(1)).argRegs());
             MoveInstruction move = assertInstanceOf(MoveInstruction.class, main.get(2));
             assertEquals(0, move.dest());
+            assertEquals(OptionalInt.empty(), move.src(), "move-result names no source");
             assertEquals(OperandWidth.SINGLE, move.width());
             InvokeInstruction call = assertInstanceOf(InvokeInstruction.class, main.get(3));
             assertEquals(List.of(1, 0), call.argRegs());
@@ -124,7 +125,9 @@ class CodeTest {
                         "annotated.dex",
                         "inherit.dex",
                         "multistring.dex",
-                        "casts.dex")) {
+                        "casts.dex",
+                        "handles.dex",
+                        "switches.dex")) {
             try (AnalysisContext ctx = dex(name)) {
                 for (DexClass c : ctx.classes()) {
                     for (DexMethod m : c.methods()) {
@@ -145,12 +148,14 @@ class CodeTest {
     @Test
     void toStringOfHandMadeInstructions() {
         Map<Instruction, String> cases =
-                Map.of(
-                        new GotoInstruction(0, 0x28, 1, -4), "goto -4",
-                        new IfZeroInstruction(0, 0x38, 2, 6, 3), "if-eqz v3, +6",
-                        new InvokeInstruction(0, 0x71, 3, 9, List.of(2, 3)),
-                                "invoke-static method@9 {v2, v3}",
-                        new SwitchInstruction(
+                Map.ofEntries(
+                        Map.entry(new GotoInstruction(0, 0x28, 1, -4), "goto -4"),
+                        Map.entry(new IfZeroInstruction(0, 0x38, 2, 6, 3), "if-eqz v3, +6"),
+                        Map.entry(
+                                new InvokeInstruction(0, 0x71, 3, 9, List.of(2, 3)),
+                                "invoke-static method@9 {v2, v3}"),
+                        Map.entry(
+                                new SwitchInstruction(
                                         0,
                                         0x2b,
                                         3,
@@ -158,13 +163,68 @@ class CodeTest {
                                         1,
                                         true,
                                         List.of(new SwitchCase(1, 4), new SwitchCase(2, 6))),
-                                "packed-switch v1, +8",
-                        new MoveInstruction(0, 0x01, 1, 2, 3, OperandWidth.SINGLE), "move v2, v3",
-                        new ReturnInstruction(0, 0x0e, 1, OptionalInt.empty(), OperandWidth.SINGLE),
-                                "return-void",
-                        new NopInstruction(0, 0x00, 1), "nop");
+                                "packed-switch v1, +8"),
+                        Map.entry(
+                                new MoveInstruction(
+                                        0, 0x01, 1, 2, OptionalInt.of(3), OperandWidth.SINGLE),
+                                "move v2, v3"),
+                        Map.entry(
+                                new MoveInstruction(
+                                        0, 0x0d, 1, 4, OptionalInt.empty(), OperandWidth.SINGLE),
+                                "move-exception v4"),
+                        Map.entry(
+                                new ReturnInstruction(
+                                        0, 0x0e, 1, OptionalInt.empty(), OperandWidth.SINGLE),
+                                "return-void"),
+                        Map.entry(new NopInstruction(0, 0x00, 1), "nop"),
+                        Map.entry(new InvalidInstruction(0, 0x3e, 1), "unused-3e"),
+                        Map.entry(new ArrayLengthInstruction(0, 0x21, 1, 1, 5), "array-length v1, v5"),
+                        Map.entry(
+                                new InvokePolymorphicInstruction(0, 0xfa, 4, 5, 2, List.of(4, 5)),
+                                "invoke-polymorphic method@5 proto@2 {v4, v5}"),
+                        Map.entry(
+                                new ConstMethodHandleInstruction(0, 0xfe, 2, 2, 7),
+                                "const-method-handle v2, method_handle@7"),
+                        Map.entry(
+                                new ConstMethodTypeInstruction(0, 0xff, 2, 3, 1),
+                                "const-method-type v3, proto@1"));
         for (Map.Entry<Instruction, String> c : cases.entrySet()) {
             assertEquals(c.getValue(), Dexpp.toString(c.getKey()), c.getKey().toString());
+        }
+    }
+
+    @Test
+    void handlesAndPolymorphicInstructions() {
+        // handles.dex, Handles.run: invoke-polymorphic {v4, v5}; move-result-object v0;
+        // array-length v1, v5; const-method-handle v2; const-method-type v3;
+        // invoke-custom {v1}; return-object v0. Handles.spread: invoke-polymorphic/range.
+        try (AnalysisContext ctx = dex("handles.dex")) {
+            DexClass cls = cls(ctx, "LHandles;");
+            List<Instruction> run = method(cls, "run").instructions();
+            assertEquals(7, run.size());
+            InvokePolymorphicInstruction poly =
+                    assertInstanceOf(InvokePolymorphicInstruction.class, run.get(0));
+            assertEquals(List.of(4, 5), poly.argRegs());
+            assertEquals(
+                    OptionalInt.empty(), assertInstanceOf(MoveInstruction.class, run.get(1)).src());
+            ArrayLengthInstruction length =
+                    assertInstanceOf(ArrayLengthInstruction.class, run.get(2));
+            assertEquals(1, length.dest());
+            assertEquals(5, length.arrayReg());
+            assertEquals(
+                    2, assertInstanceOf(ConstMethodHandleInstruction.class, run.get(3)).dest());
+            assertEquals(3, assertInstanceOf(ConstMethodTypeInstruction.class, run.get(4)).dest());
+            InvokePolymorphicInstruction range =
+                    assertInstanceOf(
+                            InvokePolymorphicInstruction.class,
+                            method(cls, "spread").instructions().get(0));
+            assertEquals(List.of(0, 1, 2, 3, 4, 5), range.argRegs());
+            assertTrue(range.protoIndex() != poly.protoIndex());
+
+            List<MethodCall> calls = method(cls, "run").calls();
+            assertEquals(1, calls.size());
+            assertEquals(InvokeKind.POLYMORPHIC, calls.get(0).kind());
+            assertEquals("invokeExact", calls.get(0).target().name());
         }
     }
 

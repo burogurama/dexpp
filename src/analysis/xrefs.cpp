@@ -193,6 +193,11 @@ Xrefs build_xrefs(std::shared_ptr<const detail::AnalysisContextImpl> impl)
                                 x.method_map_[impl->method_id_of(i, v.method_index)].push_back(
                                     MethodXref{referrer_idx(), v.base.offset, *kind});
                             }
+                            else if constexpr (std::is_same_v<T, InvokePolymorphicInstruction>) {
+                                x.method_map_[impl->method_id_of(i, v.method_index)].push_back(
+                                    MethodXref{referrer_idx(), v.base.offset,
+                                               InvokeKind::Polymorphic});
+                            }
                         },
                         insn);
                 }

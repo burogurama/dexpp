@@ -148,6 +148,38 @@ aliases.
   applies to the nested types of `dex::AnnotationValue` in C++, the Python
   classes, the Go types and the Java records. C keeps its `DEXPP_VALUE_*`
   kinds.
+- Breaking: decoded instructions no longer hide distinct cases. There are now
+  28 instruction types instead of 24:
+    - `MoveInstruction.src` is optional. It is empty (`std::nullopt` in C++,
+      `None` in Python, `HasSrc` false in Go, an empty `OptionalInt` in Java,
+      `has_src` 0 in C) for `move-result*` and `move-exception`, which name no
+      source register. Before, it was 0, which is also the real register
+      `v0`.
+    - `invoke-polymorphic` and `invoke-polymorphic/range` decode to a new
+      `InvokePolymorphicInstruction`, with the method index, the index of the
+      call site's prototype, and the argument registers. Before, they were a
+      plain `InvokeInstruction` and the prototype index was lost. They stay
+      call sites: the call graph, `Method.calls()` and the cross-references
+      list them with the kind `POLYMORPHIC`, as before.
+    - `array-length` decodes to a new `ArrayLengthInstruction` (`dest` and
+      `array_reg`). Before, it was a `UnaryOpInstruction`, which nothing said.
+    - An opcode the format does not use decodes to a new `InvalidInstruction`,
+      whose opcode is the raw byte. Before, it was a `NopInstruction`, so a
+      damaged method looked fine. The control-flow graph still treats it
+      like a `nop`.
+    - `ConstHandleInstruction`, whose `index` pointed into one of two tables
+      depending on the opcode, is split into `ConstMethodHandleInstruction`
+      (`method_handle_index`) and `ConstMethodTypeInstruction`
+      (`proto_index`). `to_string` now writes these operands as
+      `method_handle@N` and `proto@N`, instead of `idx@N`.
+
+  In C, the instruction kinds are `DEXPP_INSN_CONST_METHOD_HANDLE` (11, which
+  was `DEXPP_INSN_CONST_HANDLE`), `DEXPP_INSN_CONST_METHOD_TYPE` (24),
+  `DEXPP_INSN_INVOKE_POLYMORPHIC` (25), `DEXPP_INSN_ARRAY_LENGTH` (26) and
+  `DEXPP_INSN_INVALID` (27); `DexppInstruction` has the members
+  `method_handle_index` and `proto_index` instead of `index`, and `has_src`
+  now also applies to `DEXPP_INSN_MOVE`. Go and Java have the same five types
+  and records.
 - Breaking: a control-flow-graph edge no longer has a `label`. The label was
   one optional integer with two meanings: the case key of a switch-case edge,
   or, on an exception edge, the caught type as a raw index into one DEX

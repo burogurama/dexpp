@@ -189,7 +189,7 @@ the repository by the relative path `../../../tests/data`.
 ### Bytecode and the control-flow graph
 
 `Method.Instructions` returns the decoded bytecode. Each instruction is one of
-24 struct types, one per family of opcodes, so a type switch tells them
+28 struct types, one per family of opcodes, so a type switch tells them
 apart:
 
 ```go

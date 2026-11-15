@@ -87,7 +87,7 @@ In your own code `auto` works as well.
 --8<-- "cpp/analysis.cpp:code"
 ```
 
-`dex::Instruction` is a `std::variant` over 24 instruction structs. Use
+`dex::Instruction` is a `std::variant` over 28 instruction structs. Use
 `std::visit` or `std::get_if` to reach the fields of one kind, and
 `dex::base_of` for the fields they all share: `offset`, `opcode` and `size`.
 

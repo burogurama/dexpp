@@ -130,6 +130,10 @@ std::vector<MethodCall> Method::calls() const
                 out.push_back(
                     {iv->base.offset, impl_->method_id_of(dex_idx_, iv->method_index), *kind});
         }
+        else if (const auto *ip = std::get_if<InvokePolymorphicInstruction>(&insn)) {
+            out.push_back({ip->base.offset, impl_->method_id_of(dex_idx_, ip->method_index),
+                           InvokeKind::Polymorphic});
+        }
     }
     return out;
 }

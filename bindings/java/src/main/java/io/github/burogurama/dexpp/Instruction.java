@@ -1,7 +1,7 @@
 package io.github.burogurama.dexpp;
 
 /**
- * One decoded Dalvik instruction. It is one of 24 records, one per family of opcodes, the same
+ * One decoded Dalvik instruction. It is one of 28 records, one per family of opcodes, the same
  * families as the C++ and Python APIs. A pattern-matching {@code switch} tells them apart:
  *
  * {@snippet :
@@ -30,19 +30,23 @@ public sealed interface Instruction
                 ConstInstruction,
                 ConstStringInstruction,
                 ConstClassInstruction,
-                ConstHandleInstruction,
+                ConstMethodHandleInstruction,
+                ConstMethodTypeInstruction,
                 TypeInstruction,
                 FilledNewArrayInstruction,
                 MonitorInstruction,
                 FillArrayInstruction,
                 CompareInstruction,
                 ArrayOpInstruction,
+                ArrayLengthInstruction,
                 FieldInstruction,
                 InvokeInstruction,
+                InvokePolymorphicInstruction,
                 InvokeCustomInstruction,
                 UnaryOpInstruction,
                 BinaryOpInstruction,
-                BinaryLitInstruction {
+                BinaryLitInstruction,
+                InvalidInstruction {
     /**
      * The position of the instruction in the method, in 16-bit code units from the start of the
      * code.

@@ -32,7 +32,7 @@ type InstructionBase struct {
 func (b InstructionBase) Base() InstructionBase { return b }
 
 // Instruction is one decoded Dalvik instruction. Its dynamic type is one of
-// the 24 *Instruction struct types of this package, one per family of
+// the 28 *Instruction struct types of this package, one per family of
 // opcodes, the same families as the C++ and Python APIs. Use a type switch to
 // tell them apart:
 //
@@ -51,8 +51,14 @@ type Instruction interface {
 	Base() InstructionBase
 }
 
-// NopInstruction is nop, which does nothing. Unused opcodes decode to it too.
+// NopInstruction is nop, which does nothing.
 type NopInstruction struct{ InstructionBase }
+
+// InvalidInstruction is an opcode the Dalvik format does not use, as found in
+// a damaged or deliberately broken method. Base().Opcode is the raw byte and
+// Base().Size is 1. Android rejects such a method, so it never runs; the
+// control-flow graph treats the instruction like a nop.
+type InvalidInstruction struct{ InstructionBase }
 
 // GotoInstruction is goto, goto/16 and goto/32: an unconditional jump.
 type GotoInstruction struct {
@@ -116,11 +122,13 @@ type ThrowInstruction struct {
 type MoveInstruction struct {
 	InstructionBase
 	Dest uint16 // the register written
-	// Src is the register read. It is 0 for the move-result instructions and
-	// move-exception, which take their value from the last call or the caught
-	// exception and have no source register.
-	Src   uint16
-	Width OperandWidth // the width of the value moved
+	// Src is the register read, when HasSrc is true.
+	Src uint16
+	// HasSrc is false for the move-result instructions and move-exception,
+	// which take their value from the last call or the caught exception and
+	// name no source register.
+	HasSrc bool
+	Width  OperandWidth // the width of the value moved
 }
 
 // ConstInstruction is const/4, const/16, const, const/high16, const-wide/16,
@@ -151,14 +159,20 @@ type ConstClassInstruction struct {
 	TypeIndex uint32 // index in the DEX file's type table
 }
 
-// ConstHandleInstruction is const-method-handle and const-method-type.
-type ConstHandleInstruction struct {
+// ConstMethodHandleInstruction is const-method-handle: load a
+// java.lang.invoke.MethodHandle into a register.
+type ConstMethodHandleInstruction struct {
 	InstructionBase
-	Dest uint8 // the register written
-	// Index is an index into the method handle table for
-	// const-method-handle, or into the prototype table for
-	// const-method-type.
-	Index uint32
+	Dest              uint8  // the register written
+	MethodHandleIndex uint32 // index in the DEX file's method handle table
+}
+
+// ConstMethodTypeInstruction is const-method-type: load a
+// java.lang.invoke.MethodType into a register.
+type ConstMethodTypeInstruction struct {
+	InstructionBase
+	Dest       uint8  // the register written
+	ProtoIndex uint32 // index in the DEX file's prototype table
 }
 
 // TypeInstruction is check-cast, instance-of, new-instance and new-array.
@@ -222,6 +236,14 @@ type ArrayOpInstruction struct {
 	Width    OperandWidth // the width of the element
 }
 
+// ArrayLengthInstruction is array-length: store the length of an array in a
+// register.
+type ArrayLengthInstruction struct {
+	InstructionBase
+	Dest     uint8 // the register that gets the length
+	ArrayReg uint8 // the register that holds the array
+}
+
 // FieldInstruction is the iget, iput, sget and sput family: read or write a
 // field.
 type FieldInstruction struct {
@@ -236,8 +258,7 @@ type FieldInstruction struct {
 }
 
 // InvokeInstruction is invoke-virtual, invoke-super, invoke-direct,
-// invoke-static, invoke-interface and their /range forms, and
-// invoke-polymorphic: call a method.
+// invoke-static, invoke-interface and their /range forms: call a method.
 type InvokeInstruction struct {
 	InstructionBase
 	MethodIndex uint32 // index in the DEX file's method table
@@ -245,6 +266,18 @@ type InvokeInstruction struct {
 	// the first one holds the object. A long or double argument takes two
 	// entries.
 	ArgRegs []uint16
+}
+
+// InvokePolymorphicInstruction is invoke-polymorphic and
+// invoke-polymorphic/range: call a signature-polymorphic method, such as
+// MethodHandle.invokeExact, with the prototype of this call.
+type InvokePolymorphicInstruction struct {
+	InstructionBase
+	MethodIndex uint32 // index in the DEX file's method table, such as MethodHandle.invokeExact
+	// ProtoIndex is the index in the DEX file's prototype table of the
+	// prototype of this call: the types the call site passes and expects back.
+	ProtoIndex uint32
+	ArgRegs    []uint16 // the argument registers, in order; the first one holds the method handle
 }
 
 // InvokeCustomInstruction is invoke-custom and invoke-custom/range: call
@@ -302,6 +335,8 @@ func goInstruction(in *C.DexppInstruction) Instruction {
 	switch in.kind {
 	case C.DEXPP_INSN_NOP:
 		return NopInstruction{b}
+	case C.DEXPP_INSN_INVALID:
+		return InvalidInstruction{b}
 	case C.DEXPP_INSN_GOTO:
 		return GotoInstruction{b, int32(in.branch_offset)}
 	case C.DEXPP_INSN_IF:
@@ -323,15 +358,18 @@ func goInstruction(in *C.DexppInstruction) Instruction {
 	case C.DEXPP_INSN_THROW:
 		return ThrowInstruction{b, uint8(in.reg)}
 	case C.DEXPP_INSN_MOVE:
-		return MoveInstruction{b, uint16(in.dest), uint16(in.src), OperandWidth(in.width)}
+		return MoveInstruction{b, uint16(in.dest), uint16(in.src), in.has_src != 0,
+			OperandWidth(in.width)}
 	case C.DEXPP_INSN_CONST:
 		return ConstInstruction{b, uint8(in.dest), int64(in.value), OperandWidth(in.width)}
 	case C.DEXPP_INSN_CONST_STRING:
 		return ConstStringInstruction{b, uint8(in.dest), uint32(in.string_index)}
 	case C.DEXPP_INSN_CONST_CLASS:
 		return ConstClassInstruction{b, uint8(in.dest), uint32(in.type_index)}
-	case C.DEXPP_INSN_CONST_HANDLE:
-		return ConstHandleInstruction{b, uint8(in.dest), uint32(in.index)}
+	case C.DEXPP_INSN_CONST_METHOD_HANDLE:
+		return ConstMethodHandleInstruction{b, uint8(in.dest), uint32(in.method_handle_index)}
+	case C.DEXPP_INSN_CONST_METHOD_TYPE:
+		return ConstMethodTypeInstruction{b, uint8(in.dest), uint32(in.proto_index)}
 	case C.DEXPP_INSN_TYPE:
 		return TypeInstruction{b, uint32(in.type_index), uint8(in.dest), uint8(in.src), in.has_src != 0}
 	case C.DEXPP_INSN_FILLED_NEW_ARRAY:
@@ -346,11 +384,16 @@ func goInstruction(in *C.DexppInstruction) Instruction {
 	case C.DEXPP_INSN_ARRAY_OP:
 		return ArrayOpInstruction{b, uint8(in.value_reg), uint8(in.array_reg), uint8(in.index_reg),
 			in.is_write != 0, OperandWidth(in.width)}
+	case C.DEXPP_INSN_ARRAY_LENGTH:
+		return ArrayLengthInstruction{b, uint8(in.dest), uint8(in.array_reg)}
 	case C.DEXPP_INSN_FIELD:
 		return FieldInstruction{b, uint32(in.field_index), uint8(in.value_reg), uint8(in.object_reg),
 			in.has_object_reg != 0, in.is_static != 0, in.is_write != 0, OperandWidth(in.width)}
 	case C.DEXPP_INSN_INVOKE:
 		return InvokeInstruction{b, uint32(in.method_index), goRegs(in.arg_regs, in.arg_count)}
+	case C.DEXPP_INSN_INVOKE_POLYMORPHIC:
+		return InvokePolymorphicInstruction{b, uint32(in.method_index), uint32(in.proto_index),
+			goRegs(in.arg_regs, in.arg_count)}
 	case C.DEXPP_INSN_INVOKE_CUSTOM:
 		return InvokeCustomInstruction{b, uint32(in.call_site_index), goRegs(in.arg_regs, in.arg_count)}
 	case C.DEXPP_INSN_UNARY_OP:
@@ -399,6 +442,8 @@ func cInstruction(insn Instruction) C.DexppInstruction {
 	switch i := insn.(type) {
 	case NopInstruction:
 		out.kind = C.DEXPP_INSN_NOP
+	case InvalidInstruction:
+		out.kind = C.DEXPP_INSN_INVALID
 	case GotoInstruction:
 		out.kind = C.DEXPP_INSN_GOTO
 		out.branch_offset = C.int32_t(i.BranchOffset)
@@ -432,6 +477,7 @@ func cInstruction(insn Instruction) C.DexppInstruction {
 	case MoveInstruction:
 		out.kind = C.DEXPP_INSN_MOVE
 		out.dest, out.src = C.uint16_t(i.Dest), C.uint16_t(i.Src)
+		out.has_src = cbool(i.HasSrc)
 		out.width = cWidth(i.Width)
 	case ConstInstruction:
 		out.kind = C.DEXPP_INSN_CONST
@@ -443,9 +489,12 @@ func cInstruction(insn Instruction) C.DexppInstruction {
 	case ConstClassInstruction:
 		out.kind = C.DEXPP_INSN_CONST_CLASS
 		out.dest, out.type_index = C.uint16_t(i.Dest), C.uint32_t(i.TypeIndex)
-	case ConstHandleInstruction:
-		out.kind = C.DEXPP_INSN_CONST_HANDLE
-		out.dest, out.index = C.uint16_t(i.Dest), C.uint32_t(i.Index)
+	case ConstMethodHandleInstruction:
+		out.kind = C.DEXPP_INSN_CONST_METHOD_HANDLE
+		out.dest, out.method_handle_index = C.uint16_t(i.Dest), C.uint32_t(i.MethodHandleIndex)
+	case ConstMethodTypeInstruction:
+		out.kind = C.DEXPP_INSN_CONST_METHOD_TYPE
+		out.dest, out.proto_index = C.uint16_t(i.Dest), C.uint32_t(i.ProtoIndex)
 	case TypeInstruction:
 		out.kind = C.DEXPP_INSN_TYPE
 		out.type_index, out.dest = C.uint32_t(i.TypeIndex), C.uint16_t(i.Dest)
@@ -469,6 +518,9 @@ func cInstruction(insn Instruction) C.DexppInstruction {
 		out.value_reg, out.array_reg = C.uint8_t(i.ValueReg), C.uint8_t(i.ArrayReg)
 		out.index_reg, out.is_write = C.uint8_t(i.IndexReg), cbool(i.IsWrite)
 		out.width = cWidth(i.Width)
+	case ArrayLengthInstruction:
+		out.kind = C.DEXPP_INSN_ARRAY_LENGTH
+		out.dest, out.array_reg = C.uint16_t(i.Dest), C.uint8_t(i.ArrayReg)
 	case FieldInstruction:
 		out.kind = C.DEXPP_INSN_FIELD
 		out.field_index, out.value_reg = C.uint32_t(i.FieldIndex), C.uint8_t(i.ValueReg)
@@ -478,6 +530,10 @@ func cInstruction(insn Instruction) C.DexppInstruction {
 	case InvokeInstruction:
 		out.kind = C.DEXPP_INSN_INVOKE
 		out.method_index = C.uint32_t(i.MethodIndex)
+		out.arg_regs, out.arg_count = cRegs(i.ArgRegs)
+	case InvokePolymorphicInstruction:
+		out.kind = C.DEXPP_INSN_INVOKE_POLYMORPHIC
+		out.method_index, out.proto_index = C.uint32_t(i.MethodIndex), C.uint32_t(i.ProtoIndex)
 		out.arg_regs, out.arg_count = cRegs(i.ArgRegs)
 	case InvokeCustomInstruction:
 		out.kind = C.DEXPP_INSN_INVOKE_CUSTOM

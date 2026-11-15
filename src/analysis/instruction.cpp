@@ -15,6 +15,8 @@ std::string_view opcode_name(uint8_t opcode) { return raw::opcode_info(opcode).n
 
 namespace {
 
+template <typename T> inline constexpr bool always_false = false;
+
 std::string join_regs(std::span<const uint16_t> regs)
 {
     std::string out = "{";
@@ -32,7 +34,8 @@ std::string operands_of(const Instruction &insn)
     return std::visit(
         [](const auto &i) -> std::string {
             using T = std::decay_t<decltype(i)>;
-            if constexpr (std::is_same_v<T, NopInstruction>) {
+            if constexpr (std::is_same_v<T, NopInstruction> ||
+                          std::is_same_v<T, InvalidInstruction>) {
                 return "";
             }
             else if constexpr (std::is_same_v<T, GotoInstruction>) {
@@ -54,10 +57,10 @@ std::string operands_of(const Instruction &insn)
                 return std::format("v{}", i.reg);
             }
             else if constexpr (std::is_same_v<T, MoveInstruction>) {
-                // move-result* / move-exception (0x0a-0x0d) have no explicit source.
-                if (i.base.opcode >= 0x0a && i.base.opcode <= 0x0d)
+                // move-result* / move-exception have no source register.
+                if (!i.src)
                     return std::format("v{}", i.dest);
-                return std::format("v{}, v{}", i.dest, i.src);
+                return std::format("v{}, v{}", i.dest, *i.src);
             }
             else if constexpr (std::is_same_v<T, ConstInstruction>) {
                 return std::format("v{}, #{}", i.dest, i.value);
@@ -68,8 +71,11 @@ std::string operands_of(const Instruction &insn)
             else if constexpr (std::is_same_v<T, ConstClassInstruction>) {
                 return std::format("v{}, type@{}", i.dest, i.type_index);
             }
-            else if constexpr (std::is_same_v<T, ConstHandleInstruction>) {
-                return std::format("v{}, idx@{}", i.dest, i.index);
+            else if constexpr (std::is_same_v<T, ConstMethodHandleInstruction>) {
+                return std::format("v{}, method_handle@{}", i.dest, i.method_handle_index);
+            }
+            else if constexpr (std::is_same_v<T, ConstMethodTypeInstruction>) {
+                return std::format("v{}, proto@{}", i.dest, i.proto_index);
             }
             else if constexpr (std::is_same_v<T, TypeInstruction>) {
                 std::string out = std::format("v{}, type@{}", i.dest, i.type_index);
@@ -92,6 +98,9 @@ std::string operands_of(const Instruction &insn)
             else if constexpr (std::is_same_v<T, ArrayOpInstruction>) {
                 return std::format("v{}, v{}[v{}]", i.value_reg, i.array_reg, i.index_reg);
             }
+            else if constexpr (std::is_same_v<T, ArrayLengthInstruction>) {
+                return std::format("v{}, v{}", i.dest, i.array_reg);
+            }
             else if constexpr (std::is_same_v<T, FieldInstruction>) {
                 if (i.object_reg)
                     return std::format("v{}, v{}.field@{}", i.value_reg, *i.object_reg,
@@ -100,6 +109,10 @@ std::string operands_of(const Instruction &insn)
             }
             else if constexpr (std::is_same_v<T, InvokeInstruction>) {
                 return std::format("method@{} {}", i.method_index, join_regs(i.arg_regs));
+            }
+            else if constexpr (std::is_same_v<T, InvokePolymorphicInstruction>) {
+                return std::format("method@{} proto@{} {}", i.method_index, i.proto_index,
+                                   join_regs(i.arg_regs));
             }
             else if constexpr (std::is_same_v<T, InvokeCustomInstruction>) {
                 return std::format("site@{} {}", i.call_site_index, join_regs(i.arg_regs));
@@ -114,7 +127,7 @@ std::string operands_of(const Instruction &insn)
                 return std::format("v{}, v{}, #{}", i.dest, i.src, i.literal);
             }
             else {
-                return std::string{};
+                static_assert(always_false<T>, "a new instruction type needs its operands");
             }
         },
         insn);
@@ -319,9 +332,9 @@ std::vector<Instruction> decode_instructions(std::span<const uint16_t> insns)
         }
         else if (op >= 0x0a && op <= 0x0d) {
             // move-result / move-result-wide / move-result-object / move-exception
-            // format 11x: AA op → dest=AA, src=0 (implicit)
+            // format 11x: AA op → dest=AA, no source register
             OperandWidth width = (op == 0x0b) ? OperandWidth::Pair : OperandWidth::Single;
-            result.push_back(MoveInstruction{base, hi, 0, width});
+            result.push_back(MoveInstruction{base, hi, std::nullopt, width});
         }
         else if (op == 0x0e) {
             result.push_back(ReturnInstruction{base, std::nullopt, OperandWidth::Single});
@@ -397,10 +410,9 @@ std::vector<Instruction> decode_instructions(std::span<const uint16_t> insns)
                                              static_cast<uint8_t>((hi >> 4) & 0x0f)});
         }
         else if (op == 0x21) {
-            // array-length format 12x
-            result.push_back(UnaryOpInstruction{base, static_cast<uint8_t>(hi & 0x0f),
-                                                static_cast<uint8_t>((hi >> 4) & 0x0f),
-                                                OperandWidth::Single, OperandWidth::Single});
+            // array-length format 12x: B|A op → dest=A, array=B
+            result.push_back(ArrayLengthInstruction{base, static_cast<uint8_t>(hi & 0x0f),
+                                                    static_cast<uint8_t>((hi >> 4) & 0x0f)});
         }
         else if (op == 0x22) {
             // new-instance format 21c
@@ -604,12 +616,14 @@ std::vector<Instruction> decode_instructions(std::span<const uint16_t> insns)
                                      static_cast<int16_t>(sex8(static_cast<uint8_t>(unit1 >> 8)))});
         }
         else if (op == 0xfa) {
-            // invoke-polymorphic format 45cc
-            result.push_back(InvokeInstruction{base, unit1, decode_35c_regs(unit0, unit2)});
+            // invoke-polymorphic format 45cc: method@BBBB, registers, proto@HHHH
+            result.push_back(
+                InvokePolymorphicInstruction{base, unit1, unit3, decode_35c_regs(unit0, unit2)});
         }
         else if (op == 0xfb) {
-            // invoke-polymorphic/range format 4rcc
-            result.push_back(InvokeInstruction{base, unit1, decode_3rc_regs(unit0, unit2)});
+            // invoke-polymorphic/range format 4rcc: method@BBBB, range, proto@HHHH
+            result.push_back(
+                InvokePolymorphicInstruction{base, unit1, unit3, decode_3rc_regs(unit0, unit2)});
         }
         else if (op == 0xfc) {
             // invoke-custom format 35c
@@ -619,13 +633,17 @@ std::vector<Instruction> decode_instructions(std::span<const uint16_t> insns)
             // invoke-custom/range format 3rc
             result.push_back(InvokeCustomInstruction{base, unit1, decode_3rc_regs(unit0, unit2)});
         }
-        else if (op == 0xfe || op == 0xff) {
-            // const-method-handle / const-method-type format 21c
-            result.push_back(ConstHandleInstruction{base, hi, unit1});
+        else if (op == 0xfe) {
+            // const-method-handle format 21c
+            result.push_back(ConstMethodHandleInstruction{base, hi, unit1});
+        }
+        else if (op == 0xff) {
+            // const-method-type format 21c
+            result.push_back(ConstMethodTypeInstruction{base, hi, unit1});
         }
         else {
-            // Unknown/unused opcode — emit nop to keep the stream contiguous
-            result.push_back(NopInstruction{base});
+            // An unused opcode: one code unit, kept so the method shows the damage.
+            result.push_back(InvalidInstruction{base});
         }
 
         pos += sz;

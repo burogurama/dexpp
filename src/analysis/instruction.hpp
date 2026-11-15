@@ -30,6 +30,16 @@ struct NopInstruction
     InstructionBase base;
 };
 
+/** An opcode the Dalvik format does not use (0x3e–0x43, 0x73, 0x79–0x7a,
+ *  0xe3–0xf9), as found in a damaged or deliberately broken method.
+ *  `base.opcode` is the raw byte and `base.size` is 1.  Android's verifier
+ *  rejects such a method, so it never runs; the control-flow graph treats the
+ *  instruction like a nop and falls through. */
+struct InvalidInstruction
+{
+    InstructionBase base;
+};
+
 /** goto, goto/16, goto/32 (0x28–0x2a). */
 struct GotoInstruction
 {
@@ -92,7 +102,10 @@ struct MoveInstruction
 {
     InstructionBase base;
     uint16_t dest;
-    uint16_t src; ///< 0 for move-result / move-exception (implicit source)
+    /** The register read.  nullopt for move-result* and move-exception, which
+     *  take the result of the previous invoke or the caught exception and name
+     *  no source register. */
+    std::optional<uint16_t> src;
     OperandWidth width;
 };
 
@@ -121,12 +134,20 @@ struct ConstClassInstruction
     uint32_t type_index;
 };
 
-/** const-method-handle, const-method-type (0xfe–0xff). */
-struct ConstHandleInstruction
+/** const-method-handle (0xfe): load a java.lang.invoke.MethodHandle. */
+struct ConstMethodHandleInstruction
 {
     InstructionBase base;
     uint8_t dest;
-    uint32_t index; ///< method_handle or proto index
+    uint32_t method_handle_index; ///< Index into the DEX file's method handle table.
+};
+
+/** const-method-type (0xff): load a java.lang.invoke.MethodType. */
+struct ConstMethodTypeInstruction
+{
+    InstructionBase base;
+    uint8_t dest;
+    uint32_t proto_index; ///< Index into the DEX file's proto_ids table.
 };
 
 /** check-cast, instance-of, new-instance, new-array (0x1f–0x23). */
@@ -198,12 +219,23 @@ struct FieldInstruction
     OperandWidth width;
 };
 
-/** invoke-virtual/super/direct/static/interface and their /range variants (0x6e–0x78). */
+/** invoke-virtual/super/direct/static/interface and their /range variants
+ *  (0x6e–0x72, 0x74–0x78). */
 struct InvokeInstruction
 {
     InstructionBase base;
     uint32_t method_index;
     std::vector<uint16_t> arg_regs; ///< Full register list decoded from 35c/3rc format
+};
+
+/** invoke-polymorphic, invoke-polymorphic/range (0xfa–0xfb): a call through
+ *  a signature-polymorphic method such as MethodHandle.invokeExact. */
+struct InvokePolymorphicInstruction
+{
+    InstructionBase base;
+    uint32_t method_index;          ///< The declared method, e.g. MethodHandle.invokeExact.
+    uint32_t proto_index;           ///< The prototype of this call site, in proto_ids.
+    std::vector<uint16_t> arg_regs; ///< Receiver first, then the arguments (35c/3rc layout).
 };
 
 /** invoke-custom, invoke-custom/range (0xfc–0xfd). */
@@ -212,6 +244,14 @@ struct InvokeCustomInstruction
     InstructionBase base;
     uint32_t call_site_index;
     std::vector<uint16_t> arg_regs;
+};
+
+/** array-length (0x21): the length of the array in `array_reg`. */
+struct ArrayLengthInstruction
+{
+    InstructionBase base;
+    uint8_t dest;
+    uint8_t array_reg;
 };
 
 /** neg-int, not-int, int-to-long, long-to-int, etc. (0x7b–0x8f). */
@@ -248,10 +288,11 @@ using Instruction =
     std::variant<NopInstruction, GotoInstruction, IfInstruction, IfZeroInstruction,
                  SwitchInstruction, ReturnInstruction, ThrowInstruction, MoveInstruction,
                  ConstInstruction, ConstStringInstruction, ConstClassInstruction,
-                 ConstHandleInstruction, TypeInstruction, FilledNewArrayInstruction,
-                 MonitorInstruction, FillArrayInstruction, CompareInstruction, ArrayOpInstruction,
-                 FieldInstruction, InvokeInstruction, InvokeCustomInstruction, UnaryOpInstruction,
-                 BinaryOpInstruction, BinaryLitInstruction>;
+                 ConstMethodHandleInstruction, ConstMethodTypeInstruction, TypeInstruction,
+                 FilledNewArrayInstruction, MonitorInstruction, FillArrayInstruction,
+                 CompareInstruction, ArrayOpInstruction, ArrayLengthInstruction, FieldInstruction,
+                 InvokeInstruction, InvokePolymorphicInstruction, InvokeCustomInstruction,
+                 UnaryOpInstruction, BinaryOpInstruction, BinaryLitInstruction, InvalidInstruction>;
 
 /** Extract the common base fields without std::visit boilerplate. */
 inline const InstructionBase &base_of(const Instruction &insn)
@@ -268,14 +309,16 @@ std::string_view opcode_name(uint8_t opcode);
 
 /** Render one decoded instruction as "<mnemonic> <operands>" (no leading code
  *  offset).  Constant-pool operands appear as raw indices — `string@N`, `type@N`,
- *  `method@N`, `field@N`, `site@N` — because this function has no AnalysisContext to
- *  resolve them; use the analysis layer when you need resolved names. */
+ *  `method@N`, `field@N`, `proto@N`, `method_handle@N`, `site@N` — because this
+ *  function has no AnalysisContext to resolve them; use the analysis layer when
+ *  you need resolved names. */
 std::string to_string(const Instruction &insn);
 
 /** Decode a raw insns[] array (16-bit code units) into typed instructions.
  *
  *  Payload pseudo-instructions (packed-switch/sparse-switch/fill-array-data
  *  data blocks) are detected and skipped — they do not appear in the result.
+ *  An unused opcode becomes an InvalidInstruction one code unit long.
  *
  *  @param insns  Raw code units from CodeItem::insns.
  *  @return       Vector of typed instructions in execution order. */

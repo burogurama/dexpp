@@ -88,10 +88,11 @@ list. `dexpp.to_string` renders one instruction as text.
 `string@12`. It has no context to turn them into names. To get names, use the
 resolved views below.
 
-Each instruction is an object of one of 24 classes, one per family of opcodes:
+Each instruction is an object of one of 28 classes, one per family of opcodes:
 `InvokeInstruction`, `FieldInstruction`, `ConstStringInstruction`,
-`IfInstruction` and so on. Use `isinstance` to tell them apart. Every one has a
-`base` with the fields they all share:
+`IfInstruction` and so on. Use `isinstance` to tell them apart. An opcode the
+format does not use, as in a damaged method, becomes an `InvalidInstruction`.
+Every one has a `base` with the fields they all share:
 
 - `base.offset`: the position in the method, in code units;
 - `base.opcode`: the raw opcode byte (`dexpp.opcode_name` gives its name);

@@ -1,6 +1,7 @@
 package io.github.burogurama.dexpp;
 
 import java.util.Objects;
+import java.util.OptionalInt;
 
 /**
  * {@code move}, {@code move-wide}, {@code move-object} and their {@code /from16} and {@code /16}
@@ -11,15 +12,17 @@ import java.util.Objects;
  * @param opcode the raw opcode byte, from 0 to 255; {@link Dexpp#opcodeName} gives its name
  * @param size the length of the instruction in code units, from 1 to 5
  * @param dest the register written
- * @param src the register read; 0 for the {@code move-result} instructions and {@code
- *     move-exception}, which take their value from the last call or the caught exception
+ * @param src the register read; empty for the {@code move-result} instructions and {@code
+ *     move-exception}, which take their value from the last call or the caught exception and name
+ *     no source register
  * @param width the width of the value moved
  */
 public record MoveInstruction(
-        int offset, int opcode, int size, int dest, int src, OperandWidth width)
+        int offset, int opcode, int size, int dest, OptionalInt src, OperandWidth width)
         implements Instruction {
     /** Checks the parts. */
     public MoveInstruction {
+        Objects.requireNonNull(src, "src");
         Objects.requireNonNull(width, "width");
     }
 }

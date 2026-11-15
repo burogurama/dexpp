@@ -4,8 +4,7 @@ import java.util.List;
 
 /**
  * {@code invoke-virtual}, {@code invoke-super}, {@code invoke-direct}, {@code invoke-static},
- * {@code invoke-interface} and their {@code /range} forms, and {@code invoke-polymorphic}: call a
- * method.
+ * {@code invoke-interface} and their {@code /range} forms: call a method.
  *
  * @param offset the position of the instruction in the method, in 16-bit code units from the start
  *     of the code

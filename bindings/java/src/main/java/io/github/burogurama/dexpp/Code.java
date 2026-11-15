@@ -30,7 +30,7 @@ final class Code {
     private static final int CONST = 8;
     private static final int CONST_STRING = 9;
     private static final int CONST_CLASS = 10;
-    private static final int CONST_HANDLE = 11;
+    private static final int CONST_METHOD_HANDLE = 11;
     private static final int TYPE = 12;
     private static final int FILLED_NEW_ARRAY = 13;
     private static final int MONITOR = 14;
@@ -43,6 +43,10 @@ final class Code {
     private static final int UNARY_OP = 21;
     private static final int BINARY_OP = 22;
     private static final int BINARY_LIT = 23;
+    private static final int CONST_METHOD_TYPE = 24;
+    private static final int INVOKE_POLYMORPHIC = 25;
+    private static final int ARRAY_LENGTH = 26;
+    private static final int INVALID = 27;
 
     // ---- C to Java -------------------------------------------------------------
 
@@ -94,7 +98,9 @@ final class Code {
                             opcode,
                             size,
                             dest(m, b),
-                            Mem.u16(m, b + Layouts.Instruction.SRC),
+                            Mem.bool(m, b + Layouts.Instruction.HAS_SRC)
+                                    ? OptionalInt.of(Mem.u16(m, b + Layouts.Instruction.SRC))
+                                    : OptionalInt.empty(),
                             width(m, b + Layouts.Instruction.WIDTH));
             case CONST ->
                     new ConstInstruction(
@@ -118,13 +124,20 @@ final class Code {
                             size,
                             dest(m, b),
                             Mem.i32(m, b + Layouts.Instruction.TYPE_INDEX));
-            case CONST_HANDLE ->
-                    new ConstHandleInstruction(
+            case CONST_METHOD_HANDLE ->
+                    new ConstMethodHandleInstruction(
                             offset,
                             opcode,
                             size,
                             dest(m, b),
-                            Mem.i32(m, b + Layouts.Instruction.INDEX));
+                            Mem.i32(m, b + Layouts.Instruction.METHOD_HANDLE_INDEX));
+            case CONST_METHOD_TYPE ->
+                    new ConstMethodTypeInstruction(
+                            offset,
+                            opcode,
+                            size,
+                            dest(m, b),
+                            Mem.i32(m, b + Layouts.Instruction.PROTO_INDEX));
             case TYPE ->
                     new TypeInstruction(
                             offset,
@@ -170,6 +183,13 @@ final class Code {
                             Mem.u8(m, b + Layouts.Instruction.INDEX_REG),
                             Mem.bool(m, b + Layouts.Instruction.IS_WRITE),
                             width(m, b + Layouts.Instruction.WIDTH));
+            case ARRAY_LENGTH ->
+                    new ArrayLengthInstruction(
+                            offset,
+                            opcode,
+                            size,
+                            dest(m, b),
+                            Mem.u8(m, b + Layouts.Instruction.ARRAY_REG));
             case FIELD ->
                     new FieldInstruction(
                             offset,
@@ -189,6 +209,14 @@ final class Code {
                             opcode,
                             size,
                             Mem.i32(m, b + Layouts.Instruction.METHOD_INDEX),
+                            args(m, b));
+            case INVOKE_POLYMORPHIC ->
+                    new InvokePolymorphicInstruction(
+                            offset,
+                            opcode,
+                            size,
+                            Mem.i32(m, b + Layouts.Instruction.METHOD_INDEX),
+                            Mem.i32(m, b + Layouts.Instruction.PROTO_INDEX),
                             args(m, b));
             case INVOKE_CUSTOM ->
                     new InvokeCustomInstruction(
@@ -223,6 +251,7 @@ final class Code {
                             dest(m, b),
                             Mem.u16(m, b + Layouts.Instruction.SRC),
                             Mem.i32(m, b + Layouts.Instruction.LITERAL));
+            case INVALID -> new InvalidInstruction(offset, opcode, size);
             // NOP, and a kind this package does not know yet, from a newer library.
             default -> new NopInstruction(offset, opcode, size);
         };
@@ -267,6 +296,7 @@ final class Code {
         int kind =
                 switch (insn) {
                     case NopInstruction unused -> NOP;
+                    case InvalidInstruction unused -> INVALID;
                     case GotoInstruction i -> {
                         setInt(m, Layouts.Instruction.BRANCH_OFFSET, i.branchOffset());
                         yield GOTO;
@@ -317,7 +347,8 @@ final class Code {
                     }
                     case MoveInstruction i -> {
                         setU16(m, Layouts.Instruction.DEST, i.dest());
-                        setU16(m, Layouts.Instruction.SRC, i.src());
+                        setBool(m, Layouts.Instruction.HAS_SRC, i.src().isPresent());
+                        setU16(m, Layouts.Instruction.SRC, i.src().orElse(0));
                         setWidth(m, Layouts.Instruction.WIDTH, i.width());
                         yield MOVE;
                     }
@@ -337,10 +368,15 @@ final class Code {
                         setInt(m, Layouts.Instruction.TYPE_INDEX, i.typeIndex());
                         yield CONST_CLASS;
                     }
-                    case ConstHandleInstruction i -> {
+                    case ConstMethodHandleInstruction i -> {
                         setU16(m, Layouts.Instruction.DEST, i.dest());
-                        setInt(m, Layouts.Instruction.INDEX, i.index());
-                        yield CONST_HANDLE;
+                        setInt(m, Layouts.Instruction.METHOD_HANDLE_INDEX, i.methodHandleIndex());
+                        yield CONST_METHOD_HANDLE;
+                    }
+                    case ConstMethodTypeInstruction i -> {
+                        setU16(m, Layouts.Instruction.DEST, i.dest());
+                        setInt(m, Layouts.Instruction.PROTO_INDEX, i.protoIndex());
+                        yield CONST_METHOD_TYPE;
                     }
                     case TypeInstruction i -> {
                         setInt(m, Layouts.Instruction.TYPE_INDEX, i.typeIndex());
@@ -379,6 +415,11 @@ final class Code {
                         setWidth(m, Layouts.Instruction.WIDTH, i.width());
                         yield ARRAY_OP;
                     }
+                    case ArrayLengthInstruction i -> {
+                        setU16(m, Layouts.Instruction.DEST, i.dest());
+                        setU8(m, Layouts.Instruction.ARRAY_REG, i.arrayReg());
+                        yield ARRAY_LENGTH;
+                    }
                     case FieldInstruction i -> {
                         setInt(m, Layouts.Instruction.FIELD_INDEX, i.fieldIndex());
                         setU8(m, Layouts.Instruction.VALUE_REG, i.valueReg());
@@ -393,6 +434,12 @@ final class Code {
                         setInt(m, Layouts.Instruction.METHOD_INDEX, i.methodIndex());
                         setArgs(arena, m, i.argRegs());
                         yield INVOKE;
+                    }
+                    case InvokePolymorphicInstruction i -> {
+                        setInt(m, Layouts.Instruction.METHOD_INDEX, i.methodIndex());
+                        setInt(m, Layouts.Instruction.PROTO_INDEX, i.protoIndex());
+                        setArgs(arena, m, i.argRegs());
+                        yield INVOKE_POLYMORPHIC;
                     }
                     case InvokeCustomInstruction i -> {
                         setInt(m, Layouts.Instruction.CALL_SITE_INDEX, i.callSiteIndex());

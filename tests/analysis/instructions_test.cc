@@ -1,6 +1,12 @@
 #include <gtest/gtest.h>
 
+#include <format>
+#include <map>
 #include <numeric>
+#include <optional>
+#include <string>
+#include <variant>
+#include <vector>
 
 #include "dex.hpp"
 
@@ -218,4 +224,140 @@ TEST_F(InstructionsTest, InstructionsSpanIsStableAcrossCalls)
     ASSERT_FALSE(s1.empty());
     EXPECT_EQ(s1.data(), s2.data()) << "instructions() should hit the per-context cache";
     EXPECT_EQ(s1.size(), s2.size());
+}
+
+// ---- Shapes the decoder gives each opcode family ----
+
+TEST(InstructionShapesTest, MoveResultAndMoveExceptionHaveNoSource)
+{
+    // move v1, v2 ; move-result v3 ; move-exception v4
+    const std::vector<uint16_t> code = {0x2101, 0x030a, 0x040d};
+    auto insns = decode_instructions(code);
+    ASSERT_EQ(insns.size(), 3u);
+    const auto &move = std::get<MoveInstruction>(insns[0]);
+    EXPECT_EQ(move.dest, 1u);
+    EXPECT_EQ(move.src, std::optional<uint16_t>(2));
+    const auto &result = std::get<MoveInstruction>(insns[1]);
+    EXPECT_EQ(result.dest, 3u);
+    EXPECT_FALSE(result.src.has_value());
+    const auto &exception = std::get<MoveInstruction>(insns[2]);
+    EXPECT_EQ(exception.dest, 4u);
+    EXPECT_FALSE(exception.src.has_value());
+    EXPECT_EQ(to_string(insns[0]), "move v1, v2");
+    EXPECT_EQ(to_string(insns[1]), "move-result v3");
+    EXPECT_EQ(to_string(insns[2]), "move-exception v4");
+}
+
+TEST(InstructionShapesTest, UnusedOpcodeIsInvalid)
+{
+    // unused-3e ; unused-f9 ; return-void
+    const std::vector<uint16_t> code = {0x123e, 0x00f9, 0x000e};
+    auto insns = decode_instructions(code);
+    ASSERT_EQ(insns.size(), 3u);
+    for (std::size_t i = 0; i < 2; ++i) {
+        ASSERT_TRUE(std::holds_alternative<InvalidInstruction>(insns[i])) << i;
+        EXPECT_EQ(base_of(insns[i]).offset, i);
+        EXPECT_EQ(base_of(insns[i]).size, 1u);
+    }
+    EXPECT_EQ(base_of(insns[0]).opcode, 0x3eu);
+    EXPECT_EQ(base_of(insns[1]).opcode, 0xf9u);
+    EXPECT_EQ(to_string(insns[0]), "unused-3e");
+    EXPECT_TRUE(std::holds_alternative<ReturnInstruction>(insns[2]));
+    EXPECT_FALSE(is_terminator(insns[0]));
+}
+
+TEST(InstructionShapesTest, ArrayLength)
+{
+    // array-length v1, v5
+    const std::vector<uint16_t> code = {0x5121};
+    auto insns = decode_instructions(code);
+    ASSERT_EQ(insns.size(), 1u);
+    const auto &length = std::get<ArrayLengthInstruction>(insns[0]);
+    EXPECT_EQ(length.dest, 1u);
+    EXPECT_EQ(length.array_reg, 5u);
+    EXPECT_EQ(to_string(insns[0]), "array-length v1, v5");
+}
+
+// handles.dex (tests/model/handles_fixture_test.cc builds it):
+//   run:    invoke-polymorphic {v4, v5}, MethodHandle.invokeExact, proto
+//           move-result-object v0 ; array-length v1, v5
+//           const-method-handle v2 ; const-method-type v3
+//           invoke-custom {v1} ; return-object v0
+//   spread: invoke-polymorphic/range {v0 .. v5} ; return-void
+class HandlesInstructionsTest : public ::testing::Test
+{
+  protected:
+    void SetUp() override
+    {
+        auto result = AnalysisContext::from_dex("tests/data/handles.dex");
+        ASSERT_TRUE(result.has_value()) << result.error().message;
+        ctx_.emplace(std::move(*result));
+        auto cls = ctx_->find_class("LHandles;");
+        ASSERT_TRUE(cls.has_value());
+        for (const Method &m : cls->methods())
+            methods_.emplace(std::string(m.name()), m);
+    }
+
+    std::optional<AnalysisContext> ctx_;
+    std::map<std::string, Method> methods_;
+};
+
+TEST_F(HandlesInstructionsTest, RunDecodesEveryNewShape)
+{
+    auto insns = methods_.at("run").instructions();
+    ASSERT_EQ(insns.size(), 7u);
+
+    const auto &poly = std::get<InvokePolymorphicInstruction>(insns[0]);
+    EXPECT_EQ(poly.base.opcode, 0xfau);
+    EXPECT_EQ(poly.arg_regs, (std::vector<uint16_t>{4, 5}));
+    EXPECT_EQ(to_string(insns[0]), std::format("invoke-polymorphic method@{} proto@{} {{v4, v5}}",
+                                               poly.method_index, poly.proto_index));
+
+    const auto &result = std::get<MoveInstruction>(insns[1]);
+    EXPECT_FALSE(result.src.has_value());
+
+    const auto &length = std::get<ArrayLengthInstruction>(insns[2]);
+    EXPECT_EQ(length.dest, 1u);
+    EXPECT_EQ(length.array_reg, 5u);
+
+    const auto &handle = std::get<ConstMethodHandleInstruction>(insns[3]);
+    EXPECT_EQ(handle.dest, 2u);
+    EXPECT_EQ(to_string(insns[3]),
+              std::format("const-method-handle v2, method_handle@{}", handle.method_handle_index));
+
+    const auto &type = std::get<ConstMethodTypeInstruction>(insns[4]);
+    EXPECT_EQ(type.dest, 3u);
+    EXPECT_EQ(to_string(insns[4]), std::format("const-method-type v3, proto@{}", type.proto_index));
+
+    EXPECT_TRUE(std::holds_alternative<InvokeCustomInstruction>(insns[5]));
+}
+
+TEST_F(HandlesInstructionsTest, PolymorphicRangeKeepsTheProto)
+{
+    auto run = methods_.at("run").instructions();
+    auto spread = methods_.at("spread").instructions();
+    ASSERT_FALSE(spread.empty());
+    const auto &range = std::get<InvokePolymorphicInstruction>(spread[0]);
+    EXPECT_EQ(range.base.opcode, 0xfbu);
+    EXPECT_EQ(range.arg_regs, (std::vector<uint16_t>{0, 1, 2, 3, 4, 5}));
+    // invokeExact and invoke: two methods; two different call-site prototypes.
+    const auto &poly = std::get<InvokePolymorphicInstruction>(run[0]);
+    EXPECT_NE(range.method_index, poly.method_index);
+    EXPECT_NE(range.proto_index, poly.proto_index);
+}
+
+TEST_F(HandlesInstructionsTest, PolymorphicCallsAreForwardAndReverseReferences)
+{
+    const MethodId invoke_exact{"Ljava/lang/invoke/MethodHandle;", "invokeExact",
+                                "([Ljava/lang/Object;)Ljava/lang/Object;"};
+    auto calls = methods_.at("run").calls();
+    ASSERT_EQ(calls.size(), 1u); // invoke-custom calls no method by name
+    EXPECT_EQ(calls[0].target, invoke_exact);
+    EXPECT_EQ(calls[0].kind, InvokeKind::Polymorphic);
+    EXPECT_EQ(calls[0].code_offset, 0u);
+
+    auto sites = ctx_->xrefs().method_refs(invoke_exact);
+    ASSERT_EQ(sites.size(), 1u);
+    EXPECT_EQ(sites[0].kind, InvokeKind::Polymorphic);
+    EXPECT_EQ(ctx_->xrefs().referrer_id(sites[0].referrer).name, "run");
 }

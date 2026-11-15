@@ -28,7 +28,8 @@ std::vector<detail::InvokeSite> invokes_from_decoder(std::span<const uint16_t> i
         std::visit(
             [&](const auto &i) {
                 using T = std::decay_t<decltype(i)>;
-                if constexpr (std::is_same_v<T, InvokeInstruction>)
+                if constexpr (std::is_same_v<T, InvokeInstruction> ||
+                              std::is_same_v<T, InvokePolymorphicInstruction>)
                     out.push_back(
                         {i.base.offset, i.base.opcode, static_cast<uint16_t>(i.method_index)});
                 else if constexpr (std::is_same_v<T, InvokeCustomInstruction>)
@@ -63,10 +64,10 @@ TEST(InvokeSitesTest, MatchesDecoderOnRealCode)
     for (const char *path :
          {"tests/data/classes.dex", "tests/data/polymorphic.dex", "tests/data/inherit.dex",
           "tests/data/trycatch.dex", "tests/data/shapes.dex", "tests/data/fibonacci.dex",
-          "tests/data/local/AnalysisTest.dex", "tests/data/local/ExceptionHandling.dex",
-          "tests/data/local/StringTests.dex", "tests/data/local/classes.dex",
-          "tests/data/local/InterfaceCls.dex", "tests/data/local/FieldsTest.dex",
-          "tests/data/local/Annotation_classes.dex"}) {
+          "tests/data/handles.dex", "tests/data/local/AnalysisTest.dex",
+          "tests/data/local/ExceptionHandling.dex", "tests/data/local/StringTests.dex",
+          "tests/data/local/classes.dex", "tests/data/local/InterfaceCls.dex",
+          "tests/data/local/FieldsTest.dex", "tests/data/local/Annotation_classes.dex"}) {
         if (missing_local_fixture(path))
             continue;
         auto buf = load_buf(path);

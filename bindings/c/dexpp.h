@@ -722,31 +722,36 @@ DEXPP_C_API void dexpp_field_array_free(DexppField **fields, size_t count);
 /** The kind of a decoded instruction: one per instruction family, the same
  *  families as the C++ and Python APIs. */
 typedef enum DexppInstructionKind {
-    DEXPP_INSN_NOP = 0,               /**< nop (and unused opcodes). */
-    DEXPP_INSN_GOTO = 1,              /**< branch_offset. */
-    DEXPP_INSN_IF = 2,                /**< branch_offset, reg_a, reg_b. */
-    DEXPP_INSN_IF_ZERO = 3,           /**< branch_offset, reg. */
-    DEXPP_INSN_SWITCH = 4,            /**< payload_offset, reg, is_packed, cases. */
-    DEXPP_INSN_RETURN = 5,            /**< has_reg, reg, width. */
-    DEXPP_INSN_THROW = 6,             /**< reg. */
-    DEXPP_INSN_MOVE = 7,              /**< dest, src, width. */
-    DEXPP_INSN_CONST = 8,             /**< dest, value, width. */
-    DEXPP_INSN_CONST_STRING = 9,      /**< dest, string_index. */
-    DEXPP_INSN_CONST_CLASS = 10,      /**< dest, type_index. */
-    DEXPP_INSN_CONST_HANDLE = 11,     /**< dest, index. */
-    DEXPP_INSN_TYPE = 12,             /**< type_index, dest, has_src, src. */
-    DEXPP_INSN_FILLED_NEW_ARRAY = 13, /**< type_index, arg_regs. */
-    DEXPP_INSN_MONITOR = 14,          /**< reg, is_enter. */
-    DEXPP_INSN_FILL_ARRAY = 15,       /**< reg, payload_offset. */
-    DEXPP_INSN_COMPARE = 16,          /**< dest, src_a, src_b, src_width. */
-    DEXPP_INSN_ARRAY_OP = 17,         /**< value_reg, array_reg, index_reg, is_write, width. */
-    DEXPP_INSN_FIELD = 18,            /**< field_index, value_reg, has_object_reg, object_reg,
-                                           is_static, is_write, width. */
-    DEXPP_INSN_INVOKE = 19,           /**< method_index, arg_regs. */
-    DEXPP_INSN_INVOKE_CUSTOM = 20,    /**< call_site_index, arg_regs. */
-    DEXPP_INSN_UNARY_OP = 21,         /**< dest, src, dest_width, src_width. */
-    DEXPP_INSN_BINARY_OP = 22,        /**< dest, src_a, src_b, width. */
-    DEXPP_INSN_BINARY_LIT = 23        /**< dest, src, literal. */
+    DEXPP_INSN_NOP = 0,                  /**< nop. */
+    DEXPP_INSN_GOTO = 1,                 /**< branch_offset. */
+    DEXPP_INSN_IF = 2,                   /**< branch_offset, reg_a, reg_b. */
+    DEXPP_INSN_IF_ZERO = 3,              /**< branch_offset, reg. */
+    DEXPP_INSN_SWITCH = 4,               /**< payload_offset, reg, is_packed, cases. */
+    DEXPP_INSN_RETURN = 5,               /**< has_reg, reg, width. */
+    DEXPP_INSN_THROW = 6,                /**< reg. */
+    DEXPP_INSN_MOVE = 7,                 /**< dest, has_src, src, width. */
+    DEXPP_INSN_CONST = 8,                /**< dest, value, width. */
+    DEXPP_INSN_CONST_STRING = 9,         /**< dest, string_index. */
+    DEXPP_INSN_CONST_CLASS = 10,         /**< dest, type_index. */
+    DEXPP_INSN_CONST_METHOD_HANDLE = 11, /**< dest, method_handle_index. */
+    DEXPP_INSN_TYPE = 12,                /**< type_index, dest, has_src, src. */
+    DEXPP_INSN_FILLED_NEW_ARRAY = 13,    /**< type_index, arg_regs. */
+    DEXPP_INSN_MONITOR = 14,             /**< reg, is_enter. */
+    DEXPP_INSN_FILL_ARRAY = 15,          /**< reg, payload_offset. */
+    DEXPP_INSN_COMPARE = 16,             /**< dest, src_a, src_b, src_width. */
+    DEXPP_INSN_ARRAY_OP = 17,            /**< value_reg, array_reg, index_reg, is_write, width. */
+    DEXPP_INSN_FIELD = 18,               /**< field_index, value_reg, has_object_reg, object_reg,
+                                              is_static, is_write, width. */
+    DEXPP_INSN_INVOKE = 19,              /**< method_index, arg_regs. */
+    DEXPP_INSN_INVOKE_CUSTOM = 20,       /**< call_site_index, arg_regs. */
+    DEXPP_INSN_UNARY_OP = 21,            /**< dest, src, dest_width, src_width. */
+    DEXPP_INSN_BINARY_OP = 22,           /**< dest, src_a, src_b, width. */
+    DEXPP_INSN_BINARY_LIT = 23,          /**< dest, src, literal. */
+    DEXPP_INSN_CONST_METHOD_TYPE = 24,   /**< dest, proto_index. */
+    DEXPP_INSN_INVOKE_POLYMORPHIC = 25,  /**< method_index, proto_index, arg_regs. */
+    DEXPP_INSN_ARRAY_LENGTH = 26,        /**< dest, array_reg. */
+    DEXPP_INSN_INVALID = 27              /**< An opcode the format does not use; only offset,
+                                              opcode (the raw byte) and size (1). */
 } DexppInstructionKind;
 
 /** One case of a switch instruction. */
@@ -776,19 +781,21 @@ typedef struct DexppInstruction
     uint8_t reg_b;                /**< IF: second register compared. */
     uint16_t dest;                /**< The register written. */
     uint16_t src;                 /**< The register read. */
-    int has_src;                  /**< TYPE: 0 for check-cast and new-instance. */
+    int has_src;                  /**< MOVE: 0 for move-result and move-exception. TYPE: 0 for
+                                       check-cast and new-instance. */
     uint8_t src_a;                /**< COMPARE, BINARY_OP: first operand. */
     uint8_t src_b;                /**< COMPARE, BINARY_OP: second operand. */
     int64_t value;                /**< CONST: the constant (bit pattern for floats). */
     int32_t literal;              /**< BINARY_LIT: the constant operand. */
     uint32_t string_index;        /**< CONST_STRING. */
     uint32_t type_index;          /**< CONST_CLASS, TYPE, FILLED_NEW_ARRAY. */
-    uint32_t index;               /**< CONST_HANDLE: method handle or prototype index. */
+    uint32_t method_handle_index; /**< CONST_METHOD_HANDLE: index in the method handle table. */
+    uint32_t proto_index;         /**< CONST_METHOD_TYPE, INVOKE_POLYMORPHIC: prototype index. */
     uint32_t field_index;         /**< FIELD. */
-    uint32_t method_index;        /**< INVOKE. */
+    uint32_t method_index;        /**< INVOKE, INVOKE_POLYMORPHIC. */
     uint32_t call_site_index;     /**< INVOKE_CUSTOM. */
     uint8_t value_reg;            /**< ARRAY_OP, FIELD: the value's register. */
-    uint8_t array_reg;            /**< ARRAY_OP. */
+    uint8_t array_reg;            /**< ARRAY_OP, ARRAY_LENGTH. */
     uint8_t index_reg;            /**< ARRAY_OP. */
     uint8_t object_reg;           /**< FIELD: the object's register. */
     int has_object_reg;           /**< FIELD: 0 for a static field. */
@@ -801,8 +808,8 @@ typedef struct DexppInstruction
     DexppOperandWidth dest_width; /**< UNARY_OP. */
     DexppSwitchCase *cases;       /**< SWITCH: the decoded case table. */
     size_t case_count;            /**< SWITCH: number of cases. */
-    uint16_t *arg_regs;           /**< FILLED_NEW_ARRAY, INVOKE, INVOKE_CUSTOM. */
-    size_t arg_count;             /**< Number of argument registers. */
+    uint16_t *arg_regs; /**< FILLED_NEW_ARRAY, INVOKE, INVOKE_POLYMORPHIC, INVOKE_CUSTOM. */
+    size_t arg_count;   /**< Number of argument registers. */
 } DexppInstruction;
 
 /** The decoded bytecode of a method, in order. Free with

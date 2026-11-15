@@ -36,7 +36,8 @@ func TestInstructions(t *testing.T) {
 	if call, ok := main[1].(InvokeInstruction); !ok || len(call.ArgRegs) != 0 {
 		t.Errorf("main[1] = %#v", main[1])
 	}
-	if move, ok := main[2].(MoveInstruction); !ok || move.Dest != 0 || move.Width != WidthSingle {
+	if move, ok := main[2].(MoveInstruction); !ok || move.Dest != 0 || move.HasSrc ||
+		move.Width != WidthSingle {
 		t.Errorf("main[2] = %#v", main[2])
 	}
 	call, ok := main[3].(InvokeInstruction)
@@ -75,6 +76,43 @@ func TestInstructions(t *testing.T) {
 	}
 }
 
+func TestHandlesAndPolymorphicInstructions(t *testing.T) {
+	// handles.dex, Handles.run: invoke-polymorphic {v4, v5}; move-result-object v0;
+	// array-length v1, v5; const-method-handle v2; const-method-type v3;
+	// invoke-custom {v1}; return-object v0. Handles.spread: invoke-polymorphic/range.
+	ctx := mustDEX(t, "handles.dex")
+	cls := mustClass(t, ctx, "LHandles;")
+	run := mustMethod(t, cls, "run").Instructions()
+	if len(run) != 7 {
+		t.Fatalf("run has %d instructions", len(run))
+	}
+	poly, ok := run[0].(InvokePolymorphicInstruction)
+	if !ok || !slices.Equal(poly.ArgRegs, []uint16{4, 5}) {
+		t.Errorf("run[0] = %#v", run[0])
+	}
+	if move, ok := run[1].(MoveInstruction); !ok || move.HasSrc {
+		t.Errorf("run[1] = %#v", run[1])
+	}
+	if length, ok := run[2].(ArrayLengthInstruction); !ok || length.Dest != 1 || length.ArrayReg != 5 {
+		t.Errorf("run[2] = %#v", run[2])
+	}
+	if handle, ok := run[3].(ConstMethodHandleInstruction); !ok || handle.Dest != 2 {
+		t.Errorf("run[3] = %#v", run[3])
+	}
+	if mt, ok := run[4].(ConstMethodTypeInstruction); !ok || mt.Dest != 3 {
+		t.Errorf("run[4] = %#v", run[4])
+	}
+	spread := mustMethod(t, cls, "spread").Instructions()
+	if r, ok := spread[0].(InvokePolymorphicInstruction); !ok ||
+		!slices.Equal(r.ArgRegs, []uint16{0, 1, 2, 3, 4, 5}) || r.ProtoIndex == poly.ProtoIndex {
+		t.Errorf("spread[0] = %#v", spread[0])
+	}
+	calls := mustMethod(t, cls, "run").Calls()
+	if len(calls) != 1 || calls[0].Kind != InvokePolymorphic || calls[0].Target.Name != "invokeExact" {
+		t.Errorf("Calls = %+v", calls)
+	}
+}
+
 func TestOpcodeNames(t *testing.T) {
 	for op, want := range map[uint8]string{0x00: "nop", 0x1a: "const-string", 0x6e: "invoke-virtual",
 		0x73: "unused-73"} {
@@ -99,7 +137,8 @@ func TestOpcodeNames(t *testing.T) {
 func TestToStringOfEveryInstruction(t *testing.T) {
 	kinds := map[string]bool{}
 	for _, name := range []string{"classes.dex", "fibonacci.dex", "trycatch.dex", "shapes.dex",
-		"polymorphic.dex", "annotated.dex", "inherit.dex", "multistring.dex", "casts.dex"} {
+		"polymorphic.dex", "annotated.dex", "inherit.dex", "multistring.dex", "casts.dex",
+		"handles.dex", "switches.dex"} {
 		ctx := mustDEX(t, name)
 		for _, cls := range ctx.Classes() {
 			for _, m := range cls.Methods() {
@@ -142,7 +181,18 @@ func TestToStringOfHandMadeInstructions(t *testing.T) {
 		{SwitchInstruction{InstructionBase{Opcode: 0x2b, Size: 3}, 8, 1, true,
 			[]SwitchCase{{1, 4}, {2, 6}}}, "packed-switch v1, +8"},
 		// A width outside the two values counts as single.
-		{MoveInstruction{InstructionBase{Opcode: 0x01, Size: 1}, 2, 3, OperandWidth(7)}, "move v2, v3"},
+		{MoveInstruction{InstructionBase{Opcode: 0x01, Size: 1}, 2, 3, true, OperandWidth(7)},
+			"move v2, v3"},
+		{MoveInstruction{InstructionBase{Opcode: 0x0d, Size: 1}, 4, 0, false, WidthSingle},
+			"move-exception v4"},
+		{InvalidInstruction{InstructionBase{Opcode: 0x3e, Size: 1}}, "unused-3e"},
+		{ArrayLengthInstruction{InstructionBase{Opcode: 0x21, Size: 1}, 1, 5}, "array-length v1, v5"},
+		{InvokePolymorphicInstruction{InstructionBase{Opcode: 0xfa, Size: 4}, 5, 2, []uint16{4, 5}},
+			"invoke-polymorphic method@5 proto@2 {v4, v5}"},
+		{ConstMethodHandleInstruction{InstructionBase{Opcode: 0xfe, Size: 2}, 2, 7},
+			"const-method-handle v2, method_handle@7"},
+		{ConstMethodTypeInstruction{InstructionBase{Opcode: 0xff, Size: 2}, 3, 1},
+			"const-method-type v3, proto@1"},
 	} {
 		if got := ToString(c.insn); got != c.want {
 			t.Errorf("ToString(%#v) = %q, want %q", c.insn, got, c.want)

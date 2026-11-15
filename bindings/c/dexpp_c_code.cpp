@@ -43,6 +43,9 @@ DexppInstruction instruction(const dex::Instruction &insn)
             if constexpr (std::is_same_v<T, dex::NopInstruction>) {
                 out.kind = DEXPP_INSN_NOP;
             }
+            else if constexpr (std::is_same_v<T, dex::InvalidInstruction>) {
+                out.kind = DEXPP_INSN_INVALID;
+            }
             else if constexpr (std::is_same_v<T, dex::GotoInstruction>) {
                 out.kind = DEXPP_INSN_GOTO;
                 out.branch_offset = i.branch_offset;
@@ -81,7 +84,8 @@ DexppInstruction instruction(const dex::Instruction &insn)
             else if constexpr (std::is_same_v<T, dex::MoveInstruction>) {
                 out.kind = DEXPP_INSN_MOVE;
                 out.dest = i.dest;
-                out.src = i.src;
+                out.has_src = i.src.has_value() ? 1 : 0;
+                out.src = i.src.value_or(0);
                 out.width = operand_width(i.width);
             }
             else if constexpr (std::is_same_v<T, dex::ConstInstruction>) {
@@ -100,10 +104,15 @@ DexppInstruction instruction(const dex::Instruction &insn)
                 out.dest = i.dest;
                 out.type_index = i.type_index;
             }
-            else if constexpr (std::is_same_v<T, dex::ConstHandleInstruction>) {
-                out.kind = DEXPP_INSN_CONST_HANDLE;
+            else if constexpr (std::is_same_v<T, dex::ConstMethodHandleInstruction>) {
+                out.kind = DEXPP_INSN_CONST_METHOD_HANDLE;
                 out.dest = i.dest;
-                out.index = i.index;
+                out.method_handle_index = i.method_handle_index;
+            }
+            else if constexpr (std::is_same_v<T, dex::ConstMethodTypeInstruction>) {
+                out.kind = DEXPP_INSN_CONST_METHOD_TYPE;
+                out.dest = i.dest;
+                out.proto_index = i.proto_index;
             }
             else if constexpr (std::is_same_v<T, dex::TypeInstruction>) {
                 out.kind = DEXPP_INSN_TYPE;
@@ -142,6 +151,11 @@ DexppInstruction instruction(const dex::Instruction &insn)
                 out.is_write = i.is_write ? 1 : 0;
                 out.width = operand_width(i.width);
             }
+            else if constexpr (std::is_same_v<T, dex::ArrayLengthInstruction>) {
+                out.kind = DEXPP_INSN_ARRAY_LENGTH;
+                out.dest = i.dest;
+                out.array_reg = i.array_reg;
+            }
             else if constexpr (std::is_same_v<T, dex::FieldInstruction>) {
                 out.kind = DEXPP_INSN_FIELD;
                 out.field_index = i.field_index;
@@ -155,6 +169,12 @@ DexppInstruction instruction(const dex::Instruction &insn)
             else if constexpr (std::is_same_v<T, dex::InvokeInstruction>) {
                 out.kind = DEXPP_INSN_INVOKE;
                 out.method_index = i.method_index;
+                fill_regs(out, i.arg_regs);
+            }
+            else if constexpr (std::is_same_v<T, dex::InvokePolymorphicInstruction>) {
+                out.kind = DEXPP_INSN_INVOKE_POLYMORPHIC;
+                out.method_index = i.method_index;
+                out.proto_index = i.proto_index;
                 fill_regs(out, i.arg_regs);
             }
             else if constexpr (std::is_same_v<T, dex::InvokeCustomInstruction>) {
@@ -208,6 +228,8 @@ std::optional<dex::Instruction> instruction(const DexppInstruction &in)
     switch (raw_enum(in.kind)) {
     case DEXPP_INSN_NOP:
         return dex::NopInstruction{base};
+    case DEXPP_INSN_INVALID:
+        return dex::InvalidInstruction{base};
     case DEXPP_INSN_GOTO:
         return dex::GotoInstruction{base, in.branch_offset};
     case DEXPP_INSN_IF:
@@ -228,15 +250,19 @@ std::optional<dex::Instruction> instruction(const DexppInstruction &in)
     case DEXPP_INSN_THROW:
         return dex::ThrowInstruction{base, in.reg};
     case DEXPP_INSN_MOVE:
-        return dex::MoveInstruction{base, in.dest, in.src, operand_width(in.width)};
+        return dex::MoveInstruction{
+            base, in.dest, in.has_src != 0 ? std::optional<uint16_t>(in.src) : std::nullopt,
+            operand_width(in.width)};
     case DEXPP_INSN_CONST:
         return dex::ConstInstruction{base, u8(in.dest), in.value, operand_width(in.width)};
     case DEXPP_INSN_CONST_STRING:
         return dex::ConstStringInstruction{base, u8(in.dest), in.string_index};
     case DEXPP_INSN_CONST_CLASS:
         return dex::ConstClassInstruction{base, u8(in.dest), in.type_index};
-    case DEXPP_INSN_CONST_HANDLE:
-        return dex::ConstHandleInstruction{base, u8(in.dest), in.index};
+    case DEXPP_INSN_CONST_METHOD_HANDLE:
+        return dex::ConstMethodHandleInstruction{base, u8(in.dest), in.method_handle_index};
+    case DEXPP_INSN_CONST_METHOD_TYPE:
+        return dex::ConstMethodTypeInstruction{base, u8(in.dest), in.proto_index};
     case DEXPP_INSN_TYPE:
         return dex::TypeInstruction{base, in.type_index, u8(in.dest),
                                     in.has_src != 0 ? std::optional<uint8_t>(u8(in.src))
@@ -250,6 +276,8 @@ std::optional<dex::Instruction> instruction(const DexppInstruction &in)
     case DEXPP_INSN_COMPARE:
         return dex::CompareInstruction{base, u8(in.dest), in.src_a, in.src_b,
                                        operand_width(in.src_width)};
+    case DEXPP_INSN_ARRAY_LENGTH:
+        return dex::ArrayLengthInstruction{base, u8(in.dest), in.array_reg};
     case DEXPP_INSN_ARRAY_OP:
         return dex::ArrayOpInstruction{base,         in.value_reg,     in.array_reg,
                                        in.index_reg, in.is_write != 0, operand_width(in.width)};
@@ -264,6 +292,9 @@ std::optional<dex::Instruction> instruction(const DexppInstruction &in)
                                      operand_width(in.width)};
     case DEXPP_INSN_INVOKE:
         return dex::InvokeInstruction{base, in.method_index, regs_of(in)};
+    case DEXPP_INSN_INVOKE_POLYMORPHIC:
+        return dex::InvokePolymorphicInstruction{base, in.method_index, in.proto_index,
+                                                 regs_of(in)};
     case DEXPP_INSN_INVOKE_CUSTOM:
         return dex::InvokeCustomInstruction{base, in.call_site_index, regs_of(in)};
     case DEXPP_INSN_UNARY_OP:

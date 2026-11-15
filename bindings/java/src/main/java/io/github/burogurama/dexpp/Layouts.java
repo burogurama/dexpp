@@ -251,7 +251,8 @@ final class Layouts {
         static final long LITERAL = B.i32("literal");
         static final long STRING_INDEX = B.i32("string_index");
         static final long TYPE_INDEX = B.i32("type_index");
-        static final long INDEX = B.i32("index");
+        static final long METHOD_HANDLE_INDEX = B.i32("method_handle_index");
+        static final long PROTO_INDEX = B.i32("proto_index");
         static final long FIELD_INDEX = B.i32("field_index");
         static final long METHOD_INDEX = B.i32("method_index");
         static final long CALL_SITE_INDEX = B.i32("call_site_index");
