@@ -276,6 +276,21 @@
   this for every class in the default package. The comment on
   `dexpp_class_package` in `dexpp.h` also said the package comes back as
   `pkg.sub`; it comes back as `pkg/sub`, and the comment now says so.
+- A class defined in more than one loaded DEX file now gets one answer
+  everywhere: the first definition, in load order (for an APK, `classes.dex`,
+  then `classes2.dex`, and so on). This is what Android does: an app's class
+  loader searches its DEX files in that order and stops at the first one that
+  defines the class (`DexPathList.findClass`, and
+  `ClassLinker::FindClassInBaseDexClassLoaderClassPath` in ART). Before,
+  `find_class` returned the first definition, the call graph's `method_for`
+  returned the last one and added the edges of every definition's code, and
+  the class hierarchy took the superclass of the last definition and the
+  interfaces of all of them. Now the call graph, the class hierarchy and the
+  cross-references use only the first definition, as `find_class` already
+  did: a later definition adds no node, no edge, no supertype and no
+  cross-reference. `classes()` still lists every definition. The call-graph
+  documentation said "the last definition wins, as on Android"; that was
+  wrong, and it now describes the rule above.
 
 ### C++ API
 

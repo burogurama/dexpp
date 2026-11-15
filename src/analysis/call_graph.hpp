@@ -123,9 +123,14 @@ struct CallNode
  *  MethodHandle target only — distinct call-site shapes through the same
  *  MethodHandle.invoke collapse into one node.
  *
- *  Duplicate definitions (same MethodId in multiple loaded DEX files) follow
- *  Android's last-loaded-wins rule: `method_for()` resolves to the most
- *  recently registered definition.
+ *  A class defined in more than one loaded DEX file (or twice in one) follows
+ *  Android's rule: the first definition wins, in load order (multidex order
+ *  for an APK: classes.dex, classes2.dex, ...).  Only that definition's
+ *  methods are nodes with `resolved == true`, `method_for()` returns that
+ *  definition's method, and only its code adds edges; the methods and code
+ *  of a later definition are left out, as Android never loads them.  This is
+ *  the definition `AnalysisContext::find_class()` returns, and the class
+ *  hierarchy and the cross-references follow the same rule.
  *
  *  Move-only: copying a graph would deep-copy all node/edge vectors. */
 class CallGraph

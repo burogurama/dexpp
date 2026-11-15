@@ -420,6 +420,9 @@ namespace detail {
 
 void AnalysisContextImpl::build_class_index() const
 {
+    // DEX files in load order, class_defs in file order, and emplace keeps
+    // the first entry for a key: the first definition of a class wins (see
+    // is_winning_definition).
     for (std::size_t i = 0; i < dex_files_vec.size(); ++i) {
         const auto &dex = dex_files_vec[i];
         for (uint32_t j = 0; j < static_cast<uint32_t>(dex.class_defs().size()); ++j) {
@@ -428,6 +431,16 @@ void AnalysisContextImpl::build_class_index() const
                                 std::make_pair(i, j));
         }
     }
+}
+
+bool AnalysisContextImpl::is_winning_definition(std::size_t dex_idx, uint32_t class_def_idx) const
+{
+    const auto class_defs = dex_files_vec[dex_idx].class_defs();
+    if (class_def_idx >= class_defs.size())
+        return false;
+    auto winner =
+        find_class_index(type_descriptor_of(dex_idx, class_defs[class_def_idx].class_idx));
+    return winner.has_value() && winner->first == dex_idx && winner->second == class_def_idx;
 }
 
 std::span<const uint8_t> AnalysisContextImpl::buffer_of(std::size_t dex_idx) const
@@ -583,7 +596,7 @@ AnalysisContextImpl::find_class_index(std::string_view descriptor) const
 {
     std::call_once(class_index_flag, [this] { build_class_index(); });
 
-    auto it = class_index.find(std::string(descriptor));
+    auto it = class_index.find(descriptor);
     if (it == class_index.end())
         return std::nullopt;
     return it->second;

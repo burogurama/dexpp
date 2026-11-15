@@ -35,6 +35,10 @@ are unknown: the chain stops there.
 A query about a descriptor the hierarchy has never seen returns an empty list,
 or `False`.
 
+When a class is defined in more than one loaded file, its superclass and
+interfaces come from the first definition only, the one `find_class` returns.
+Android loads that definition and never the later ones.
+
 ## Cross-references
 
 `ctx.xrefs` answers "who uses this". It indexes four kinds of use:
@@ -138,3 +142,6 @@ descriptor is the array type, such as `[I`.
 - The operands of `const-method-handle` and `const-method-type`.
 - Types that appear only in a signature, a field type or an annotation. Only
   instructions are indexed.
+- The code of a later definition of a class that is defined in more than one
+  loaded file. Only the first definition, the one `find_class` returns, is
+  indexed, because Android never loads the others.

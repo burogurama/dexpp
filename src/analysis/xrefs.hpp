@@ -78,6 +78,11 @@ struct MethodXref
  *  instruction's code-unit offset.  `referrer_method()` materializes a Method
  *  handle on demand.
  *
+ *  When a class is defined in more than one loaded DEX file, only the code of
+ *  its first definition is indexed: the one `AnalysisContext::find_class()`
+ *  returns, and the one Android loads.  The methods of a later definition
+ *  never run, so they are not referrers.
+ *
  *  Method references are literal: each invoke site is indexed under its
  *  *declared* target MethodId, with no class-hierarchy dispatch (use
  *  `AnalysisContext::call_graph()` — `dispatch_targets()`, `callers()` — for

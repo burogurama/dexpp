@@ -74,7 +74,9 @@ class AnalysisContext
     from_apk_buffer(std::span<const uint8_t> apk_bytes, const std::string &label = "<apk>",
                     const ApkLoadOptions &options = {});
 
-    /** All classes across every loaded DEX file, in file / definition order. */
+    /** All classes across every loaded DEX file, in file / definition order.
+     *  A class defined in more than one DEX file is listed once per
+     *  definition; find_class() says which definition the analysis uses. */
     [[nodiscard]] std::vector<Class> classes() const;
 
     /** Every string in every loaded DEX's string pool, in (dex, string-index)
@@ -88,7 +90,15 @@ class AnalysisContext
      *  one DEX appears once per DEX. */
     [[nodiscard]] std::vector<std::string_view> strings() const;
 
-    /** Locate a class by its 'L...;' descriptor; std::nullopt if not present. */
+    /** Locate a class by its 'L...;' descriptor; std::nullopt if not present.
+     *
+     *  When several loaded DEX files define the class, the first definition
+     *  wins: the one in the earliest DEX file, in load order (multidex order
+     *  for an APK: classes.dex, classes2.dex, ...).  Android does the same:
+     *  an app's class loader searches its DEX files in that order and stops
+     *  at the first one that defines the class, so a later definition is
+     *  never loaded.  The call graph, the class hierarchy and the
+     *  cross-references use this same definition and ignore the others. */
     [[nodiscard]] std::optional<Class> find_class(std::string_view descriptor) const;
 
     /** Whole-program call graph for every defined method across all loaded

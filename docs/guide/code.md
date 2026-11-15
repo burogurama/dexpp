@@ -29,6 +29,13 @@ order: `classes.dex`, `classes2.dex`, `classes3.dex`, and so on.
   than once.
 - `ctx.find_class(descriptor)` returns one class, or `None`. `dexpp.Class | None`
   is its type, so the example checks the result before it uses it.
+- A class can be defined in more than one loaded file. Then `classes()` lists
+  every definition, and `find_class` returns the first one: the definition in
+  the earliest file, in load order. Android does the same. An app's class
+  loader searches its DEX files in multidex order and stops at the first one
+  that defines the class, so a later definition is never loaded. The call
+  graph, the class hierarchy and the cross-references also use only the first
+  definition.
 - `cls.superclass` and `cls.interfaces` are `ClassRef` values, not classes.
   The superclass is often a framework class that is not in the file, so a
   reference only carries the descriptor. Call `ref.resolve()` to get the

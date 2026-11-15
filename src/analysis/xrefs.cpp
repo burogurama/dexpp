@@ -126,6 +126,10 @@ Xrefs build_xrefs(std::shared_ptr<const detail::AnalysisContextImpl> impl)
     for (std::size_t i = 0; i < impl->dex_files().size(); ++i) {
         const auto &dex = impl->dex_files()[i];
         for (uint32_t j = 0; j < static_cast<uint32_t>(dex.class_defs().size()); ++j) {
+            // Only the definition a class loader would load: the code of a
+            // later definition of the same class never runs.
+            if (!impl->is_winning_definition(i, j))
+                continue;
             const auto *cd = impl->get_class_data(i, dex.class_defs()[j].class_data_off);
             if (!cd)
                 continue;
