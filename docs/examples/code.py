@@ -72,6 +72,20 @@ for block in cfg.blocks:
     print(f"block {block.index} [{block.start_offset:#x}, {block.end_offset:#x})", edges)
 # --8<-- [end:cfg]
 
+# --8<-- [start:handlers]
+parse_ctx: dexpp.AnalysisContext = dexpp.AnalysisContext.from_dex("tests/data/trycatch.dex")
+parse_class: dexpp.Class | None = parse_ctx.find_class("LTryCatch;")
+assert parse_class is not None
+safe_parse: dexpp.Method = next(m for m in parse_class.methods if m.name == "safeParse")
+
+for block in safe_parse.cfg.blocks:
+    for edge in block.successors:
+        if edge.kind is dexpp.CfgEdgeKind.EXCEPTION:
+            print(f"block {block.index} -> {edge.target_block}: catches {edge.catch_type}")
+        elif edge.kind is dexpp.CfgEdgeKind.EXCEPTION_CATCH_ALL:
+            print(f"block {block.index} -> {edge.target_block}: catches everything")
+# --8<-- [end:handlers]
+
 # --8<-- [start:try]
 try_catch_ctx: dexpp.AnalysisContext = dexpp.AnalysisContext.from_dex("tests/data/trycatch.dex")
 try_catch: dexpp.Class | None = try_catch_ctx.find_class("LTryCatch;")

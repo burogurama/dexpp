@@ -118,6 +118,31 @@ aliases.
       `DexppFieldId`.
     - Go and Java now get each identity with one call to C, instead of one
       call for each part.
+- Breaking: a control-flow-graph edge no longer has a `label`. The label was
+  one optional integer with two meanings: the case key of a switch-case edge,
+  or, on an exception edge, the caught type as a raw index into one DEX
+  file's type table, with 4294967295 for a handler that catches everything.
+  No public call could turn that index into a name. Now:
+    - `case_key` is the case key, set only for `SWITCH_CASE` edges.
+    - `catch_type` is the descriptor of the caught exception class, such as
+      `"Ljava/io/IOException;"`, set only for `EXCEPTION` edges.
+    - A handler that catches everything (how Java compiles `finally`) gets
+      edges of a new kind, `EXCEPTION_CATCH_ALL`, with no catch type.
+      `EXCEPTION` edges now always go to a handler of one class. A switch
+      already worked this way: `SWITCH_DEFAULT` is its own kind, apart from
+      `SWITCH_CASE`.
+
+  In C++ these are `CfgEdge::case_key` (`std::optional<int32_t>`),
+  `CfgEdge::catch_type` (`std::optional<std::string_view>`, valid as long as
+  the context) and `CfgEdgeKind::ExceptionCatchAll`. In Python,
+  `CfgEdge.case_key`, `CfgEdge.catch_type` and
+  `CfgEdgeKind.EXCEPTION_CATCH_ALL`. In C, `DexppCfgEdge.case_key`,
+  `DexppCfgEdge.catch_type` (a string the edge owns, freed by
+  `dexpp_basic_block_array_free`) and `DEXPP_CFG_EXCEPTION_CATCH_ALL` replace
+  `has_label` and `label`. In Go, `CfgEdge.CaseKey`, `CfgEdge.CatchType` and
+  `CfgExceptionCatchAll` replace `Label` and `HasLabel`. In Java,
+  `CfgEdge.caseKey()` (an `OptionalInt`), `CfgEdge.catchType()` (an
+  `Optional<String>`) and `CfgEdgeKind.EXCEPTION_CATCH_ALL` replace `label()`.
 - Breaking: a call-graph node now has a `kind` instead of the `resolved`
   flag. The flag mixed two different cases: an `invoke-custom` call site was
   an unresolved node, like a framework method, with a made-up identity of the

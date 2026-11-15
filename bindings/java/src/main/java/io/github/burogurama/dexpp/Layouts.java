@@ -280,8 +280,8 @@ final class Layouts {
         private static final Builder B = new Builder();
         static final long TARGET_BLOCK = B.i32("target_block");
         static final long KIND = B.i32("kind");
-        static final long HAS_LABEL = B.i32("has_label");
-        static final long LABEL = B.i64("label");
+        static final long CASE_KEY = B.i32("case_key");
+        static final long CATCH_TYPE = B.ptr("catch_type");
         static final StructLayout LAYOUT = B.build("DexppCfgEdge");
     }
 

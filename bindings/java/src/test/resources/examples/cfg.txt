@@ -1,4 +1,4 @@
-block 0 [0, 1) -> 1 (FALLTHROUGH) -> 2 (EXCEPTION)
+block 0 [0, 1) -> 1 (FALLTHROUGH) -> 2 (EXCEPTION Ljava/lang/ArithmeticException;)
 block 1 [1, 2)
 block 2 [2, 5)
 try [0, 1) catches Ljava/lang/ArithmeticException; at 2

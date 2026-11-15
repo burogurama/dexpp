@@ -212,9 +212,11 @@ typedef enum DexppCfgEdgeKind {
     DEXPP_CFG_GOTO = 1,
     DEXPP_CFG_BRANCH_TAKEN = 2,
     DEXPP_CFG_BRANCH_NOT_TAKEN = 3,
-    DEXPP_CFG_SWITCH_CASE = 4, /**< The edge's label is the case key. */
+    DEXPP_CFG_SWITCH_CASE = 4, /**< One case of a switch; the edge's case_key is its key. */
     DEXPP_CFG_SWITCH_DEFAULT = 5,
-    DEXPP_CFG_EXCEPTION = 6 /**< The label is the caught type index, or 0xFFFFFFFF. */
+    DEXPP_CFG_EXCEPTION = 6, /**< To the handler of one exception class; the edge's catch_type
+                                  names it. */
+    DEXPP_CFG_EXCEPTION_CATCH_ALL = 7 /**< To a handler that catches every exception. */
 } DexppCfgEdgeKind;
 
 /** What an instruction does with the type it names. */
@@ -815,9 +817,9 @@ typedef struct DexppCfgEdge
 {
     uint32_t target_block; /**< Index of the block it leads to. */
     DexppCfgEdgeKind kind; /**< Why execution can go along it. */
-    int has_label;         /**< 1 for SWITCH_CASE and EXCEPTION edges. */
-    int64_t label;         /**< The case key, or the caught type index (0xFFFFFFFF for
-                                catch-all). */
+    int32_t case_key;      /**< SWITCH_CASE: the case key; 0 for every other kind. */
+    char *catch_type;      /**< EXCEPTION: descriptor of the caught exception class; NULL for
+                                every other kind. */
 } DexppCfgEdge;
 
 /** A run of instructions entered at its first and left at its last one. */
@@ -840,7 +842,7 @@ typedef struct DexppBasicBlock
  *  dexpp_basic_block_array_free(). */
 DEXPP_C_API DexppBasicBlock *dexpp_method_cfg(const DexppMethod *m, size_t *count);
 
-/** Free an array of basic blocks. Accepts NULL. */
+/** Free an array of basic blocks and the edges they own. Accepts NULL. */
 DEXPP_C_API void dexpp_basic_block_array_free(DexppBasicBlock *blocks, size_t count);
 
 /** @} */

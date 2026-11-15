@@ -166,11 +166,27 @@ instructions that is always executed from its first instruction to its last.
   `method.instructions` belong to the block.
 - `block.successors` are the outgoing edges. An edge has a `target_block`
   index and a `kind`: `FALLTHROUGH`, `GOTO`, `BRANCH_TAKEN`,
-  `BRANCH_NOT_TAKEN`, `SWITCH_CASE`, `SWITCH_DEFAULT` or `EXCEPTION`.
+  `BRANCH_NOT_TAKEN`, `SWITCH_CASE`, `SWITCH_DEFAULT`, `EXCEPTION` or
+  `EXCEPTION_CATCH_ALL`.
 - `block.predecessors` are the indices of the blocks that lead here.
 - `block.is_handler_entry` is true for the first block of a catch handler.
 
 A block with no successors ends the method: it returns or throws.
+
+Two kinds of edge carry one more value. A `SWITCH_CASE` edge has a `case_key`:
+the value that case of the switch matches. An `EXCEPTION` edge goes to the
+handler of one exception class, and its `catch_type` is the descriptor of that
+class. An `EXCEPTION_CATCH_ALL` edge goes to a handler that catches every
+exception, which is how Java compiles `finally`, so it has no `catch_type`.
+On every other edge both values are `None`.
+
+```python
+--8<-- "code.py:handlers"
+```
+
+```text
+--8<-- "output/code.handlers.txt"
+```
 
 ## Try blocks
 

@@ -74,6 +74,7 @@ class CfgEdgeKind(_enum.Enum):
     SWITCH_CASE = 4
     SWITCH_DEFAULT = 5
     EXCEPTION = 6
+    EXCEPTION_CATCH_ALL = 7
 
 
 class TypeUseKind(_enum.Enum):
@@ -137,7 +138,8 @@ static_assert(static_cast<int>(dex::CfgEdgeKind::Fallthrough) == 0 &&
               static_cast<int>(dex::CfgEdgeKind::BranchNotTaken) == 3 &&
               static_cast<int>(dex::CfgEdgeKind::SwitchCase) == 4 &&
               static_cast<int>(dex::CfgEdgeKind::SwitchDefault) == 5 &&
-              static_cast<int>(dex::CfgEdgeKind::Exception) == 6);
+              static_cast<int>(dex::CfgEdgeKind::Exception) == 6 &&
+              static_cast<int>(dex::CfgEdgeKind::ExceptionCatchAll) == 7);
 static_assert(static_cast<int>(dex::TypeUseKind::ConstClass) == 0 &&
               static_cast<int>(dex::TypeUseKind::CheckCast) == 1 &&
               static_cast<int>(dex::TypeUseKind::InstanceOf) == 2 &&

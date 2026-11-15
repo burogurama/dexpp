@@ -2,7 +2,12 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <optional>
+#include <set>
 #include <span>
+#include <string>
+#include <string_view>
+#include <utility>
 #include <vector>
 
 #include "../raw/test_utils.hpp"
@@ -17,13 +22,20 @@ using dex::raw::CodeItem;
 
 namespace {
 
+// The type resolver of the tests that build a Cfg without a context: type
+// index 0 is IOException, every other index is unknown.
+std::string_view test_type_name(uint32_t type_idx)
+{
+    return type_idx == 0 ? "Ljava/io/IOException;" : "";
+}
+
 // Build a Cfg from a synthetic insns vector with no try/catch blocks.
 Cfg build_synthetic(std::vector<uint16_t> insns)
 {
     CodeItem code{};
     code.insns = std::move(insns);
     auto decoded = decode_instructions(std::span<const uint16_t>(code.insns));
-    return detail::build_cfg(code, decoded);
+    return detail::build_cfg(code, decoded, test_type_name);
 }
 
 inline void push_s32(std::vector<uint16_t> &v, int32_t x)
@@ -41,7 +53,7 @@ TEST(CfgTest, EmptyCodeItemEmptyCfg)
 {
     CodeItem code{};
     auto decoded = decode_instructions(std::span<const uint16_t>(code.insns));
-    auto cfg = detail::build_cfg(code, decoded);
+    auto cfg = detail::build_cfg(code, decoded, test_type_name);
     EXPECT_TRUE(cfg.empty());
 }
 
@@ -90,21 +102,23 @@ TEST(CfgTest, SwitchCasesAndDefault)
 
     // Three normal-flow successors out of the switch block.
     int n_case = 0, n_default = 0;
-    std::vector<int64_t> case_keys;
+    std::vector<int32_t> case_keys;
     for (const auto &e : entry.successors) {
+        EXPECT_FALSE(e.catch_type.has_value());
         if (e.kind == CfgEdgeKind::SwitchCase) {
             ++n_case;
-            ASSERT_TRUE(e.label.has_value());
-            case_keys.push_back(*e.label);
+            ASSERT_TRUE(e.case_key.has_value());
+            case_keys.push_back(*e.case_key);
         }
         else if (e.kind == CfgEdgeKind::SwitchDefault) {
             ++n_default;
+            EXPECT_FALSE(e.case_key.has_value());
         }
     }
     EXPECT_EQ(n_case, 2);
     EXPECT_EQ(n_default, 1);
     std::sort(case_keys.begin(), case_keys.end());
-    EXPECT_EQ(case_keys, (std::vector<int64_t>{10, 11}));
+    EXPECT_EQ(case_keys, (std::vector<int32_t>{10, 11}));
 
     // SwitchCase targets must be the blocks at offsets 5 and 7.
     const auto *blk5 = cfg.block_at_offset(5);
@@ -163,15 +177,17 @@ TEST(CfgTest, ThrowInTryNoFallthrough)
     code.handler_byte_offsets.push_back(0);
 
     auto decoded = decode_instructions(std::span<const uint16_t>(code.insns));
-    auto cfg = detail::build_cfg(code, decoded);
+    auto cfg = detail::build_cfg(code, decoded, test_type_name);
     ASSERT_FALSE(cfg.empty());
 
     const BasicBlock *throw_blk = cfg.block_at_offset(0);
     ASSERT_NE(throw_blk, nullptr);
 
-    // Throw block has no normal successors — only the Exception edge.
+    // Throw block has no normal successors — only the catch-all edge.
     ASSERT_EQ(throw_blk->successors.size(), 1u);
-    EXPECT_EQ(throw_blk->successors[0].kind, CfgEdgeKind::Exception);
+    EXPECT_EQ(throw_blk->successors[0].kind, CfgEdgeKind::ExceptionCatchAll);
+    EXPECT_FALSE(throw_blk->successors[0].catch_type.has_value());
+    EXPECT_FALSE(throw_blk->successors[0].case_key.has_value());
 
     const BasicBlock *handler_blk = cfg.block_at_offset(1);
     ASSERT_NE(handler_blk, nullptr);
@@ -200,7 +216,8 @@ CfgBundle load_trycatch_cfg(uint32_t code_off)
     CfgBundle out;
     out.code = std::move(*ci);
     out.decoded = decode_instructions(std::span<const uint16_t>(out.code.insns));
-    out.cfg = detail::build_cfg(out.code, std::span<const Instruction>(out.decoded));
+    out.cfg =
+        detail::build_cfg(out.code, std::span<const Instruction>(out.decoded), test_type_name);
     return out;
 }
 
@@ -253,7 +270,7 @@ TEST(CfgTest, GotoSingleSuccessor)
         for (const auto &e : blk.successors) {
             if (e.kind == CfgEdgeKind::Goto)
                 ++goto_edges;
-            if (e.kind != CfgEdgeKind::Exception)
+            if (e.kind != CfgEdgeKind::Exception && e.kind != CfgEdgeKind::ExceptionCatchAll)
                 ++normal_edges;
         }
         if (goto_edges == 1) {
@@ -292,6 +309,110 @@ TEST(CfgTest, DivideHasExceptionEdgeToHandler)
     }
     EXPECT_GT(exception_edges, 0);
     EXPECT_GT(handler_blocks, 0);
+}
+
+TEST(CfgTest, TypedAndCatchAllHandlers)
+{
+    // One throw covered by a typed handler (type index 0), then a catch-all.
+    // An unknown type index gives an empty descriptor.
+    //   pos 0: throw v0
+    //   pos 1: return-void   ← IOException handler
+    //   pos 2: return-void   ← handler for type index 7, which is unknown
+    //   pos 3: return-void   ← catch-all
+    CodeItem code{};
+    code.insns = {0x0027, 0x000e, 0x000e, 0x000e};
+    raw::TryItem t{};
+    t.start_addr = 0;
+    t.insn_count = 1;
+    t.handler_off = 0;
+    code.tries.push_back(t);
+    raw::EncodedCatchHandler h{};
+    h.handlers.push_back(raw::EncodedTypePair{0, 1});
+    h.handlers.push_back(raw::EncodedTypePair{7, 2});
+    h.catch_all_addr = 3u;
+    code.handlers.push_back(std::move(h));
+    code.handler_byte_offsets.push_back(0);
+
+    auto decoded = decode_instructions(std::span<const uint16_t>(code.insns));
+    auto cfg = detail::build_cfg(code, decoded, test_type_name);
+    const auto &edges = cfg.entry().successors;
+    ASSERT_EQ(edges.size(), 3u);
+    EXPECT_EQ(edges[0].kind, CfgEdgeKind::Exception);
+    EXPECT_EQ(edges[0].catch_type, std::optional<std::string_view>("Ljava/io/IOException;"));
+    EXPECT_EQ(edges[0].target_block, cfg.block_at_offset(1)->index);
+    EXPECT_EQ(edges[1].kind, CfgEdgeKind::Exception);
+    EXPECT_EQ(edges[1].catch_type, std::optional<std::string_view>(""));
+    EXPECT_EQ(edges[2].kind, CfgEdgeKind::ExceptionCatchAll);
+    EXPECT_FALSE(edges[2].catch_type.has_value());
+    EXPECT_EQ(edges[2].target_block, cfg.block_at_offset(3)->index);
+    for (const auto &e : edges)
+        EXPECT_FALSE(e.case_key.has_value());
+}
+
+TEST(CfgTest, CatchTypesMatchTheTryBlocks)
+{
+    // Through the context, a typed edge names the same class as the method's
+    // try blocks, and a catch-all edge goes where catch_all_offset says.
+    auto ctx = AnalysisContext::from_dex("tests/data/trycatch.dex");
+    ASSERT_TRUE(ctx.has_value()) << ctx.error().message;
+    auto cls = ctx->find_class("LTryCatch;");
+    ASSERT_TRUE(cls.has_value());
+    int typed = 0, catch_all = 0;
+    for (const Method &m : cls->methods()) {
+        std::set<std::pair<std::string, uint32_t>> handlers;
+        std::set<uint32_t> catch_alls;
+        for (const TryBlock &t : m.try_blocks()) {
+            for (const CatchHandler &h : t.handlers)
+                handlers.emplace(std::string(h.type_descriptor), h.handler_offset);
+            if (t.catch_all_offset)
+                catch_alls.insert(*t.catch_all_offset);
+        }
+        const Cfg &cfg = m.cfg();
+        for (const BasicBlock &b : cfg.blocks()) {
+            for (const CfgEdge &e : b.successors) {
+                uint32_t target = cfg.blocks()[e.target_block].start_offset;
+                if (e.kind == CfgEdgeKind::Exception) {
+                    ++typed;
+                    ASSERT_TRUE(e.catch_type.has_value());
+                    EXPECT_TRUE(handlers.contains({std::string(*e.catch_type), target}))
+                        << *e.catch_type << " at " << target;
+                }
+                else if (e.kind == CfgEdgeKind::ExceptionCatchAll) {
+                    ++catch_all;
+                    EXPECT_FALSE(e.catch_type.has_value());
+                    EXPECT_TRUE(catch_alls.contains(target)) << target;
+                }
+            }
+        }
+    }
+    EXPECT_GT(typed, 0);
+    EXPECT_GT(catch_all, 0);
+}
+
+TEST(CfgTest, SwitchCaseKeysFromAFile)
+{
+    // switches.dex: Switches.packed(int) is a packed-switch over 10..13.
+    auto ctx = AnalysisContext::from_dex("tests/data/switches.dex");
+    ASSERT_TRUE(ctx.has_value()) << ctx.error().message;
+    auto cls = ctx->find_class("LSwitches;");
+    ASSERT_TRUE(cls.has_value());
+    for (const Method &m : cls->methods()) {
+        if (m.name() != "packed")
+            continue;
+        std::vector<int32_t> keys;
+        int defaults = 0;
+        for (const CfgEdge &e : m.cfg().entry().successors) {
+            EXPECT_FALSE(e.catch_type.has_value());
+            if (e.kind == CfgEdgeKind::SwitchCase)
+                keys.push_back(e.case_key.value());
+            else if (e.kind == CfgEdgeKind::SwitchDefault && !e.case_key.has_value())
+                ++defaults;
+        }
+        EXPECT_EQ(keys, (std::vector<int32_t>{10, 11, 12, 13}));
+        EXPECT_EQ(defaults, 1);
+        return;
+    }
+    FAIL() << "no method packed";
 }
 
 TEST(CfgTest, CfgPointerStableAcrossCalls)

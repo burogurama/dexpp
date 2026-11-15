@@ -209,13 +209,16 @@ class CfgEdgeKind(Enum):
     it.
     """
     SWITCH_CASE = 4
-    """One case of a switch. The edge's `label` is the case key."""
+    """One case of a switch. The edge's `case_key` is the value the case matches."""
     SWITCH_DEFAULT = 5
     """No case of a switch matches, and execution continues after it."""
     EXCEPTION = 6
-    """From a block inside a try range to a catch handler. The edge's `label` is the
-    index of the caught type in the DEX file's type table, or 4294967295
-    (`0xFFFFFFFF`) for a handler that catches everything.
+    """From a block inside a try range to the handler of one exception class. The edge's
+    `catch_type` is the descriptor of that class.
+    """
+    EXCEPTION_CATCH_ALL = 7
+    """From a block inside a try range to a handler that catches every exception. Java
+    compiles a `finally` block to such a handler.
     """
 
 class TypeUseKind(Enum):
@@ -853,10 +856,15 @@ class CfgEdge:
     def kind(self) -> CfgEdgeKind:
         """Why execution can go along this edge."""
     @property
-    def label(self) -> Optional[int]:
-        """Extra data for two kinds of edge, `None` for the others. For `SWITCH_CASE` it
-        is the case key. For `EXCEPTION` it is the index of the caught type in the
-        DEX file's type table, or 4294967295 for a handler that catches everything.
+    def case_key(self) -> Optional[int]:
+        """The value a switch case matches, for a `SWITCH_CASE` edge. `None` for every
+        other kind.
+        """
+    @property
+    def catch_type(self) -> Optional[str]:
+        """Descriptor of the exception class the handler catches, such as
+        `"Ljava/io/IOException;"`, for an `EXCEPTION` edge. `None` for every other kind,
+        including `EXCEPTION_CATCH_ALL`, which catches everything.
         """
 
 class BasicBlock:

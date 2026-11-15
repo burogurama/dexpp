@@ -185,8 +185,11 @@ TEST(CApiCode, ReadsTryBlocksAndExceptionEdges)
         for (size_t e = 0; e < blocks[i].successor_count; ++e)
             if (blocks[i].successors[e].kind == DEXPP_CFG_EXCEPTION) {
                 exception_edge = true;
-                EXPECT_EQ(blocks[i].successors[e].has_label, 1);
+                EXPECT_STREQ(blocks[i].successors[e].catch_type, "Ljava/lang/ArithmeticException;");
                 EXPECT_EQ(blocks[blocks[i].successors[e].target_block].is_handler_entry, 1);
+            }
+            else {
+                EXPECT_EQ(blocks[i].successors[e].catch_type, nullptr);
             }
     EXPECT_TRUE(exception_edge);
     dexpp_basic_block_array_free(blocks, block_count);
@@ -200,6 +203,18 @@ TEST(CApiCode, ReadsTryBlocksAndExceptionEdges)
         catch_all = catch_all || tries[i].has_catch_all == 1;
     EXPECT_TRUE(catch_all);
     dexpp_try_block_array_free(tries, count);
+    // The catch-all handler gets edges of its own kind, with no catch type.
+    blocks = dexpp_method_cfg(safe, &block_count);
+    bool catch_all_edge = false;
+    for (size_t i = 0; i < block_count; ++i)
+        for (size_t e = 0; e < blocks[i].successor_count; ++e)
+            if (blocks[i].successors[e].kind == DEXPP_CFG_EXCEPTION_CATCH_ALL) {
+                catch_all_edge = true;
+                EXPECT_EQ(blocks[i].successors[e].catch_type, nullptr);
+                EXPECT_EQ(blocks[blocks[i].successors[e].target_block].is_handler_entry, 1);
+            }
+    EXPECT_TRUE(catch_all_edge);
+    dexpp_basic_block_array_free(blocks, block_count);
     dexpp_method_free(safe);
     dexpp_context_free(ctx);
 }

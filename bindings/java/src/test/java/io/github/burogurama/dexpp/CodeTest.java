@@ -227,26 +227,59 @@ class CodeTest {
             Cfg cfg = divide.cfg();
             for (BasicBlock b : cfg.blocks()) {
                 for (CfgEdge e : b.successors()) {
+                    assertEquals(OptionalInt.empty(), e.caseKey());
                     if (e.kind() == CfgEdgeKind.EXCEPTION) {
                         exception = true;
-                        assertTrue(e.label().isPresent());
+                        assertEquals(
+                                Optional.of("Ljava/lang/ArithmeticException;"), e.catchType());
                         assertTrue(cfg.blocks().get(e.targetBlock()).isHandlerEntry());
                         assertEquals(
                                 e.targetBlock(),
                                 cfg.blockAtOffset(handler.handlerOffset()).orElseThrow().index());
-                    } else if (e.kind() != CfgEdgeKind.SWITCH_CASE) {
-                        assertFalse(e.label().isPresent());
+                    } else {
+                        assertEquals(Optional.empty(), e.catchType());
                     }
                 }
             }
             assertTrue(exception, "divide has no exception edge");
 
             boolean catchAll = false;
-            for (TryBlock t : method(cls, "safeParse").tryBlocks()) {
+            DexMethod safeParse = method(cls, "safeParse");
+            for (TryBlock t : safeParse.tryBlocks()) {
                 catchAll = catchAll || t.hasCatchAll();
             }
             assertTrue(catchAll, "safeParse has no catch-all handler");
+            // The catch-all handler has edges of its own kind, with no catch type.
+            boolean catchAllEdge = false;
+            for (BasicBlock b : safeParse.cfg().blocks()) {
+                for (CfgEdge e : b.successors()) {
+                    if (e.kind() == CfgEdgeKind.EXCEPTION_CATCH_ALL) {
+                        catchAllEdge = true;
+                        assertEquals(Optional.empty(), e.catchType());
+                    }
+                }
+            }
+            assertTrue(catchAllEdge, "safeParse has no catch-all edge");
             assertEquals(List.of(), method(cls, "<init>").tryBlocks());
+        }
+    }
+
+    @Test
+    void switchCaseEdges() {
+        try (AnalysisContext ctx = dex("switches.dex")) {
+            DexMethod packed = method(ctx.findClass("LSwitches;").orElseThrow(), "packed");
+            List<Integer> keys = new ArrayList<>();
+            int defaults = 0;
+            for (CfgEdge e : packed.cfg().blocks().get(0).successors()) {
+                if (e.kind() == CfgEdgeKind.SWITCH_CASE) {
+                    keys.add(e.caseKey().orElseThrow());
+                } else if (e.kind() == CfgEdgeKind.SWITCH_DEFAULT) {
+                    assertEquals(OptionalInt.empty(), e.caseKey());
+                    defaults++;
+                }
+            }
+            assertEquals(List.of(10, 11, 12, 13), keys);
+            assertEquals(1, defaults);
         }
     }
 

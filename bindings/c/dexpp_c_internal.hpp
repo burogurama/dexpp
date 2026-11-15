@@ -238,6 +238,8 @@ inline DexppCfgEdgeKind cfg_edge_kind(dex::CfgEdgeKind k)
         return DEXPP_CFG_SWITCH_DEFAULT;
     case dex::CfgEdgeKind::Exception:
         return DEXPP_CFG_EXCEPTION;
+    case dex::CfgEdgeKind::ExceptionCatchAll:
+        return DEXPP_CFG_EXCEPTION_CATCH_ALL;
     }
     return DEXPP_CFG_FALLTHROUGH;
 }

@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <optional>
 #include <span>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -21,10 +22,11 @@ enum class CfgEdgeKind : uint8_t {
     Goto,           ///< Unconditional goto / goto/16 / goto/32.
     BranchTaken,    ///< if-* / if-*z taken edge.
     BranchNotTaken, ///< if-* / if-*z fall-through edge.
-    SwitchCase,     ///< Outgoing edge for one packed/sparse case (label = case key).
+    SwitchCase,     ///< Outgoing edge for one packed/sparse case; CfgEdge::case_key is its key.
     SwitchDefault,  ///< Outgoing edge for switch fall-through (the "default" case).
-    Exception,      ///< try-region → handler edge (label = caught type_idx, or
-                    ///< UINT32_MAX for catch-all).
+    Exception, ///< try-region → handler of one exception class; CfgEdge::catch_type names it.
+    ExceptionCatchAll, ///< try-region → handler that catches every exception (a catch-all, as
+                       ///< Java compiles `finally`).
 };
 
 /** A single outgoing edge from one basic block to another. */
@@ -32,12 +34,14 @@ struct CfgEdge
 {
     uint32_t target_block;
     CfgEdgeKind kind;
-    /** Optional context for the edge.  SwitchCase: the case key.
-     *  Exception: the caught `type_idx`, or UINT32_MAX for a catch-all
-     *  handler.  Recover with `static_cast<uint32_t>(*label)` — the
-     *  uint32 → int64 → uint32 round-trip preserves the bit pattern,
-     *  including UINT32_MAX. */
-    std::optional<int64_t> label;
+    /** The case key.  Set for SwitchCase edges only. */
+    std::optional<int32_t> case_key;
+    /** Descriptor of the caught exception class, e.g. "Ljava/io/IOException;".
+     *  Set for Exception edges only; an ExceptionCatchAll edge catches
+     *  everything and has none.  The view points into the AnalysisContext's
+     *  string cache and stays valid for the context's lifetime.  It is empty
+     *  when the DEX file names a type index past its type table. */
+    std::optional<std::string_view> catch_type;
 };
 
 /** A maximal sequence of instructions with a single entry and a single normal exit. */
@@ -50,7 +54,8 @@ struct BasicBlock
     uint32_t insn_count;   ///< Number of instructions covered by this block.
     std::vector<CfgEdge> successors;
     std::vector<uint32_t> predecessors; ///< Block indices only.
-    bool is_handler_entry; ///< True iff at least one Exception edge targets this block.
+    bool is_handler_entry; ///< True iff at least one Exception or ExceptionCatchAll edge
+                           ///< targets this block.
 };
 
 /** Control-flow graph for a single method.

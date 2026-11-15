@@ -4,7 +4,6 @@
 
 #include <algorithm>
 #include <iterator>
-#include <limits>
 #include <type_traits>
 #include <unordered_map>
 #include <variant>
@@ -31,8 +30,6 @@ const BasicBlock *Cfg::block_at_offset(uint32_t code_unit_offset) const
 }
 
 namespace {
-
-constexpr uint32_t kCatchAllLabel = std::numeric_limits<uint32_t>::max();
 
 // Sentinel-free leader collector: pushes only offsets that map to a real
 // instruction in `off_to_idx`.  Mismatched leaders (e.g. branch target inside
@@ -73,7 +70,8 @@ struct CfgAccess
     static Cfg make(std::vector<BasicBlock> blocks) { return Cfg(std::move(blocks)); }
 };
 
-Cfg build_cfg(const raw::CodeItem &code, std::span<const Instruction> insns)
+Cfg build_cfg(const raw::CodeItem &code, std::span<const Instruction> insns,
+              const TypeResolver &type_name)
 {
     if (insns.empty())
         return Cfg{};
@@ -176,28 +174,27 @@ Cfg build_cfg(const raw::CodeItem &code, std::span<const Instruction> insns)
                 using T = std::decay_t<decltype(v)>;
                 if constexpr (std::is_same_v<T, GotoInstruction>) {
                     if (auto t = leaders.block_of(lb.offset + v.branch_offset))
-                        blk.successors.push_back({*t, CfgEdgeKind::Goto, std::nullopt});
+                        blk.successors.push_back({*t, CfgEdgeKind::Goto, {}, {}});
                 }
                 else if constexpr (std::is_same_v<T, IfInstruction>) {
                     if (auto t = leaders.block_of(lb.offset + v.branch_offset))
-                        blk.successors.push_back({*t, CfgEdgeKind::BranchTaken, std::nullopt});
+                        blk.successors.push_back({*t, CfgEdgeKind::BranchTaken, {}, {}});
                     if (auto t = leaders.block_of(next))
-                        blk.successors.push_back({*t, CfgEdgeKind::BranchNotTaken, std::nullopt});
+                        blk.successors.push_back({*t, CfgEdgeKind::BranchNotTaken, {}, {}});
                 }
                 else if constexpr (std::is_same_v<T, IfZeroInstruction>) {
                     if (auto t = leaders.block_of(lb.offset + v.branch_offset))
-                        blk.successors.push_back({*t, CfgEdgeKind::BranchTaken, std::nullopt});
+                        blk.successors.push_back({*t, CfgEdgeKind::BranchTaken, {}, {}});
                     if (auto t = leaders.block_of(next))
-                        blk.successors.push_back({*t, CfgEdgeKind::BranchNotTaken, std::nullopt});
+                        blk.successors.push_back({*t, CfgEdgeKind::BranchNotTaken, {}, {}});
                 }
                 else if constexpr (std::is_same_v<T, SwitchInstruction>) {
                     for (const auto &c : v.cases) {
                         if (auto t = leaders.block_of(lb.offset + c.target))
-                            blk.successors.push_back(
-                                {*t, CfgEdgeKind::SwitchCase, static_cast<int64_t>(c.key)});
+                            blk.successors.push_back({*t, CfgEdgeKind::SwitchCase, c.key, {}});
                     }
                     if (auto t = leaders.block_of(next))
-                        blk.successors.push_back({*t, CfgEdgeKind::SwitchDefault, std::nullopt});
+                        blk.successors.push_back({*t, CfgEdgeKind::SwitchDefault, {}, {}});
                 }
                 else if constexpr (std::is_same_v<T, ReturnInstruction> ||
                                    std::is_same_v<T, ThrowInstruction>) {
@@ -206,7 +203,7 @@ Cfg build_cfg(const raw::CodeItem &code, std::span<const Instruction> insns)
                 else {
                     // Non-terminator block ender → fallthrough.
                     if (auto t = leaders.block_of(next))
-                        blk.successors.push_back({*t, CfgEdgeKind::Fallthrough, std::nullopt});
+                        blk.successors.push_back({*t, CfgEdgeKind::Fallthrough, {}, {}});
                 }
             },
             last);
@@ -235,14 +232,13 @@ Cfg build_cfg(const raw::CodeItem &code, std::span<const Instruction> insns)
             for (const auto &p : handler.handlers) {
                 if (auto target = leaders.block_of(p.addr)) {
                     blk.successors.push_back(
-                        {*target, CfgEdgeKind::Exception, static_cast<int64_t>(p.type_idx)});
+                        {*target, CfgEdgeKind::Exception, {}, type_name(p.type_idx)});
                     blocks[*target].is_handler_entry = true;
                 }
             }
             if (handler.catch_all_addr.has_value()) {
                 if (auto target = leaders.block_of(*handler.catch_all_addr)) {
-                    blk.successors.push_back(
-                        {*target, CfgEdgeKind::Exception, static_cast<int64_t>(kCatchAllLabel)});
+                    blk.successors.push_back({*target, CfgEdgeKind::ExceptionCatchAll, {}, {}});
                     blocks[*target].is_handler_entry = true;
                 }
             }

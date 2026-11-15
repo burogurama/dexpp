@@ -547,12 +547,14 @@ func ToString(insn Instruction) string {
 type CfgEdge struct {
 	TargetBlock uint32      // index in Cfg.Blocks of the block the edge leads to
 	Kind        CfgEdgeKind // why execution can go along the edge
-	// Label is extra data for two kinds of edge, when HasLabel is true. For
-	// CfgSwitchCase it is the case key. For CfgException it is the index of
-	// the caught type in the DEX file's type table, or 0xFFFFFFFF for a
-	// handler that catches everything.
-	Label    int64
-	HasLabel bool
+	// CaseKey is the value the case matches, for a CfgSwitchCase edge. It is
+	// 0 for every other kind.
+	CaseKey int32
+	// CatchType is the descriptor of the exception class the handler
+	// catches, such as "Ljava/io/IOException;", for a CfgException edge. It
+	// is "" for every other kind, including CfgExceptionCatchAll, which
+	// catches everything.
+	CatchType string
 }
 
 // BasicBlock is a run of instructions that is always entered at its first
@@ -606,8 +608,10 @@ func (m *Method) Cfg() *Cfg {
 				block.Successors[k] = CfgEdge{
 					TargetBlock: uint32(e.target_block),
 					Kind:        CfgEdgeKind(e.kind),
-					Label:       int64(e.label),
-					HasLabel:    e.has_label != 0,
+					CaseKey:     int32(e.case_key),
+				}
+				if e.catch_type != nil {
+					block.Successors[k].CatchType = C.GoString(e.catch_type)
 				}
 			}
 		}

@@ -184,6 +184,33 @@ def test_cfg():
                for b in cfg.blocks for e in b.successors)
     kinds = {e.kind for b in cfg.blocks for e in b.successors}
     assert dexpp.CfgEdgeKind.BRANCH_TAKEN in kinds or dexpp.CfgEdgeKind.GOTO in kinds
+    assert all(e.case_key is None and e.catch_type is None
+               for b in cfg.blocks for e in b.successors)
+
+
+def test_cfg_switch_and_exception_edges():
+    switches = dexpp.AnalysisContext.from_dex("tests/data/switches.dex")
+    packed = next(m for m in switches.find_class("LSwitches;").methods if m.name == "packed")
+    entry = packed.cfg.entry
+    cases = [e for e in entry.successors if e.kind is dexpp.CfgEdgeKind.SWITCH_CASE]
+    assert [e.case_key for e in cases] == [10, 11, 12, 13]
+    default = [e for e in entry.successors if e.kind is dexpp.CfgEdgeKind.SWITCH_DEFAULT]
+    assert len(default) == 1 and default[0].case_key is None
+
+    trycatch = dexpp.AnalysisContext.from_dex("tests/data/trycatch.dex").find_class("LTryCatch;")
+    methods = {m.name: m for m in trycatch.methods}
+    edges = [e for b in methods["divide"].cfg.blocks for e in b.successors]
+    typed = [e for e in edges if e.kind is dexpp.CfgEdgeKind.EXCEPTION]
+    assert typed and all(e.catch_type == "Ljava/lang/ArithmeticException;" for e in typed)
+    assert all(e.catch_type is None for e in edges if e.kind is not dexpp.CfgEdgeKind.EXCEPTION)
+    safe = methods["safeParse"]
+    catch_all = [
+        e for b in safe.cfg.blocks for e in b.successors
+        if e.kind is dexpp.CfgEdgeKind.EXCEPTION_CATCH_ALL
+    ]
+    assert catch_all and all(e.catch_type is None for e in catch_all)
+    handlers = {t.catch_all_offset for t in safe.try_blocks}
+    assert {safe.cfg.blocks[e.target_block].start_offset for e in catch_all} <= handlers
 
 
 def test_call_graph():
@@ -1510,7 +1537,7 @@ ENUMS = {
     dexpp.CallNodeKind: ["DEFINED", "EXTERNAL", "CALL_SITE"],
     dexpp.CfgEdgeKind: [
         "FALLTHROUGH", "GOTO", "BRANCH_TAKEN", "BRANCH_NOT_TAKEN", "SWITCH_CASE",
-        "SWITCH_DEFAULT", "EXCEPTION",
+        "SWITCH_DEFAULT", "EXCEPTION", "EXCEPTION_CATCH_ALL",
     ],
     dexpp.TypeUseKind: [
         "CONST_CLASS", "CHECK_CAST", "INSTANCE_OF", "NEW_INSTANCE", "NEW_ARRAY",

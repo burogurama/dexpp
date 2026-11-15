@@ -169,7 +169,11 @@ func ExampleMethod_Cfg() {
 		for _, b := range m.Cfg().Blocks {
 			fmt.Printf("block %d [%d, %d)", b.Index, b.StartOffset, b.EndOffset)
 			for _, e := range b.Successors {
-				fmt.Printf(" -> %d (%v)", e.TargetBlock, e.Kind)
+				fmt.Printf(" -> %d (%v", e.TargetBlock, e.Kind)
+				if e.Kind == dexpp.CfgException {
+					fmt.Printf(" %s", e.CatchType)
+				}
+				fmt.Print(")")
 			}
 			fmt.Println()
 		}
@@ -183,7 +187,7 @@ func ExampleMethod_Cfg() {
 	// --8<-- [end:cfg]
 
 	// Output:
-	// block 0 [0, 1) -> 1 (fallthrough) -> 2 (exception)
+	// block 0 [0, 1) -> 1 (fallthrough) -> 2 (exception Ljava/lang/ArithmeticException;)
 	// block 1 [1, 2)
 	// block 2 [2, 5)
 	// try [0, 1) catches Ljava/lang/ArithmeticException; at 2

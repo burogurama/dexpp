@@ -498,8 +498,9 @@ DexppBasicBlock *dexpp_method_cfg(const DexppMethod *m, size_t *count)
         o.successors = alloc_array<DexppCfgEdge>(b.successors.size());
         for (size_t e = 0; e < b.successors.size(); ++e) {
             const dex::CfgEdge &edge = b.successors[e];
-            o.successors[e] = DexppCfgEdge{edge.target_block, cfg_edge_kind(edge.kind),
-                                           edge.label.has_value() ? 1 : 0, edge.label.value_or(0)};
+            o.successors[e] =
+                DexppCfgEdge{edge.target_block, cfg_edge_kind(edge.kind), edge.case_key.value_or(0),
+                             edge.catch_type.has_value() ? cstr(*edge.catch_type) : nullptr};
         }
         o.predecessors = index_array(b.predecessors, &o.predecessor_count);
     }
@@ -511,6 +512,8 @@ void dexpp_basic_block_array_free(DexppBasicBlock *blocks, size_t count)
     if (blocks == nullptr)
         return;
     for (size_t i = 0; i < count; ++i) {
+        for (size_t e = 0; blocks[i].successors != nullptr && e < blocks[i].successor_count; ++e)
+            std::free(blocks[i].successors[e].catch_type);
         std::free(blocks[i].successors);
         std::free(blocks[i].predecessors);
     }

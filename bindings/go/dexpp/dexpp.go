@@ -518,15 +518,20 @@ const (
 	CfgGoto           CfgEdgeKind = C.DEXPP_CFG_GOTO             // an unconditional goto
 	CfgBranchTaken    CfgEdgeKind = C.DEXPP_CFG_BRANCH_TAKEN     // the condition of an if holds
 	CfgBranchNotTaken CfgEdgeKind = C.DEXPP_CFG_BRANCH_NOT_TAKEN // the condition of an if does not hold
-	CfgSwitchCase     CfgEdgeKind = C.DEXPP_CFG_SWITCH_CASE      // one case of a switch; the label is the key
+	CfgSwitchCase     CfgEdgeKind = C.DEXPP_CFG_SWITCH_CASE      // one case of a switch; CfgEdge.CaseKey is its key
 	CfgSwitchDefault  CfgEdgeKind = C.DEXPP_CFG_SWITCH_DEFAULT   // no case of a switch matches
-	CfgException      CfgEdgeKind = C.DEXPP_CFG_EXCEPTION        // to a catch handler; the label is the type index
+	// CfgException goes to the handler of one exception class; CfgEdge.CatchType
+	// names the class.
+	CfgException CfgEdgeKind = C.DEXPP_CFG_EXCEPTION
+	// CfgExceptionCatchAll goes to a handler that catches every exception. Java
+	// compiles a finally block to such a handler.
+	CfgExceptionCatchAll CfgEdgeKind = C.DEXPP_CFG_EXCEPTION_CATCH_ALL
 )
 
 // String names the kind, such as "branch-taken".
 func (k CfgEdgeKind) String() string {
 	return enumName(int(k), "fallthrough", "goto", "branch-taken", "branch-not-taken",
-		"switch-case", "switch-default", "exception")
+		"switch-case", "switch-default", "exception", "exception-catch-all")
 }
 
 // TypeUseKind is what an instruction does with the type it names.

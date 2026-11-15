@@ -13,15 +13,14 @@ public enum CfgEdgeKind {
     BRANCH_TAKEN(2),
     /** The condition of an {@code if} does not hold. */
     BRANCH_NOT_TAKEN(3),
-    /** One case of a switch. The label of the edge is the case key. */
+    /** One case of a switch. {@link CfgEdge#caseKey()} is the value the case matches. */
     SWITCH_CASE(4),
     /** No case of a switch matches. */
     SWITCH_DEFAULT(5),
-    /**
-     * To a catch handler. The label of the edge is the index of the caught type in the DEX file's
-     * type table, or {@code 0xFFFFFFFF} for a handler that catches everything.
-     */
-    EXCEPTION(6);
+    /** To the handler of one exception class. {@link CfgEdge#catchType()} names the class. */
+    EXCEPTION(6),
+    /** To a handler that catches every exception. Java compiles a {@code finally} block to one. */
+    EXCEPTION_CATCH_ALL(7);
 
     private final int value;
 

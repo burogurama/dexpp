@@ -220,7 +220,8 @@ func TestTryBlocksAndExceptionEdges(t *testing.T) {
 		for _, e := range b.Successors {
 			if e.Kind == CfgException {
 				exception = true
-				if !e.HasLabel || !cfg.Blocks[e.TargetBlock].IsHandlerEntry {
+				if e.CatchType != "Ljava/lang/ArithmeticException;" ||
+					!cfg.Blocks[e.TargetBlock].IsHandlerEntry {
 					t.Errorf("exception edge %+v", e)
 				}
 				if target, ok := cfg.BlockAtOffset(tries[0].Handlers[0].HandlerOffset); !ok ||
@@ -235,14 +236,52 @@ func TestTryBlocksAndExceptionEdges(t *testing.T) {
 	}
 
 	catchAll := false
-	for _, try := range mustMethod(t, cls, "safeParse").TryBlocks() {
+	safeParse := mustMethod(t, cls, "safeParse")
+	for _, try := range safeParse.TryBlocks() {
 		catchAll = catchAll || try.HasCatchAll
 	}
 	if !catchAll {
 		t.Error("safeParse has no catch-all handler")
 	}
+	// The catch-all handler has edges of its own kind, with no catch type.
+	catchAllEdge := false
+	for _, b := range safeParse.Cfg().Blocks {
+		for _, e := range b.Successors {
+			if e.Kind == CfgExceptionCatchAll {
+				catchAllEdge = true
+				if e.CatchType != "" {
+					t.Errorf("catch-all edge %+v has a catch type", e)
+				}
+			}
+		}
+	}
+	if !catchAllEdge {
+		t.Error("safeParse has no catch-all edge")
+	}
 	if got := mustMethod(t, cls, "<init>").TryBlocks(); got != nil {
 		t.Errorf("<init> has try blocks: %+v", got)
+	}
+}
+
+func TestSwitchCaseEdges(t *testing.T) {
+	ctx := mustDEX(t, "switches.dex")
+	packed := mustMethod(t, mustClass(t, ctx, "LSwitches;"), "packed")
+	entry, ok := packed.Cfg().Entry()
+	if !ok {
+		t.Fatal("packed has no entry block")
+	}
+	var keys []int32
+	defaults := 0
+	for _, e := range entry.Successors {
+		switch e.Kind {
+		case CfgSwitchCase:
+			keys = append(keys, e.CaseKey)
+		case CfgSwitchDefault:
+			defaults++
+		}
+	}
+	if !slices.Equal(keys, []int32{10, 11, 12, 13}) || defaults != 1 {
+		t.Errorf("case keys %v, %d default edges", keys, defaults)
 	}
 }
 

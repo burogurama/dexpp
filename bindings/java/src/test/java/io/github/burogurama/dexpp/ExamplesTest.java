@@ -178,7 +178,9 @@ class ExamplesTest {
                     System.out.printf(
                             "block %d [%d, %d)", b.index(), b.startOffset(), b.endOffset());
                     for (CfgEdge e : b.successors()) {
-                        System.out.printf(" -> %d (%s)", e.targetBlock(), e.kind());
+                        System.out.printf(" -> %d (%s", e.targetBlock(), e.kind());
+                        e.catchType().ifPresent(type -> System.out.print(" " + type));
+                        System.out.print(")");
                     }
                     System.out.println();
                 }

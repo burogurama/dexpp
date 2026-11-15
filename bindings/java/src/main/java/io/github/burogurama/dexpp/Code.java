@@ -10,7 +10,6 @@ import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
 import java.util.List;
 import java.util.OptionalInt;
-import java.util.OptionalLong;
 
 /**
  * Converts the code structs of the C API: instructions in both directions, and the control-flow
@@ -466,14 +465,18 @@ final class Code {
                         Mem.pointer(m, b + Layouts.BasicBlock.SUCCESSORS),
                         Mem.i64(m, b + Layouts.BasicBlock.SUCCESSOR_COUNT),
                         Layouts.CfgEdge.LAYOUT,
-                        (e, at) ->
-                                new CfgEdge(
-                                        Mem.i32(e, at + Layouts.CfgEdge.TARGET_BLOCK),
-                                        CfgEdgeKind.of(Mem.i32(e, at + Layouts.CfgEdge.KIND)),
-                                        Mem.bool(e, at + Layouts.CfgEdge.HAS_LABEL)
-                                                ? OptionalLong.of(
-                                                        Mem.i64(e, at + Layouts.CfgEdge.LABEL))
-                                                : OptionalLong.empty()));
+                        (e, at) -> {
+                            CfgEdgeKind kind =
+                                    CfgEdgeKind.of(Mem.i32(e, at + Layouts.CfgEdge.KIND));
+                            return new CfgEdge(
+                                    Mem.i32(e, at + Layouts.CfgEdge.TARGET_BLOCK),
+                                    kind,
+                                    kind == CfgEdgeKind.SWITCH_CASE
+                                            ? OptionalInt.of(
+                                                    Mem.i32(e, at + Layouts.CfgEdge.CASE_KEY))
+                                            : OptionalInt.empty(),
+                                    Mem.optString(e, at + Layouts.CfgEdge.CATCH_TYPE));
+                        });
         return new BasicBlock(
                 Mem.i32(m, b + Layouts.BasicBlock.INDEX),
                 Mem.i32(m, b + Layouts.BasicBlock.START_OFFSET),

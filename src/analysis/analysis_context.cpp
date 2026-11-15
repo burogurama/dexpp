@@ -587,7 +587,12 @@ const Cfg &AnalysisContextImpl::get_cfg(std::size_t dex_idx, uint32_t code_off) 
     if (it != slot.cfg_cache.end())
         return it->second;
 
-    auto [ins_it, ok] = slot.cfg_cache.emplace(code_off, detail::build_cfg(*ci, insns));
+    // The catch types are views into the string cache, which lives as long as
+    // this context and so as long as the cached Cfg.
+    auto type_name = [this, dex_idx](uint32_t type_idx) {
+        return type_descriptor_of(dex_idx, type_idx);
+    };
+    auto [ins_it, ok] = slot.cfg_cache.emplace(code_off, detail::build_cfg(*ci, insns, type_name));
     return ins_it->second;
 }
 

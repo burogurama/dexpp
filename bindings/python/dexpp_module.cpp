@@ -564,7 +564,12 @@ PYBIND11_MODULE(dexpp, m)
     py::class_<CfgEdge>(m, "CfgEdge")
         .def_readonly("target_block", &CfgEdge::target_block)
         .def_readonly("kind", &CfgEdge::kind)
-        .def_readonly("label", &CfgEdge::label);
+        .def_readonly("case_key", &CfgEdge::case_key)
+        .def_property_readonly("catch_type", [](const CfgEdge &e) -> std::optional<std::string> {
+            if (!e.catch_type)
+                return std::nullopt;
+            return std::string(*e.catch_type);
+        });
 
     py::class_<BasicBlock>(m, "BasicBlock")
         .def_readonly("index", &BasicBlock::index)
