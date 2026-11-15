@@ -35,7 +35,8 @@ public final class DexClass implements AutoCloseable {
     }
 
     /**
-     * The package, with {@code /} between its parts, such as {@code "com/example"}.
+     * The package in Java source form, with {@code .} between its parts, such as {@code
+     * "com.example"}: the same form as {@link Manifest#packageName()}.
      *
      * @return the package; empty for a class in the default package
      */

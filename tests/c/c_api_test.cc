@@ -217,6 +217,21 @@ TEST(CApiClass, DescribesAClass)
     dexpp_context_free(ctx);
 }
 
+TEST(CApiClass, PackageUsesDotsLikeTheManifest)
+{
+    DexppContext *ctx = open_dex("tests/data/packaged.dex");
+    ASSERT_NE(ctx, nullptr);
+    DexppClass *cls = dexpp_context_find_class(ctx, "Lcom/example/app/Packaged;");
+    DexppClass *inner = dexpp_context_find_class(ctx, "Lcom/example/app/Packaged$Inner;");
+    ASSERT_NE(cls, nullptr);
+    ASSERT_NE(inner, nullptr);
+    EXPECT_EQ(take(dexpp_class_package(cls)), "com.example.app");
+    EXPECT_EQ(take(dexpp_class_package(inner)), "com.example.app");
+    dexpp_class_free(cls);
+    dexpp_class_free(inner);
+    dexpp_context_free(ctx);
+}
+
 TEST(CApiClass, JavaLangObjectHasNoSuperclassAndNoSourceFileIsNull)
 {
     // tests/data has no java.lang.Object, so the "no superclass" case is

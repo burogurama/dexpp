@@ -50,6 +50,14 @@ thing. The old names are gone; there are no aliases.
   descriptor. The new names are `Class::descriptor()` in C++,
   `Class.descriptor` in Python, `dexpp_class_descriptor` in C,
   `Class.Descriptor()` in Go and `DexClass.descriptor()` in Java.
+- `Class.package` now gives the package in Java source form, with dots:
+  `"com.example"`, not `"com/example"`. This is the form `Manifest.package`
+  uses, so the two can be compared: before, `cls.package.startswith(manifest.package)`
+  was always false for a class in a named package, without any error. The
+  default package is still an empty string. This applies to C++
+  (`Class::package()`, which now returns a `std::string` instead of a
+  `std::string_view`), Python, C (`dexpp_class_package`), Go
+  (`Class.Package()`) and Java (`DexClass.packageName()`).
 
 ### Python bindings
 
@@ -285,9 +293,7 @@ thing. The old names are gone; there are no aliases.
   reported as `CannotWrite` (an `OSError` in Python).
 - C API: a function that returns an empty string no longer passes a null
   pointer to `memcpy`, which is undefined behaviour. `dexpp_class_package` did
-  this for every class in the default package. The comment on
-  `dexpp_class_package` in `dexpp.h` also said the package comes back as
-  `pkg.sub`; it comes back as `pkg/sub`, and the comment now says so.
+  this for every class in the default package.
 
 ### C++ API
 

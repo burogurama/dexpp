@@ -37,7 +37,17 @@ def test_load_and_classes():
     cls = ctx.find_class("LTestDex;")
     assert cls is not None
     assert cls.is_public
+    assert cls.package == ""  # the default package
     assert ctx.find_class("LNoSuch;") is None
+
+
+def test_class_package_uses_dots_like_the_manifest():
+    ctx = dexpp.AnalysisContext.from_dex("tests/data/packaged.dex")
+    cls = ctx.find_class("Lcom/example/app/Packaged;")
+    inner = ctx.find_class("Lcom/example/app/Packaged$Inner;")
+    assert cls is not None and inner is not None
+    assert cls.package == "com.example.app"
+    assert inner.package == "com.example.app"
 
 
 def test_load_errors():

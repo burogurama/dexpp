@@ -1201,8 +1201,9 @@ class Class:
         """
     @property
     def package(self) -> str:
-        """The package, with `/` between its parts, such as `com/example`. Empty for a
-        class in the default package.
+        """The package in Java source form, with `.` between its parts, such as
+        `com.example`: the same form as `Manifest.package`, so the two can be
+        compared directly. Empty for a class in the default package.
         """
     @property
     def superclass(self) -> Optional[ClassRef]:

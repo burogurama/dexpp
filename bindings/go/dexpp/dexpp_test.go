@@ -268,11 +268,20 @@ func TestErrorCodesHaveNames(t *testing.T) {
 
 // ---- Classes, methods, fields ---------------------------------------------
 
+func TestClassPackageUsesDots(t *testing.T) {
+	ctx := mustDEX(t, "packaged.dex")
+	for _, d := range []string{"Lcom/example/app/Packaged;", "Lcom/example/app/Packaged$Inner;"} {
+		if got := mustClass(t, ctx, d).Package(); got != "com.example.app" {
+			t.Errorf("Package of %s = %q, want com.example.app", d, got)
+		}
+	}
+}
+
 func TestClass(t *testing.T) {
 	ctx := mustDEX(t, "shapes.dex")
 	circle := mustClass(t, ctx, "LCircle;")
 	if got := circle.Descriptor(); got != "LCircle;" {
-		t.Errorf("Name = %q", got)
+		t.Errorf("Descriptor = %q", got)
 	}
 	if got := circle.Package(); got != "" {
 		t.Errorf("Package = %q, want empty for the default package", got)

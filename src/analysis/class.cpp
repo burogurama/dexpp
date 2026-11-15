@@ -1,5 +1,6 @@
 #include "class.hpp"
 
+#include <algorithm>
 #include <span>
 
 #include "analysis_context_impl.hpp"
@@ -22,7 +23,7 @@ std::string_view Class::descriptor() const
     return impl_->type_descriptor_of(dex_idx_, cdef.class_idx);
 }
 
-std::string_view Class::package() const
+std::string Class::package() const
 {
     auto n = descriptor();
     // Strip 'L' prefix and ';' suffix to get the internal form, then find the last '/'.
@@ -32,7 +33,9 @@ std::string_view Class::package() const
     auto last_slash = inner.rfind('/');
     if (last_slash == std::string_view::npos)
         return {};
-    return inner.substr(0, last_slash);
+    std::string package(inner.substr(0, last_slash));
+    std::replace(package.begin(), package.end(), '/', '.');
+    return package;
 }
 
 std::optional<ClassRef> Class::superclass() const

@@ -70,8 +70,9 @@ func (c *Class) Descriptor() string {
 	return takeString(C.dexpp_class_descriptor(c.p()))
 }
 
-// Package returns the package with "/" between its parts, such as
-// "com/example". It is empty for a class in the default package.
+// Package returns the package in Java source form, with "." between its
+// parts, such as "com.example": the same form as Manifest.Package. It is
+// empty for a class in the default package.
 func (c *Class) Package() string {
 	defer runtime.KeepAlive(c)
 	return takeString(C.dexpp_class_package(c.p()))

@@ -29,6 +29,12 @@ order: `classes.dex`, `classes2.dex`, `classes3.dex`, and so on.
   than once.
 - `ctx.find_class(descriptor)` returns one class, or `None`. `dexpp.Class | None`
   is its type, so the example checks the result before it uses it.
+- `cls.descriptor` is the class descriptor, such as `Lcom/example/Foo;`.
+  `cls.package` is the package in Java source form, `com.example`, the same
+  form as `Manifest.package`, so the two can be compared directly: a class
+  is in the app's package, or below it, when `cls.package == manifest.package`
+  or `cls.package.startswith(manifest.package + ".")`. It is an empty string
+  for a class in the default package.
 - `cls.superclass` and `cls.interfaces` are `ClassRef` values, not classes.
   The superclass is often a framework class that is not in the file, so a
   reference only carries the descriptor. Call `ref.resolve()` to get the

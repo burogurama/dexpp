@@ -729,7 +729,7 @@ PYBIND11_MODULE(dexpp, m)
     py::class_<Class>(m, "Class")
         .def_property_readonly("descriptor",
                                [](const Class &c) { return std::string(c.descriptor()); })
-        .def_property_readonly("package", [](const Class &c) { return std::string(c.package()); })
+        .def_property_readonly("package", &Class::package)
         .def_property_readonly("superclass", &Class::superclass)
         .def_property_readonly("interfaces", &Class::interfaces)
         .def_property_readonly("methods", &Class::methods)

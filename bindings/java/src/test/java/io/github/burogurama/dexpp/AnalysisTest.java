@@ -216,6 +216,15 @@ class AnalysisTest {
     // ---- classes, methods, fields ---------------------------------------------
 
     @Test
+    void packageUsesDotsLikeTheManifest() {
+        try (AnalysisContext ctx = dex("packaged.dex")) {
+            assertEquals("com.example.app", cls(ctx, "Lcom/example/app/Packaged;").packageName());
+            assertEquals(
+                    "com.example.app", cls(ctx, "Lcom/example/app/Packaged$Inner;").packageName());
+        }
+    }
+
+    @Test
     void classes() {
         try (AnalysisContext ctx = dex("shapes.dex")) {
             DexClass circle = cls(ctx, "LCircle;");

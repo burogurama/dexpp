@@ -5,6 +5,7 @@
 #include <functional>
 #include <memory>
 #include <optional>
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -38,10 +39,10 @@ class Class
      *  Field::name() are simple names; a class is named by its descriptor. */
     std::string_view descriptor() const;
 
-    /** The package name in slash-separated form (e.g. "java/lang" for
-     *  "Ljava/lang/Object;").  Returns an empty string_view for classes in the
-     *  default package. */
-    std::string_view package() const;
+    /** The package in Java source form, with dots between its parts: "java.lang"
+     *  for "Ljava/lang/Object;", the same form as apk::Manifest::package.  An
+     *  empty string for a class in the default package. */
+    std::string package() const;
 
     /** A ClassRef for the direct superclass, or std::nullopt for java.lang.Object
      *  itself (superclass_idx == NO_INDEX in the class_def_item). */

@@ -93,6 +93,21 @@ TEST(ClassTest, PackageIsEmptyForDefaultPackageClass)
     EXPECT_TRUE(cls->package().empty());
 }
 
+TEST(ClassTest, PackageUsesDotsLikeTheManifest)
+{
+    auto ctx = AnalysisContext::from_dex("tests/data/packaged.dex");
+    ASSERT_TRUE(ctx.has_value());
+
+    auto cls = ctx->find_class("Lcom/example/app/Packaged;");
+    ASSERT_TRUE(cls.has_value());
+    EXPECT_EQ(cls->package(), "com.example.app");
+
+    // A nested class is in the package of its outer class.
+    auto inner = ctx->find_class("Lcom/example/app/Packaged$Inner;");
+    ASSERT_TRUE(inner.has_value());
+    EXPECT_EQ(inner->package(), "com.example.app");
+}
+
 TEST(ClassTest, AccessFlagsReturnsPublic)
 {
     auto ctx = AnalysisContext::from_dex("tests/data/classes.dex");
