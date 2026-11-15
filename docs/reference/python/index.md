@@ -27,6 +27,12 @@ type checker see.
   A file or a model that dexpp cannot use raises one of
   dexpp's own exceptions, which all derive from `dexpp.Error`. See
   [Errors](errors.md).
+- **Enums.** `InvokeKind`, `EdgeKind` and the other enums are `enum.Enum`
+  classes. Compare members with `is` or `==`, read `kind.name` and
+  `kind.value`, and iterate the class to list its members. A member is not a
+  number: `int(kind)` raises `TypeError`, and `kind.value` gives the number.
+  `AccessFlags` is different: it is an `enum.IntFlag`, so its members are also
+  ints.
 - **Properties.** Most data is exposed as read-only properties, not as methods:
   `cls.methods`, not `cls.methods()`.
 - **Views.** `CallGraph.nodes`, `CallGraph.edges`, `Xrefs.referrers` and

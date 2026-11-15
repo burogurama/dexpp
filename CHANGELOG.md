@@ -35,6 +35,16 @@
 
 ### Python bindings
 
+- The enums `InvokeKind`, `EdgeOrigin`, `EdgeKind`, `TypeRefKind`,
+  `OperandWidth`, `AnnotationVisibility` and `ComponentKind` are now real
+  Python enums, subclasses of `enum.Enum`, as the type stubs already said.
+  `list(dexpp.InvokeKind)` lists the members, `isinstance(kind, enum.Enum)` is
+  true, and the members can be pickled. The member names do not change, and
+  `kind.name`, `kind.value`, `==` and hashing work as before. Breaking: a member
+  is no longer a number, so `int(kind)` raises `TypeError`. Use `kind.value`,
+  which gives the same number `int(kind)` gave. Passing anything other than a
+  member of the right enum to `CallEdgeView.where` or `Manifest.components_of`
+  raises `TypeError`.
 - `Method.instructions` is now a `dexpp.InstructionView`, a read-only
   sequence over the decoded bytecode, like `Cfg.blocks`. It copies nothing up
   front; before, every read of the property built a new list of every

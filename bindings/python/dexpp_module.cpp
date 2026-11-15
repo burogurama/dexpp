@@ -5,6 +5,8 @@
  *    InvalidApkError, InvalidDexError, or their base class dexpp.Error, which
  *    is a ValueError.  A path that cannot be opened raises FileNotFoundError.
  *  - Null handles (is_valid() == false) and not-found sentinels become None.
+ *  - The C++ enums are Python enum.Enum classes, converted by value
+ *    (dexpp_enums.hpp).
  *  - TypeDescriptor is flattened to a plain str: unlike the other handles it
  *    does not keep the AnalysisContext alive, so exposing it as an object
  *    would let Python code dangle it past the context's lifetime.
@@ -29,6 +31,7 @@
 
 #include "dex.hpp"
 #include "dexpp_access_flags.hpp"
+#include "dexpp_enums.hpp"
 #include "dexpp_errors.hpp"
 
 namespace py = pybind11;
@@ -301,6 +304,7 @@ PYBIND11_MODULE(dexpp, m)
 
     dexpp_py::define_error_classes(m);
     dexpp_py::define_access_flags(m);
+    dexpp_py::define_enums(m);
 
     // ===== free functions =====
 
@@ -308,47 +312,6 @@ PYBIND11_MODULE(dexpp, m)
           "Mnemonic for a raw Dalvik opcode byte (e.g. 0x6e -> 'invoke-virtual').");
     m.def("to_string", &to_string, py::arg("instruction"),
           "Render a decoded instruction as '<mnemonic> <operands>' with raw pool indices.");
-
-    // ===== enums =====
-
-    py::enum_<InvokeKind>(m, "InvokeKind")
-        .value("VIRTUAL", InvokeKind::Virtual)
-        .value("SUPER", InvokeKind::Super)
-        .value("DIRECT", InvokeKind::Direct)
-        .value("STATIC", InvokeKind::Static)
-        .value("INTERFACE", InvokeKind::Interface)
-        .value("POLYMORPHIC", InvokeKind::Polymorphic)
-        .value("CUSTOM", InvokeKind::Custom);
-
-    py::enum_<EdgeOrigin>(m, "EdgeOrigin")
-        .value("DECLARED", EdgeOrigin::Declared)
-        .value("INHERITED_RESOLUTION", EdgeOrigin::InheritedResolution);
-
-    py::enum_<EdgeKind>(m, "EdgeKind")
-        .value("FALLTHROUGH", EdgeKind::Fallthrough)
-        .value("GOTO", EdgeKind::Goto)
-        .value("BRANCH_TAKEN", EdgeKind::BranchTaken)
-        .value("BRANCH_NOT_TAKEN", EdgeKind::BranchNotTaken)
-        .value("SWITCH_CASE", EdgeKind::SwitchCase)
-        .value("SWITCH_DEFAULT", EdgeKind::SwitchDefault)
-        .value("EXCEPTION", EdgeKind::Exception);
-
-    py::enum_<TypeRefKind>(m, "TypeRefKind")
-        .value("CONST_CLASS", TypeRefKind::ConstClass)
-        .value("CHECK_CAST", TypeRefKind::CheckCast)
-        .value("INSTANCE_OF", TypeRefKind::InstanceOf)
-        .value("NEW_INSTANCE", TypeRefKind::NewInstance)
-        .value("NEW_ARRAY", TypeRefKind::NewArray)
-        .value("FILLED_NEW_ARRAY", TypeRefKind::FilledNewArray);
-
-    py::enum_<OperandWidth>(m, "OperandWidth")
-        .value("SINGLE", OperandWidth::Single)
-        .value("PAIR", OperandWidth::Pair);
-
-    py::enum_<AnnotationVisibility>(m, "AnnotationVisibility")
-        .value("BUILD", AnnotationVisibility::Build)
-        .value("RUNTIME", AnnotationVisibility::Runtime)
-        .value("SYSTEM", AnnotationVisibility::System);
 
     // ===== identities =====
 
@@ -1042,12 +1005,6 @@ PYBIND11_MODULE(dexpp, m)
                                py::return_value_policy::reference_internal);
 
     // ===== APK layer =====
-
-    py::enum_<Component::Kind>(m, "ComponentKind")
-        .value("ACTIVITY", Component::Kind::Activity)
-        .value("SERVICE", Component::Kind::Service)
-        .value("RECEIVER", Component::Kind::Receiver)
-        .value("PROVIDER", Component::Kind::Provider);
 
     py::class_<IntentFilter>(m, "IntentFilter")
         .def_readonly("actions", &IntentFilter::actions)

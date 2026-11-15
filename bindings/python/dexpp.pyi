@@ -142,23 +142,23 @@ class AccessFlags(IntFlag):
 class InvokeKind(Enum):
     """The kind of invoke instruction at a call site."""
 
-    VIRTUAL = ...
+    VIRTUAL = 0
     """`invoke-virtual`: a normal call on an object. The method that runs depends on the
     class of the object.
     """
-    SUPER = ...
+    SUPER = 1
     """`invoke-super`: a call to the superclass's version of a method."""
-    DIRECT = ...
+    DIRECT = 2
     """`invoke-direct`: a call to a constructor or a private method."""
-    STATIC = ...
+    STATIC = 3
     """`invoke-static`: a call to a static method."""
-    INTERFACE = ...
+    INTERFACE = 4
     """`invoke-interface`: a call through an interface type."""
-    POLYMORPHIC = ...
+    POLYMORPHIC = 5
     """`invoke-polymorphic`: a call through a method handle, such as
     `MethodHandle.invoke`.
     """
-    CUSTOM = ...
+    CUSTOM = 6
     """`invoke-custom`: a call site that is bound at runtime. Compilers emit it for
     lambdas and for string concatenation.
     """
@@ -166,11 +166,11 @@ class InvokeKind(Enum):
 class EdgeOrigin(Enum):
     """How a call-graph edge came to point at its callee."""
 
-    DECLARED = ...
+    DECLARED = 0
     """The target exactly as the bytecode names it. Every call site has exactly one edge
     of this kind.
     """
-    INHERITED_RESOLUTION = ...
+    INHERITED_RESOLUTION = 1
     """The class the bytecode names does not define the method itself. The edge points
     at the nearest definition in a loaded superclass or interface, which is the
     method Android finds at runtime. A call site has at most one edge of this kind.
@@ -179,23 +179,23 @@ class EdgeOrigin(Enum):
 class EdgeKind(Enum):
     """The kind of edge between two basic blocks of a control-flow graph."""
 
-    FALLTHROUGH = ...
+    FALLTHROUGH = 0
     """Execution runs on into the next block. The block's last instruction is not a
     branch, a return or a throw.
     """
-    GOTO = ...
+    GOTO = 1
     """An unconditional `goto`."""
-    BRANCH_TAKEN = ...
+    BRANCH_TAKEN = 2
     """The condition of an `if` instruction holds, and it jumps."""
-    BRANCH_NOT_TAKEN = ...
+    BRANCH_NOT_TAKEN = 3
     """The condition of an `if` instruction does not hold, and execution continues after
     it.
     """
-    SWITCH_CASE = ...
+    SWITCH_CASE = 4
     """One case of a switch. The edge's `label` is the case key."""
-    SWITCH_DEFAULT = ...
+    SWITCH_DEFAULT = 5
     """No case of a switch matches, and execution continues after it."""
-    EXCEPTION = ...
+    EXCEPTION = 6
     """From a block inside a try range to a catch handler. The edge's `label` is the
     index of the caught type in the DEX file's type table, or 4294967295
     (`0xFFFFFFFF`) for a handler that catches everything.
@@ -204,17 +204,17 @@ class EdgeKind(Enum):
 class TypeRefKind(Enum):
     """What an instruction does with the type it names."""
 
-    CONST_CLASS = ...
+    CONST_CLASS = 0
     """`const-class`: loads the class object, as `Foo.class` does."""
-    CHECK_CAST = ...
+    CHECK_CAST = 1
     """`check-cast`: a cast to the type."""
-    INSTANCE_OF = ...
+    INSTANCE_OF = 2
     """`instance-of`: an `instanceof` test against the type."""
-    NEW_INSTANCE = ...
+    NEW_INSTANCE = 3
     """`new-instance`: creates an object of the type."""
-    NEW_ARRAY = ...
+    NEW_ARRAY = 4
     """`new-array`: creates an array. The descriptor is the array type, such as `[I`."""
-    FILLED_NEW_ARRAY = ...
+    FILLED_NEW_ARRAY = 5
     """`filled-new-array`: creates an array and fills it from registers. The descriptor
     is the array type.
     """
@@ -222,21 +222,21 @@ class TypeRefKind(Enum):
 class OperandWidth(Enum):
     """How many registers a value takes."""
 
-    SINGLE = ...
+    SINGLE = 0
     """A 32-bit value or a reference. It takes one register."""
-    PAIR = ...
+    PAIR = 1
     """A 64-bit value, `long` or `double`. It takes two registers, `vN` and `vN+1`."""
 
 class AnnotationVisibility(Enum):
     """Who can see an annotation."""
 
-    BUILD = ...
+    BUILD = 0
     """Only tools that read the file. The annotation is not visible to the running app.
     `@Override` is an example in source code.
     """
-    RUNTIME = ...
+    RUNTIME = 1
     """The running app can read the annotation through reflection."""
-    SYSTEM = ...
+    SYSTEM = 2
     """Data the compiler writes for the runtime in `dalvik.annotation.*` annotations:
     generic signatures, default values, inner-class information.
     """
@@ -244,13 +244,13 @@ class AnnotationVisibility(Enum):
 class ComponentKind(Enum):
     """The kind of a component declared in the manifest."""
 
-    ACTIVITY = ...
+    ACTIVITY = 0
     """An `<activity>`: a screen of the app."""
-    SERVICE = ...
+    SERVICE = 1
     """A `<service>`: work that runs without a screen."""
-    RECEIVER = ...
+    RECEIVER = 2
     """A `<receiver>`: a broadcast receiver."""
-    PROVIDER = ...
+    PROVIDER = 3
     """A `<provider>`: a content provider."""
 
 # ===== identities =====

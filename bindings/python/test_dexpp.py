@@ -8,7 +8,9 @@ Also runnable under pytest with the same PYTHONPATH.
 """
 
 import ast
+import enum
 import os
+import pickle
 import re
 import tempfile
 
@@ -964,10 +966,38 @@ def _stub_class_problems(class_node):
             problems.append(f"{name}.{member} has no docstring")
 
     runtime_members = {member for member in vars(runtime_class) if not member.startswith("_")}
-    # pybind11 gives every enum `name` and `value`; the stub does not repeat them.
-    implicit = {"name", "value"} if "__entries" in vars(runtime_class) else set()
-    for member in sorted(runtime_members - stub_members - implicit):
+    for member in sorted(runtime_members - stub_members):
         problems.append(f"the stub has no {name}.{member}")
+
+    # The stub declares the enums as enum.Enum / enum.IntFlag classes, so the
+    # module must not have a pybind11 enum (they keep their members in
+    # `__entries`), and each enum must match the stub member by member.
+    if "__entries" in vars(runtime_class):
+        problems.append(f"{name} is a pybind11 enum, not a Python enum")
+    if isinstance(runtime_class, enum.EnumMeta):
+        problems.extend(_stub_enum_problems(class_node, runtime_class))
+    return problems
+
+
+def _stub_enum_problems(class_node, runtime_class):
+    """What is wrong with one enum of the stub: its base class and its members."""
+    name = class_node.name
+    problems = []
+    stub_bases = [base.id for base in class_node.bases]
+    runtime_bases = [base.__name__ for base in runtime_class.__bases__]
+    if stub_bases != runtime_bases:
+        problems.append(f"{name} derives from {runtime_bases}, the stub says {stub_bases}")
+    # Every member with its value, aliases included (AccessFlags.BRIDGE has
+    # the value of VOLATILE): `kind.value` is the documented way to get the
+    # number, so the stub must give the right one.
+    stub_values = {
+        item.targets[0].id: ast.literal_eval(item.value)
+        for item in class_node.body
+        if isinstance(item, ast.Assign)
+    }
+    runtime_values = {member: value.value for member, value in runtime_class.__members__.items()}
+    if stub_values != runtime_values:
+        problems.append(f"{name} has members {runtime_values}, the stub says {stub_values}")
     return problems
 
 
@@ -1011,8 +1041,6 @@ def test_stub_matches_module_and_is_documented():
 
 
 def test_access_flags():
-    import enum
-
     ctx = dexpp.AnalysisContext.from_dex("tests/data/classes.dex")
     cls = ctx.find_class("LTestDex;")
     flags = cls.access_flags
@@ -1040,6 +1068,96 @@ def test_access_flags():
     # The DEX format gives two pairs of flags the same bit.
     assert dexpp.AccessFlags.BRIDGE is dexpp.AccessFlags.VOLATILE
     assert dexpp.AccessFlags.VARARGS is dexpp.AccessFlags.TRANSIENT
+
+
+# The enums and their members, in value order: member i has the value i.
+ENUMS = {
+    dexpp.InvokeKind: [
+        "VIRTUAL", "SUPER", "DIRECT", "STATIC", "INTERFACE", "POLYMORPHIC", "CUSTOM",
+    ],
+    dexpp.EdgeOrigin: ["DECLARED", "INHERITED_RESOLUTION"],
+    dexpp.EdgeKind: [
+        "FALLTHROUGH", "GOTO", "BRANCH_TAKEN", "BRANCH_NOT_TAKEN", "SWITCH_CASE",
+        "SWITCH_DEFAULT", "EXCEPTION",
+    ],
+    dexpp.TypeRefKind: [
+        "CONST_CLASS", "CHECK_CAST", "INSTANCE_OF", "NEW_INSTANCE", "NEW_ARRAY",
+        "FILLED_NEW_ARRAY",
+    ],
+    dexpp.OperandWidth: ["SINGLE", "PAIR"],
+    dexpp.AnnotationVisibility: ["BUILD", "RUNTIME", "SYSTEM"],
+    dexpp.ComponentKind: ["ACTIVITY", "SERVICE", "RECEIVER", "PROVIDER"],
+}
+
+
+def test_enums_are_python_enums():
+    for cls, names in ENUMS.items():
+        assert issubclass(cls, enum.Enum) and not issubclass(cls, int), cls
+        assert cls.__module__ == "dexpp"
+        assert [member.name for member in cls] == names
+        assert [member.value for member in cls] == list(range(len(names)))
+        for member in cls:
+            assert isinstance(member, enum.Enum)
+            assert cls(member.value) is member and cls[member.name] is member
+            assert pickle.loads(pickle.dumps(member)) is member
+            # A plain Enum is not a number: `kind.value` is the number.
+            try:
+                int(member)
+                raise AssertionError("expected TypeError")
+            except TypeError:
+                pass
+
+
+def _raises_type_error(action):
+    try:
+        action()
+    except TypeError:
+        return True
+    return False
+
+
+def test_enums_cross_the_boundary_as_members():
+    # C++ to Python: every field of an enum type gives a member of the class.
+    pets = dexpp.AnalysisContext.from_dex("tests/data/polymorphic.dex")
+    edges = pets.call_graph.edges
+    assert {type(e.kind) for e in edges} == {dexpp.InvokeKind}
+    assert {type(e.origin) for e in edges} == {dexpp.EdgeOrigin}
+    assert dexpp.InvokeKind.INTERFACE in {e.kind for e in edges}
+    builder = pets.xrefs.type_refs("Ljava/lang/StringBuilder;")
+    assert builder[0].kind is dexpp.TypeRefKind.NEW_INSTANCE
+    noise = next(m for m in pets.find_class("LKennel;").methods if m.name == "noise")
+    assert noise.calls[0].kind is dexpp.InvokeKind.INTERFACE
+
+    fibonacci = dexpp.AnalysisContext.from_dex("tests/data/fibonacci.dex")
+    methods = {m.name: m for m in fibonacci.find_class("LFibonacci;").methods}
+    kinds = {e.kind for b in methods["compute"].cfg.blocks for e in b.successors}
+    assert {type(k) for k in kinds} == {dexpp.EdgeKind}
+    assert dexpp.EdgeKind.BRANCH_TAKEN in kinds
+    widths = {getattr(i, "width", None) for i in methods["classify"].instructions}
+    assert dexpp.OperandWidth.PAIR in widths
+
+    annotated = dexpp.AnalysisContext.from_dex("tests/data/annotated.dex")
+    visibilities = {a.visibility for a in annotated.find_class("LAnnotated;").annotations}
+    assert dexpp.AnnotationVisibility.RUNTIME in visibilities
+
+    # Python to C++: the arguments of an enum type take a member.
+    manifest = dexpp.Apk.open("tests/data/sample.apk").manifest
+    services = manifest.components_of(dexpp.ComponentKind.SERVICE)
+    assert [c.kind for c in services] == [dexpp.ComponentKind.SERVICE]
+    interface_calls = edges.where(origin=dexpp.EdgeOrigin.DECLARED, kind=dexpp.InvokeKind.INTERFACE)
+    assert len(interface_calls) > 0
+    assert all(e.kind is dexpp.InvokeKind.INTERFACE for e in interface_calls)
+
+    # Anything else is a TypeError: a number, a name, a member of another enum.
+    for action in (
+        lambda: edges.where(origin=0),
+        lambda: edges.where(kind="VIRTUAL"),
+        lambda: edges.where(origin=dexpp.InvokeKind.VIRTUAL),
+        lambda: manifest.components_of(0),
+        lambda: manifest.components_of(dexpp.EdgeKind.GOTO),
+        lambda: manifest.components_of(None),
+    ):
+        assert _raises_type_error(action)
 
 
 def test_type_aliases_exist_at_runtime():
