@@ -23,6 +23,9 @@ constexpr uint16_t RES_XML_START_ELEMENT_TYPE = 0x0102;
 constexpr uint16_t RES_XML_END_ELEMENT_TYPE = 0x0103;
 constexpr uint16_t RES_XML_CDATA_TYPE = 0x0104;
 constexpr uint16_t RES_XML_RESOURCE_MAP_TYPE = 0x0180;
+// Node chunks (start/end namespace, start/end element, CDATA) use this range.
+constexpr uint16_t RES_XML_FIRST_CHUNK_TYPE = 0x0100;
+constexpr uint16_t RES_XML_LAST_CHUNK_TYPE = 0x017f;
 
 constexpr uint32_t NO_ENTRY = 0xFFFFFFFF;
 
@@ -39,6 +42,14 @@ std::expected<XmlDocument, AxmlError> parse(std::span<const uint8_t> buf)
     std::size_t pos = rd16(buf, 2); // file header size
 
     StringPool pool;
+    // Resource ids of the first strings of the pool: resource_ids[i] is the id
+    // of the attribute whose name is string i.
+    std::vector<uint32_t> resource_ids;
+    bool has_resource_map = false;
+    // Android reads the string pool and the resource map only from the chunks
+    // before the first XML node (ResXMLTree::setTo); a resource map after that
+    // is ignored, here too.
+    bool seen_node = false;
     XmlNode virtual_root;
     std::vector<XmlNode *> stack{&virtual_root};
 
@@ -50,6 +61,8 @@ std::expected<XmlDocument, AxmlError> parse(std::span<const uint8_t> buf)
             return std::unexpected(AxmlError{"malformed chunk size"});
         std::size_t next = pos + chunk_size;
         std::size_t ext = pos + header_size; // element payload after node header
+        if (ctype >= RES_XML_FIRST_CHUNK_TYPE && ctype <= RES_XML_LAST_CHUNK_TYPE)
+            seen_node = true;
 
         switch (ctype) {
         case RES_STRING_POOL_TYPE:
@@ -71,7 +84,10 @@ std::expected<XmlDocument, AxmlError> parse(std::span<const uint8_t> buf)
                     break;
                 XmlAttribute attr;
                 attr.namespace_uri = std::string(pool.get(rd32(buf, a)));
-                attr.name = std::string(pool.get(rd32(buf, a + 4)));
+                uint32_t name_idx = rd32(buf, a + 4);
+                attr.name = std::string(pool.get(name_idx));
+                if (name_idx < resource_ids.size())
+                    attr.resource_id = resource_ids[name_idx];
                 attr.typed.type = buf[a + 15];
                 attr.typed.data = rd32(buf, a + 16);
                 uint32_t raw_idx = rd32(buf, a + 8);
@@ -97,9 +113,22 @@ std::expected<XmlDocument, AxmlError> parse(std::span<const uint8_t> buf)
                 stack.back()->text += pool.get(rd32(buf, ext));
             break;
 
+        case RES_XML_RESOURCE_MAP_TYPE:
+            // A header followed by one 32-bit id per string, for the first
+            // strings of the pool.  The chunk lies inside the buffer (checked
+            // above), so every id read below does too.
+            if (!seen_node && header_size >= 8 && header_size <= chunk_size) {
+                std::size_t count = (chunk_size - header_size) / 4;
+                resource_ids.clear();
+                resource_ids.reserve(count);
+                for (std::size_t i = 0; i < count; ++i)
+                    resource_ids.push_back(rd32(buf, ext + 4 * i));
+                has_resource_map = true;
+            }
+            break;
+
         case RES_XML_START_NAMESPACE_TYPE:
         case RES_XML_END_NAMESPACE_TYPE:
-        case RES_XML_RESOURCE_MAP_TYPE:
         default:
             break; // structurally irrelevant for the tree
         }
@@ -112,6 +141,7 @@ std::expected<XmlDocument, AxmlError> parse(std::span<const uint8_t> buf)
 
     XmlDocument doc;
     doc.root = std::move(virtual_root.children.front());
+    doc.has_resource_map = has_resource_map;
     return doc;
 }
 

@@ -65,6 +65,15 @@
 
 ### Fixes
 
+- The manifest now reads the `android:` attributes by resource id, as Android
+  does, instead of by name. Before, an app could hide `android:exported` (and
+  so change `is_exported` and `is_reachable`) by renaming the attribute's name
+  string, or add an attribute that is only named `exported` and have dexpp
+  read it although Android ignores it. The binary-XML decoder now gives each
+  attribute its `resource_id` and each document `has_resource_map`, and
+  `XmlNode::attribute_by_id()` finds an attribute by id. For a document
+  without a resource map (not written by aapt or aapt2), the manifest falls
+  back to the attribute name in the android namespace.
 - Go: the short methods of `Class` and `Method` (`Name`, `Package`,
   `Superclass`, `AccessFlags` and others), and the early-return paths of
   `Classes`, `Strings`, `Interfaces`, `Methods` and `Components`, did not keep
