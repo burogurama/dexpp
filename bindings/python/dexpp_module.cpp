@@ -42,7 +42,8 @@ namespace {
 /** Raise the Python exception for an AnalysisError: FileNotFoundError for a
  *  path that does not exist, OSError for one that exists but cannot be read,
  *  InvalidApkError / InvalidDexError for a file that is not what it should
- *  be, and their base class dexpp.Error for any other code. */
+ *  be.  The switch has no default on purpose: a new code then makes the
+ *  compiler warn here until it gets its own exception. */
 [[noreturn]] void raise(const AnalysisError &error)
 {
     switch (error.code) {
@@ -54,9 +55,8 @@ namespace {
         dexpp_py::raise_error("InvalidApkError", error.message);
     case AnalysisError::Code::InvalidDexFile:
         dexpp_py::raise_error("InvalidDexError", error.message);
-    default:
-        dexpp_py::raise_error("Error", error.message);
     }
+    dexpp_py::raise_error("Error", error.message); // a value outside the enum
 }
 
 /** Convert a possibly-null handle to a Python object (None when invalid). */

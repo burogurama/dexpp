@@ -62,6 +62,14 @@
   `dexpp_class_package` in `dexpp.h` also said the package comes back as
   `pkg.sub`; it comes back as `pkg/sub`, and the comment now says so.
 
+### C++ API (breaking)
+
+- `AnalysisError::Code` lost four values that the library never produced:
+  `MalformedBytecode`, `UnresolvedReference`, `UnsupportedInstruction` and
+  `InvalidDescriptor`. The remaining values are `FileNotFound`, `CannotRead`,
+  `InvalidDexFile` and `InvalidApk`. Code that named one of the removed values
+  no longer compiles; it could never have received one.
+
 ### Build
 
 - dex++'s own sources are now compiled with `-Wall -Wextra`, and the warnings
