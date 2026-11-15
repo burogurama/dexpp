@@ -191,7 +191,7 @@ int dexpp_model_class_info(const DexppModelDex *dex, const char *descriptor, Dex
     out->access_flags = static_cast<uint32_t>(cls.access);
     out->superclass = cls.superclass ? cstr(*cls.superclass) : nullptr;
     out->source_file = cls.source_file ? cstr(*cls.source_file) : nullptr;
-    out->interface_count = cls.interfaces.size();
+    out->interfaces = dexpp_c::string_array(cls.interfaces, &out->interface_count);
     out->field_count = cls.fields.size();
     out->method_count = cls.methods.size();
     return 1;
@@ -202,19 +202,12 @@ void dexpp_class_info_clear(DexppClassInfo *info)
     std::free(info->descriptor);
     std::free(info->superclass);
     std::free(info->source_file);
+    dexpp_string_array_free(info->interfaces, info->interface_count);
     info->descriptor = nullptr;
     info->superclass = nullptr;
     info->source_file = nullptr;
-}
-
-char **dexpp_model_class_interfaces(const DexppModelDex *dex, const char *descriptor, size_t *count)
-{
-    long i = class_index(dex->dex, descriptor);
-    if (i < 0) {
-        *count = 0;
-        return nullptr;
-    }
-    return dexpp_c::string_array(dex->dex.classes[static_cast<std::size_t>(i)].interfaces, count);
+    info->interfaces = nullptr;
+    info->interface_count = 0;
 }
 
 /* ---- Editing by whole class --------------------------------------------- */

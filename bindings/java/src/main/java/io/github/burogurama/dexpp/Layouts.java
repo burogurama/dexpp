@@ -479,6 +479,7 @@ final class Layouts {
         static final long ACCESS_FLAGS = B.i32("access_flags");
         static final long SUPERCLASS = B.ptr("superclass");
         static final long SOURCE_FILE = B.ptr("source_file");
+        static final long INTERFACES = B.ptr("interfaces");
         static final long INTERFACE_COUNT = B.size("interface_count");
         static final long FIELD_COUNT = B.size("field_count");
         static final long METHOD_COUNT = B.size("method_count");

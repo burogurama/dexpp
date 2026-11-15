@@ -13,7 +13,10 @@ print(model.class_descriptors())
 info: dexpp.ClassInfo | None = model.class_info("LCircle;")
 assert info is not None
 print(info.descriptor, "extends", info.superclass, "-", info.method_count, "methods")
-print(model.class_interfaces("LAbstractShape;"))
+
+abstract: dexpp.ClassInfo | None = model.class_info("LAbstractShape;")
+assert abstract is not None
+print(abstract.descriptor, "implements", abstract.interfaces)
 # --8<-- [end:read]
 
 # --8<-- [start:split]

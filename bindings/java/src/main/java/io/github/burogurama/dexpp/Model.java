@@ -284,7 +284,7 @@ public final class Model implements AutoCloseable {
     }
 
     /**
-     * The number of classes in the model.
+     * The number of classes in the model. It copies nothing, unlike {@link #classDescriptors()}.
      *
      * @return the class count
      */
@@ -303,7 +303,8 @@ public final class Model implements AutoCloseable {
     }
 
     /**
-     * Tells whether the model has a class with this descriptor.
+     * Tells whether the model has a class with this descriptor. It copies nothing, unlike {@link
+     * #classInfo(String)}.
      *
      * @param descriptor a class descriptor
      * @return true when the model has the class
@@ -336,7 +337,9 @@ public final class Model implements AutoCloseable {
                                     new AccessFlags(Mem.i32(info, Layouts.ClassInfo.ACCESS_FLAGS)),
                                     Mem.optString(info, Layouts.ClassInfo.SUPERCLASS),
                                     Mem.optString(info, Layouts.ClassInfo.SOURCE_FILE),
-                                    Mem.count(info, Layouts.ClassInfo.INTERFACE_COUNT),
+                                    Mem.strings(
+                                            Mem.pointer(info, Layouts.ClassInfo.INTERFACES),
+                                            Mem.i64(info, Layouts.ClassInfo.INTERFACE_COUNT)),
                                     Mem.count(info, Layouts.ClassInfo.FIELD_COUNT),
                                     Mem.count(info, Layouts.ClassInfo.METHOD_COUNT)));
                 } finally {
@@ -344,19 +347,6 @@ public final class Model implements AutoCloseable {
                 }
             }
         });
-    }
-
-    /**
-     * The descriptors of the interfaces the class implements directly.
-     *
-     * @param descriptor a class descriptor
-     * @return the descriptors; empty when the model has no such class
-     */
-    public List<String> classInterfaces(String descriptor) {
-        return handle.call(m ->
-                Mem.takeStrings((arena, count) ->
-                        Native.dexpp_model_class_interfaces(
-                                m, Mem.cString(arena, descriptor), count)));
     }
 
     /**

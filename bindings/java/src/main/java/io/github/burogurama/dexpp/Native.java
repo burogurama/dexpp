@@ -1988,18 +1988,6 @@ final class Native {
         }
     }
 
-    private static final MethodHandle dexpp_model_class_interfaces =
-            downcall("dexpp_model_class_interfaces", ADDRESS, ADDRESS, ADDRESS, ADDRESS);
-
-    static MemorySegment dexpp_model_class_interfaces(
-            MemorySegment dex, MemorySegment descriptor, MemorySegment count) {
-        try {
-            return (MemorySegment) dexpp_model_class_interfaces.invokeExact(dex, descriptor, count);
-        } catch (Throwable t) {
-            throw failure(t);
-        }
-    }
-
     private static final MethodHandle dexpp_model_move_class =
             downcall("dexpp_model_move_class", JAVA_INT, ADDRESS, ADDRESS, ADDRESS, ADDRESS);
 

@@ -63,22 +63,22 @@ func TestModelClassInfo(t *testing.T) {
 	if circle.SourceFile == nil || *circle.SourceFile != "Shapes.java" {
 		t.Errorf("SourceFile = %v", circle.SourceFile)
 	}
-	if got := m.ClassInterfaces("LAbstractShape;"); !slices.Equal(got, []string{"LShape;"}) {
-		t.Errorf("ClassInterfaces(LAbstractShape;) = %v", got)
+	if circle.Interfaces != nil {
+		t.Errorf("Interfaces of LCircle; = %v, want nil", circle.Interfaces)
+	}
+	if abstract, ok := m.ClassInfo("LAbstractShape;"); !ok || !slices.Equal(abstract.Interfaces, []string{"LShape;"}) {
+		t.Errorf("ClassInfo(LAbstractShape;) = %+v, %v", abstract, ok)
 	}
 	// An interface's own superclass is java.lang.Object.
 	shape, ok := m.ClassInfo("LShape;")
 	if !ok || shape.Superclass == nil || *shape.Superclass != "Ljava/lang/Object;" {
 		t.Errorf("ClassInfo(LShape;) = %+v", shape)
 	}
-	if !shape.AccessFlags.Has(AccessInterface) || shape.InterfaceCount != 0 {
+	if !shape.AccessFlags.Has(AccessInterface) || len(shape.Interfaces) != 0 {
 		t.Errorf("LShape; flags = %v", shape.AccessFlags)
 	}
 	if _, ok := m.ClassInfo("Lno/such/Class;"); ok {
 		t.Error("ClassInfo of an absent class found it")
-	}
-	if got := m.ClassInterfaces("Lno/such/Class;"); got != nil {
-		t.Errorf("ClassInterfaces of an absent class = %v", got)
 	}
 }
 

@@ -119,24 +119,30 @@ DEXPP_C_API void dexpp_problem_array_free(DexppProblem *problems, size_t count);
 
 /* ---- Classes ------------------------------------------------------------ */
 
-/** The number of classes in the model. */
+/** The number of classes in the model. It copies nothing, unlike
+ *  dexpp_model_class_descriptors(). */
 DEXPP_C_API size_t dexpp_model_class_count(const DexppModelDex *dex);
 
 /** The descriptors of every class, in model order. Free with
  *  dexpp_string_array_free(). */
 DEXPP_C_API char **dexpp_model_class_descriptors(const DexppModelDex *dex, size_t *count);
 
-/** 1 when the model has a class with this descriptor, otherwise 0. */
+/** 1 when the model has a class with this descriptor, otherwise 0. It copies
+ *  nothing, unlike dexpp_model_class_info(). */
 DEXPP_C_API int dexpp_model_has_class(const DexppModelDex *dex, const char *descriptor);
 
-/** Facts about one class of a model. Release with dexpp_class_info_clear(). */
+/** Facts about one class of a model. The member names follow the analysis
+ *  API (`descriptor`, `access_flags`), not the C++ model's ClassDef (`type`,
+ *  `access`). Release with dexpp_class_info_clear(). */
 typedef struct DexppClassInfo
 {
     char *descriptor;       /**< The class descriptor. */
     uint32_t access_flags;  /**< The access flags (see DexppAccessFlag). */
     char *superclass;       /**< The superclass descriptor, or NULL for java.lang.Object. */
     char *source_file;      /**< The source file name, or NULL. */
-    size_t interface_count; /**< Number of interfaces implemented directly. */
+    char **interfaces;      /**< Descriptors of the interfaces implemented directly, in
+                                 declaration order; NULL when there are none. */
+    size_t interface_count; /**< Number of interfaces. */
     size_t field_count;     /**< Number of fields. */
     size_t method_count;    /**< Number of methods. */
 } DexppClassInfo;
@@ -147,14 +153,9 @@ typedef struct DexppClassInfo
 DEXPP_C_API int dexpp_model_class_info(const DexppModelDex *dex, const char *descriptor,
                                        DexppClassInfo *out);
 
-/** Free the strings of a DexppClassInfo (not the struct) and set them to
- *  NULL. */
+/** Free the strings and the interface array of a DexppClassInfo (not the
+ *  struct), and set them to NULL and the interface count to 0. */
 DEXPP_C_API void dexpp_class_info_clear(DexppClassInfo *info);
-
-/** The interface descriptors a class implements; empty when the class is
- *  absent or implements none. Free with dexpp_string_array_free(). */
-DEXPP_C_API char **dexpp_model_class_interfaces(const DexppModelDex *dex, const char *descriptor,
-                                                size_t *count);
 
 /* ---- Editing by whole class --------------------------------------------- */
 

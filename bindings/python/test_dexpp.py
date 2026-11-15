@@ -698,17 +698,17 @@ def test_every_class_with_equality_is_hashable():
 
 def test_model_read_and_classes():
     m = dexpp.Model.read_file("tests/data/shapes.dex")
-    assert m.class_count == len(m) > 0
+    assert len(m) == 4
     assert m.class_descriptors() == [
         "LShape;",
         "LAbstractShape;",
         "LCircle;",
         "LRectangle;",
     ]
-    assert m.has_class("LCircle;")
     assert "LCircle;" in m
-    assert not m.has_class("Lno/such/Class;")
     assert "Lno/such/Class;" not in m
+    # One way each to count and to test for a class.
+    assert not hasattr(m, "class_count") and not hasattr(m, "has_class")
 
 
 def test_model_class_info():
@@ -718,12 +718,14 @@ def test_model_class_info():
     assert circle.descriptor == "LCircle;"
     assert circle.superclass == "LAbstractShape;"
     assert circle.method_count > 0
-    assert m.class_interfaces("LAbstractShape;") == ["LShape;"]
+    assert circle.interfaces == []
+    assert m.class_info("LAbstractShape;").interfaces == ["LShape;"]
     # An interface's own superclass is java.lang.Object.
     shape = m.class_info("LShape;")
     assert shape.superclass == "Ljava/lang/Object;"
+    # A missing class is None, like every other lookup.
     assert m.class_info("Lno/such/Class;") is None
-    assert m.class_interfaces("Lno/such/Class;") == []
+    assert not hasattr(m, "class_interfaces")
 
 
 def test_model_write_round_trip():
@@ -731,7 +733,7 @@ def test_model_write_round_trip():
     data = m.write()
     assert isinstance(data, bytes) and len(data) > 0
     again = dexpp.Model.read(data)
-    assert again.class_count == m.class_count
+    assert len(again) == len(m)
     # write(read(write(m))) is a byte fixpoint.
     assert again.write() == data
 
@@ -745,17 +747,17 @@ def test_model_split_one_per_class():
         one.move_class(work, d)
         part = dexpp.Model.read(one.write())
         assert part.class_descriptors() == [d]
-    assert work.class_count == 0
+    assert len(work) == 0
     # The clone was drained; the original is untouched.
-    assert src.class_count == len(descriptors)
+    assert len(src) == len(descriptors)
 
 
 def test_model_copy_remove_and_errors():
     src = dexpp.Model.read_file("tests/data/shapes.dex")
     dst = dexpp.Model(src.version)
     dst.copy_class(src, "LCircle;")
-    assert src.has_class("LCircle;")  # copy left the source intact
-    assert dst.has_class("LCircle;")
+    assert "LCircle;" in src  # copy left the source intact
+    assert "LCircle;" in dst
 
     for bad in (
         lambda: dst.copy_class(src, "LCircle;"),  # destination already has it
@@ -769,14 +771,14 @@ def test_model_copy_remove_and_errors():
 
     assert dst.remove_class("LCircle;")
     assert not dst.remove_class("LCircle;")
-    assert dst.class_count == 0
+    assert len(dst) == 0
 
 
 def test_model_rename_types():
     m = dexpp.Model.read_file("tests/data/shapes.dex")
     m.rename_types({"LCircle;": "Lcom/x/Round;"})
-    assert not m.has_class("LCircle;")
-    assert m.has_class("Lcom/x/Round;")
+    assert "LCircle;" not in m
+    assert "Lcom/x/Round;" in m
     # The rename reaches references too, and the model still writes.
     assert len(m.write()) > 0
 
@@ -792,7 +794,7 @@ def test_model_validate_and_stats():
 def test_model_new_and_version():
     m = dexpp.Model(39)
     assert m.version == 39
-    assert m.class_count == 0
+    assert len(m) == 0
     m.version = 35
     assert m.version == 35
     # An empty model writes to a valid, re-readable DEX.
@@ -806,7 +808,7 @@ def test_model_write_file():
         m.write_file(path)
         assert os.path.getsize(path) > 0
         reread = dexpp.Model.read_file(path)
-        assert reread.class_count == m.class_count
+        assert len(reread) == len(m)
 
 
 def test_model_read_accepts_any_bytes_like():
@@ -1376,7 +1378,7 @@ def test_keyword_arguments_work():
 
     with open("tests/data/shapes.dex", "rb") as f:
         model = dexpp.Model.read(data=f.read(), debug_info=False)
-    assert model.has_class(descriptor="LCircle;")
+    assert model.class_info(descriptor="LCircle;") is not None
     error = dexpp.InvalidModelError(message="broken", problems=[])
     assert str(error) == "broken" and error.problems == []
 

@@ -199,7 +199,8 @@ func (m *Model) Validate() []Problem {
 	return out
 }
 
-// ClassCount returns the number of classes in the model.
+// ClassCount returns the number of classes in the model. It copies nothing,
+// unlike len(m.ClassDescriptors()).
 func (m *Model) ClassCount() int {
 	defer runtime.KeepAlive(m)
 	return int(C.dexpp_model_class_count(m.p()))
@@ -213,7 +214,8 @@ func (m *Model) ClassDescriptors() []string {
 	return takeStringArray(arr, n)
 }
 
-// HasClass reports whether the model has a class with this descriptor.
+// HasClass reports whether the model has a class with this descriptor. It
+// copies nothing, unlike ClassInfo.
 func (m *Model) HasClass(descriptor string) bool {
 	defer runtime.KeepAlive(m)
 	cd := C.CString(descriptor)
@@ -229,10 +231,13 @@ type ClassInfo struct {
 	// java.lang.Object, which has none.
 	Superclass *string
 	// SourceFile is the source file name recorded for the class, or nil.
-	SourceFile     *string
-	InterfaceCount int // number of interfaces the class implements directly
-	FieldCount     int // number of fields the class declares
-	MethodCount    int // number of methods the class defines
+	SourceFile *string
+	// Interfaces are the descriptors of the interfaces the class implements
+	// directly, in declaration order; nil when there are none. For an
+	// interface, these are the interfaces it extends.
+	Interfaces  []string
+	FieldCount  int // number of fields the class declares
+	MethodCount int // number of methods the class defines
 }
 
 // ClassInfo returns a summary of the class with this descriptor. The bool is
@@ -247,25 +252,14 @@ func (m *Model) ClassInfo(descriptor string) (ClassInfo, bool) {
 	}
 	defer C.dexpp_class_info_clear(&info)
 	return ClassInfo{
-		Descriptor:     C.GoString(info.descriptor),
-		AccessFlags:    AccessFlags(info.access_flags),
-		Superclass:     goOptString(info.superclass),
-		SourceFile:     goOptString(info.source_file),
-		InterfaceCount: int(info.interface_count),
-		FieldCount:     int(info.field_count),
-		MethodCount:    int(info.method_count),
+		Descriptor:  C.GoString(info.descriptor),
+		AccessFlags: AccessFlags(info.access_flags),
+		Superclass:  goOptString(info.superclass),
+		SourceFile:  goOptString(info.source_file),
+		Interfaces:  goStrings(info.interfaces, info.interface_count),
+		FieldCount:  int(info.field_count),
+		MethodCount: int(info.method_count),
 	}, true
-}
-
-// ClassInterfaces returns the descriptors of the interfaces the class
-// implements directly. It is nil when the model has no such class.
-func (m *Model) ClassInterfaces(descriptor string) []string {
-	defer runtime.KeepAlive(m)
-	cd := C.CString(descriptor)
-	defer C.free(unsafe.Pointer(cd))
-	var n C.size_t
-	arr := C.dexpp_model_class_interfaces(m.p(), cd, &n)
-	return takeStringArray(arr, n)
 }
 
 // MoveClass takes the class out of src and puts it into m. The class is not

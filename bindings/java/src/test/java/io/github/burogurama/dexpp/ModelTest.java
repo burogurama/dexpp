@@ -51,14 +51,15 @@ class ModelTest {
             assertTrue(circle.methodCount() > 0);
             assertEquals(Optional.of("LAbstractShape;"), circle.superclass());
             assertEquals(Optional.of("Shapes.java"), circle.sourceFile());
-            assertEquals(List.of("LShape;"), m.classInterfaces("LAbstractShape;"));
+            assertEquals(List.of(), circle.interfaces());
+            assertEquals(
+                    List.of("LShape;"), m.classInfo("LAbstractShape;").orElseThrow().interfaces());
             // An interface's own superclass is java.lang.Object.
             ClassInfo shape = m.classInfo("LShape;").orElseThrow();
             assertEquals(Optional.of("Ljava/lang/Object;"), shape.superclass());
             assertTrue(shape.accessFlags().has(AccessFlags.INTERFACE));
-            assertEquals(0, shape.interfaceCount());
+            assertEquals(List.of(), shape.interfaces());
             assertEquals(Optional.empty(), m.classInfo("Lno/such/Class;"));
-            assertEquals(List.of(), m.classInterfaces("Lno/such/Class;"));
         }
     }
 

@@ -268,6 +268,7 @@ TEST(CModelClasses, DescribesAClass)
     ASSERT_EQ(dexpp_model_class_info(model, "LCircle;", &info), 1);
     EXPECT_STREQ(info.descriptor, "LCircle;");
     EXPECT_STREQ(info.superclass, "LAbstractShape;");
+    EXPECT_EQ(info.interfaces, nullptr); // no interfaces: NULL and 0
     EXPECT_EQ(info.interface_count, 0u);
     EXPECT_EQ(info.field_count, 1u);
     EXPECT_EQ(info.method_count, 4u);
@@ -277,29 +278,19 @@ TEST(CModelClasses, DescribesAClass)
     dexpp_class_info_clear(&info);
 
     ASSERT_EQ(dexpp_model_class_info(model, "LAbstractShape;", &info), 1);
-    EXPECT_EQ(info.interface_count, 1u);
+    ASSERT_EQ(info.interface_count, 1u);
+    EXPECT_STREQ(info.interfaces[0], "LShape;");
     dexpp_class_info_clear(&info);
+    EXPECT_EQ(info.interfaces, nullptr);
+    EXPECT_EQ(info.interface_count, 0u);
 
     // An absent class leaves `out` as it was.
     DexppClassInfo untouched{};
     untouched.field_count = 7;
     EXPECT_EQ(dexpp_model_class_info(model, "Lno/such/Class;", &untouched), 0);
     EXPECT_EQ(untouched.descriptor, nullptr);
+    EXPECT_EQ(untouched.interfaces, nullptr);
     EXPECT_EQ(untouched.field_count, 7u);
-
-    size_t count = 0;
-    char **interfaces = dexpp_model_class_interfaces(model, "LAbstractShape;", &count);
-    ASSERT_EQ(count, 1u);
-    EXPECT_STREQ(interfaces[0], "LShape;");
-    dexpp_string_array_free(interfaces, count);
-
-    for (const char *descriptor : {"LCircle;", "Lno/such/Class;"}) { // none, and absent
-        count = 99;
-        interfaces = dexpp_model_class_interfaces(model, descriptor, &count);
-        EXPECT_EQ(interfaces, nullptr) << descriptor;
-        EXPECT_EQ(count, 0u) << descriptor;
-        dexpp_string_array_free(interfaces, count);
-    }
 
     dexpp_model_free(model);
 }
@@ -367,11 +358,11 @@ TEST(CModelEdit, RenamesClassesEverywhere)
     EXPECT_EQ(dexpp_model_has_class(model, "LCircle;"), 0);
     EXPECT_EQ(dexpp_model_has_class(model, "Lcom/example/Round;"), 1);
     // The rename reaches references too: the class that implemented LShape;.
-    size_t count = 0;
-    char **interfaces = dexpp_model_class_interfaces(model, "LAbstractShape;", &count);
-    ASSERT_EQ(count, 1u);
-    EXPECT_STREQ(interfaces[0], "Lcom/example/Form;");
-    dexpp_string_array_free(interfaces, count);
+    DexppClassInfo info{};
+    ASSERT_EQ(dexpp_model_class_info(model, "LAbstractShape;", &info), 1);
+    ASSERT_EQ(info.interface_count, 1u);
+    EXPECT_STREQ(info.interfaces[0], "Lcom/example/Form;");
+    dexpp_class_info_clear(&info);
 
     // No pairs: nothing changes.
     dexpp_model_rename_types(model, nullptr, nullptr, 0);

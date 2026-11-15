@@ -5,7 +5,7 @@
  *  - errors raise dexpp's own exceptions (dexpp_errors.hpp), one per kind of
  *    model error; a file that cannot be read or written raises
  *    FileNotFoundError or OSError.
- *  - a not-found class is None (class_info) or False (has_class).
+ *  - a not-found class is None (class_info); `descriptor in model` is False.
  *  - access flags are a dexpp.AccessFlags (an enum.IntFlag); DEX bytes are Python `bytes`.
  *
  *  Scope matches the C / Go model binding: whole classes cross the boundary
@@ -116,14 +116,16 @@ long class_index(const Dex &dex, std::string_view descriptor)
     return -1;
 }
 
-/** Facts about one class, as a Python object. */
+/** Facts about one class, as a Python object.  The field names follow the
+ *  analysis API (descriptor, access_flags), not the C++ model's ClassDef
+ *  (type, access). */
 struct ClassInfo
 {
     std::string descriptor;
     uint32_t access_flags;
     std::optional<std::string> superclass;
     std::optional<std::string> source_file;
-    std::size_t interface_count;
+    std::vector<std::string> interfaces;
     std::size_t field_count;
     std::size_t method_count;
 };
@@ -164,7 +166,7 @@ void register_model(py::module_ &m)
         });
 
     py::class_<ClassInfo>(m, "ClassInfo", "Facts about one class in a Model.")
-        .def_readonly("descriptor", &ClassInfo::descriptor)
+        .def_readonly("descriptor", &ClassInfo::descriptor, "The class descriptor.")
         .def_property_readonly(
             "access_flags",
             [](const ClassInfo &c) { return dexpp_py::access_flags_to_py(c.access_flags); },
@@ -172,9 +174,11 @@ void register_model(py::module_ &m)
         .def_readonly("superclass", &ClassInfo::superclass,
                       "Superclass descriptor, or None for java.lang.Object.")
         .def_readonly("source_file", &ClassInfo::source_file, "Source file name, or None.")
-        .def_readonly("interface_count", &ClassInfo::interface_count)
-        .def_readonly("field_count", &ClassInfo::field_count)
-        .def_readonly("method_count", &ClassInfo::method_count)
+        .def_readonly("interfaces", &ClassInfo::interfaces,
+                      "Descriptors of the interfaces the class implements directly, in "
+                      "declaration order.")
+        .def_readonly("field_count", &ClassInfo::field_count, "Number of fields.")
+        .def_readonly("method_count", &ClassInfo::method_count, "Number of methods.")
         .def("__repr__", [](const ClassInfo &c) { return "ClassInfo(" + c.descriptor + ")"; });
 
     py::class_<Dex>(
@@ -235,9 +239,6 @@ void register_model(py::module_ &m)
             "encode it.")
         // ----- classes -----
         .def("__len__", [](const Dex &dex) { return dex.classes.size(); })
-        .def_property_readonly(
-            "class_count", [](const Dex &dex) { return dex.classes.size(); },
-            "The number of classes in the model.")
         .def(
             "class_descriptors",
             [](const Dex &dex) {
@@ -248,12 +249,6 @@ void register_model(py::module_ &m)
                 return out;
             },
             "Every class's descriptor, in model order.  Each call copies them into a new list.")
-        .def(
-            "has_class",
-            [](const Dex &dex, std::string_view descriptor) {
-                return class_index(dex, descriptor) >= 0;
-            },
-            py::arg("descriptor"), "Whether the model has a class with this descriptor.")
         .def(
             "__contains__",
             [](const Dex &dex, std::string_view descriptor) {
@@ -268,20 +263,11 @@ void register_model(py::module_ &m)
                     return py::none();
                 const dex::model::ClassDef &cls = dex.classes[static_cast<std::size_t>(i)];
                 return py::cast(ClassInfo{cls.type, static_cast<uint32_t>(cls.access),
-                                          cls.superclass, cls.source_file, cls.interfaces.size(),
+                                          cls.superclass, cls.source_file, cls.interfaces,
                                           cls.fields.size(), cls.methods.size()});
             },
             py::arg("descriptor"),
             "Facts about the class with this descriptor (a ClassInfo), or None if absent.")
-        .def(
-            "class_interfaces",
-            [](const Dex &dex, std::string_view descriptor) {
-                long i = class_index(dex, descriptor);
-                if (i < 0)
-                    return std::vector<std::string>{};
-                return dex.classes[static_cast<std::size_t>(i)].interfaces;
-            },
-            py::arg("descriptor"), "The interface descriptors the class implements.")
         // ----- editing by whole class -----
         .def(
             "move_class",

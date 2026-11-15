@@ -2021,8 +2021,10 @@ class ClassInfo:
     def source_file(self) -> Optional[str]:
         """The source file name recorded for the class, or `None`."""
     @property
-    def interface_count(self) -> int:
-        """Number of interfaces the class implements directly."""
+    def interfaces(self) -> list[str]:
+        """Descriptors of the interfaces the class implements directly, in declaration
+        order. For an interface, these are the interfaces it extends.
+        """
     @property
     def field_count(self) -> int:
         """Number of fields the class declares."""
@@ -2105,9 +2107,6 @@ class Model:
         same list.
         """
     def __len__(self) -> int: ...
-    @property
-    def class_count(self) -> int:
-        """Number of classes in the model. Same as `len(model)`."""
     def class_descriptors(self) -> list[str]:
         """The descriptor of every class, in model order.
 
@@ -2115,17 +2114,9 @@ class Model:
         when the model changes, so it is safe to loop over it while you move or
         remove classes.
         """
-    def has_class(self, descriptor: str) -> bool:
-        """True when the model has a class with this descriptor. Same as `descriptor in
-        model`.
-        """
     def __contains__(self, descriptor: str) -> bool: ...
     def class_info(self, descriptor: str) -> Optional[ClassInfo]:
         """A summary of the class with this descriptor, or `None` when the model has no
-        such class.
-        """
-    def class_interfaces(self, descriptor: str) -> list[str]:
-        """The interfaces the class implements directly. Empty when the model has no
         such class.
         """
     def move_class(self, src: Model, descriptor: str) -> None:

@@ -74,6 +74,27 @@ thing. The old names are gone; there are no aliases.
   descriptor is renamed: `dexpp_method_descriptor` is now
   `dexpp_method_proto` in C, `Method.Descriptor()` is now `Method.Proto()` in
   Go, and `DexMethod.descriptor()` is now `DexMethod.proto()` in Java.
+- The model's class summary now holds the list of interfaces itself, instead
+  of only their number, and the separate call for the list is gone. Before,
+  that call returned an empty list for a class the model does not have, while
+  every other lookup reports a missing class as not found. Now the summary is
+  the only lookup, and a missing class gives `None` in Python, 0 in C, `false`
+  in Go and an empty `Optional` in Java, as before.
+    - Python: `ClassInfo.interfaces` (a `list[str]`) replaces
+      `ClassInfo.interface_count` and `Model.class_interfaces()`.
+    - C: `DexppClassInfo` has a new member `interfaces` (an array of strings),
+      and `interface_count` is now its length. `dexpp_class_info_clear` frees
+      it. `dexpp_model_class_interfaces` is removed.
+    - Go: `ClassInfo.Interfaces` (a `[]string`) replaces
+      `ClassInfo.InterfaceCount` and `Model.ClassInterfaces()`.
+    - Java: `ClassInfo.interfaces()` (a `List<String>`) replaces
+      `ClassInfo.interfaceCount()` and `Model.classInterfaces()`.
+- Python's `Model` had two ways to count its classes and two ways to test for
+  one. `Model.class_count` and `Model.has_class()` are removed: use
+  `len(model)` and `descriptor in model`. C, Go and Java keep their single
+  way: `dexpp_model_class_count` and `dexpp_model_has_class`,
+  `Model.ClassCount()` and `Model.HasClass()`, `Model.classCount()` and
+  `Model.hasClass()`.
 
 ### Python bindings
 

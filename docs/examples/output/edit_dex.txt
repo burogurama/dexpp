@@ -1,7 +1,7 @@
 DEX version 35 with 4 classes
 ['LShape;', 'LAbstractShape;', 'LCircle;', 'LRectangle;']
 LCircle; extends LAbstractShape; - 4 methods
-['LShape;']
+LAbstractShape; implements ['LShape;']
 ['class0.dex', 'class1.dex', 'class2.dex', 'class3.dex']
 4 classes
 same bytes as the original model: True
