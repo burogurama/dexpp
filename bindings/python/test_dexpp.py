@@ -378,18 +378,35 @@ def test_forward_refs():
     cls = ctx.find_class("LTestDex;")
     main = next(m for m in cls.methods if m.name == "main")
 
+    calls = main.calls()
     assert any(c.target.name == "helloDex" and c.kind == dexpp.InvokeKind.STATIC
-               for c in main.calls)
+               for c in calls)
     assert any(c.target.name == "println" and c.kind == dexpp.InvokeKind.VIRTUAL
-               for c in main.calls)
+               for c in calls)
 
-    reads = main.field_accesses
+    reads = main.field_accesses()
     assert len(reads) == 1
     assert reads[0].field.name == "out" and reads[0].is_static and not reads[0].is_write
 
     hello = next(m for m in cls.methods if m.name == "helloDex")
-    loads = hello.string_loads
+    loads = hello.string_loads()
     assert len(loads) == 1 and loads[0].value == "Hello Dex++!!"
+
+    # Each call walks the bytecode again and makes a new list with equal entries.
+    again = main.calls()
+    assert again is not calls and len(again) == len(calls)
+    assert [(c.target, c.kind, c.code_offset) for c in again] == [
+        (c.target, c.kind, c.code_offset) for c in calls
+    ]
+    assert hello.string_loads()[0].value == loads[0].value
+
+    # Dog.describe builds its result with a StringBuilder (super.describe() + "!").
+    pets = dexpp.AnalysisContext.from_dex("tests/data/polymorphic.dex")
+    describe = next(m for m in pets.find_class("LDog;").methods if m.name == "describe")
+    uses = describe.type_uses()
+    assert ("Ljava/lang/StringBuilder;", dexpp.TypeRefKind.NEW_INSTANCE) in [
+        (u.descriptor, u.kind) for u in uses
+    ]
 
 
 def test_parameter_registers():
@@ -1101,11 +1118,13 @@ def _property_problems(class_name, function_node, runtime_class):
 def test_work_done_again_on_every_read_is_a_method():
     # The rule of the reference: a property is cheap or cached, a method
     # computes.  Each of these does work in proportion to the whole program,
-    # the whole archive or many call sites every time, so it must stay a method.
+    # the whole archive, many call sites or a method's bytecode every time, so
+    # it must stay a method.
     computed = {
         dexpp.AnalysisContext: ["classes", "strings"],
         dexpp.Xrefs: ["referenced_strings"],
         dexpp.CallNode: ["callers", "callees"],
+        dexpp.Method: ["calls", "field_accesses", "string_loads", "type_uses"],
         dexpp.Apk: ["entries"],
         dexpp.Model: ["class_descriptors", "required_version", "pool_stats"],
     }
@@ -1438,7 +1457,7 @@ def test_enums_cross_the_boundary_as_members():
     builder = pets.xrefs.type_refs("Ljava/lang/StringBuilder;")
     assert builder[0].kind is dexpp.TypeRefKind.NEW_INSTANCE
     noise = next(m for m in pets.find_class("LKennel;").methods if m.name == "noise")
-    assert noise.calls[0].kind is dexpp.InvokeKind.INTERFACE
+    assert noise.calls()[0].kind is dexpp.InvokeKind.INTERFACE
 
     fibonacci = dexpp.AnalysisContext.from_dex("tests/data/fibonacci.dex")
     methods = {m.name: m for m in fibonacci.find_class("LFibonacci;").methods}

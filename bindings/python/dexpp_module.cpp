@@ -20,9 +20,11 @@
  *    with direct navigation (edge.callee, node.out_edges) — see bind_view.
  *  - Lazily-built singletons (call_graph / class_hierarchy / xrefs / cfg) are
  *    returned by reference with keep_alive so the owning context outlives them.
- *  - A property is cheap or cached.  Anything that does work in proportion to
- *    the whole program (or archive, or graph neighbourhood) on every read is a
- *    method instead: classes(), strings(), entries(), callers(), callees(). */
+ *  - A property is cheap or cached.  Anything that walks the whole program
+ *    (or archive, or graph neighbourhood, or a method's bytecode) again on
+ *    every read is a method instead: classes(), strings(), entries(),
+ *    callers(), callees(), and Method's calls(), field_accesses(),
+ *    string_loads(), type_uses(). */
 
 #include <pybind11/operators.h>
 #include <pybind11/pybind11.h>
@@ -711,10 +713,10 @@ PYBIND11_MODULE(dexpp, m)
         .def_property_readonly("cfg", &Method::cfg, py::return_value_policy::reference_internal)
         .def_property_readonly("register_count", &Method::register_count)
         .def_property_readonly("parameter_registers", &Method::parameter_registers)
-        .def_property_readonly("calls", &Method::calls)
-        .def_property_readonly("field_accesses", &Method::field_accesses)
-        .def_property_readonly("string_loads", &Method::string_loads)
-        .def_property_readonly("type_uses", &Method::type_uses)
+        .def("calls", &Method::calls)
+        .def("field_accesses", &Method::field_accesses)
+        .def("string_loads", &Method::string_loads)
+        .def("type_uses", &Method::type_uses)
         .def_property_readonly("try_blocks", &Method::try_blocks)
         .def_property_readonly("annotations", &Method::annotations)
         .def(py::self == py::self)

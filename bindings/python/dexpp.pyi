@@ -20,8 +20,8 @@ def to_string(instruction: Instruction) -> str:
 
     Operands that point into a table of the DEX file are shown as raw indices, such
     as `string@12` or `method@4`. An instruction alone cannot turn them into names.
-    For names, use `Method.calls`, `Method.field_accesses`, `Method.string_loads` and
-    `Method.type_uses`.
+    For names, use `Method.calls()`, `Method.field_accesses()`, `Method.string_loads()`
+    and `Method.type_uses()`.
     """
 
 # ===== errors =====
@@ -586,8 +586,8 @@ class ConstStringInstruction:
     dest: int
     """The register written."""
     string_index: int
-    """Index of the string in the DEX file's string table. `Method.string_loads` gives
-    the string itself.
+    """Index of the string in the DEX file's string table. `Method.string_loads()`
+    gives the string itself.
     """
 
 class ConstClassInstruction:
@@ -598,8 +598,8 @@ class ConstClassInstruction:
     dest: int
     """The register written."""
     type_index: int
-    """Index of the type in the DEX file's type table. `Method.type_uses` gives the
-    descriptor.
+    """Index of the type in the DEX file's type table. `Method.type_uses()` gives
+    the descriptor.
     """
 
 class ConstHandleInstruction:
@@ -620,8 +620,8 @@ class TypeInstruction:
     base: InstructionBase
     """The fields every instruction has: `offset`, `opcode` and `size`."""
     type_index: int
-    """Index of the type in the DEX file's type table. `Method.type_uses` gives the
-    descriptor.
+    """Index of the type in the DEX file's type table. `Method.type_uses()` gives
+    the descriptor.
     """
     dest: int
     """The register the instruction works on: the register that is cast for
@@ -707,8 +707,8 @@ class FieldInstruction:
     base: InstructionBase
     """The fields every instruction has: `offset`, `opcode` and `size`."""
     field_index: int
-    """Index of the field in the DEX file's field table. `Method.field_accesses` gives
-    the `FieldId`.
+    """Index of the field in the DEX file's field table. `Method.field_accesses()`
+    gives the `FieldId`.
     """
     value_reg: int
     """The register the field is read into, or written from."""
@@ -729,7 +729,7 @@ class InvokeInstruction:
     base: InstructionBase
     """The fields every instruction has: `offset`, `opcode` and `size`."""
     method_index: int
-    """Index of the method in the DEX file's method table. `Method.calls` gives the
+    """Index of the method in the DEX file's method table. `Method.calls()` gives the
     `MethodId` and the kind of invoke.
     """
     arg_regs: list[int]
@@ -1151,20 +1151,31 @@ class Method:
         """The incoming arguments and the registers they arrive in, with `this` first
         for an instance method. Empty for a method without code.
         """
-    @property
     def calls(self) -> list[MethodCall]:
         """Every call in the method's code, in order. The targets are as the bytecode
         names them.
+
+        Each call goes through the method's bytecode again and makes a new list, so
+        keep the result when you need it more than once.
         """
-    @property
     def field_accesses(self) -> list[FieldAccess]:
-        """Every field read and write in the method's code, in order."""
-    @property
+        """Every field read and write in the method's code, in order.
+
+        Each call goes through the method's bytecode again and makes a new list, so
+        keep the result when you need it more than once.
+        """
     def string_loads(self) -> list[StringLoad]:
-        """Every `const-string` in the method's code, in order."""
-    @property
+        """Every `const-string` in the method's code, in order.
+
+        Each call goes through the method's bytecode again and makes a new list, so
+        keep the result when you need it more than once.
+        """
     def type_uses(self) -> list[TypeUse]:
-        """Every instruction in the method's code that names a type, in order."""
+        """Every instruction in the method's code that names a type, in order.
+
+        Each call goes through the method's bytecode again and makes a new list, so
+        keep the result when you need it more than once.
+        """
     @property
     def try_blocks(self) -> list[TryBlock]:
         """The try ranges of the method and their handlers. Empty when it has none."""

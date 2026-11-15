@@ -98,15 +98,21 @@ A method answers these directly, with names already resolved:
 --8<-- "output/code.typed.txt"
 ```
 
-| Property | One entry per | Fields |
-| -------- | ------------- | ------ |
-| `calls` | invoke instruction | `target` (a `MethodId`), `kind`, `code_offset` |
-| `field_accesses` | field read or write | `field` (a `FieldId`), `is_write`, `is_static`, `code_offset` |
-| `string_loads` | `const-string` | `value`, `code_offset` |
-| `type_uses` | `const-class`, `check-cast`, `instance-of`, `new-instance`, `new-array`, `filled-new-array` | `descriptor`, `kind`, `code_offset` |
+| Method | One entry per | Fields |
+| ------ | ------------- | ------ |
+| `calls()` | invoke instruction | `target` (a `MethodId`), `kind`, `code_offset` |
+| `field_accesses()` | field read or write | `field` (a `FieldId`), `is_write`, `is_static`, `code_offset` |
+| `string_loads()` | `const-string` | `value`, `code_offset` |
+| `type_uses()` | `const-class`, `check-cast`, `instance-of`, `new-instance`, `new-array`, `filled-new-array` | `descriptor`, `kind`, `code_offset` |
 
-`calls` gives the target exactly as the bytecode names it. It does not follow
-inheritance or virtual dispatch. The [call graph](call-graph.md) does that.
+These four are methods, not properties. Each call goes through the method's
+bytecode again, resolves the names again and makes a new list. So keep the
+list when you need it more than once. For example, do not write
+`method.calls()[i]` inside a loop.
+
+`calls()` gives the target exactly as the bytecode names it. It does not
+follow inheritance or virtual dispatch. The [call graph](call-graph.md) does
+that.
 
 These are the forward direction: from a method to what it uses. For the other
 direction, from a method, field, string or type to its users, see

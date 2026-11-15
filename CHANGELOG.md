@@ -62,16 +62,19 @@
   `MethodHandleRef` and `ResourceName` could be compared but not hashed, so
   they could not be dictionary keys or set members. They now have a hash that
   matches their equality.
-- Breaking: nine properties that do a lot of work on every read are now
+- Breaking: thirteen properties that do a lot of work on every read are now
   methods, so they need `()`: `AnalysisContext.classes()` (makes a new `Class`
   object for every class of every DEX file), `AnalysisContext.strings()`
   (copies every string of every DEX file), `Xrefs.referenced_strings()`,
   `CallNode.callers()` and `CallNode.callees()` (collect, deduplicate and sort
   the nodes again; for a method called from many places, `callers()` goes
   through every one of those call sites; both still return a `CallNodeView`),
-  `Apk.entries()` (reads the whole ZIP central directory again),
-  `Model.class_descriptors()` (copies every descriptor),
-  `Model.required_version()` (runs the whole validator) and
+  `Method.calls()`, `Method.field_accesses()`, `Method.string_loads()` and
+  `Method.type_uses()` (go through the method's bytecode again and build new
+  objects; a loop such as `for i in range(len(m.calls)): m.calls[i]` went
+  through the method once per step), `Apk.entries()` (reads the whole ZIP
+  central directory again), `Model.class_descriptors()` (copies every
+  descriptor), `Model.required_version()` (runs the whole validator) and
   `Model.pool_stats()` (walks the whole model). The rule, written in the
   Python reference, is that a property is cheap or cached and a method
   computes. Code that still reads one of them without `()` gets the bound

@@ -45,8 +45,8 @@ for instruction in instructions:
         action: str = "write" if instruction.is_write is True else "read"
         print("field access at", instruction.base.offset, action)
 
-calls: list[dexpp.MethodCall] = area.calls
-accesses: list[dexpp.FieldAccess] = area.field_accesses
+calls: list[dexpp.MethodCall] = area.calls()
+accesses: list[dexpp.FieldAccess] = area.field_accesses()
 print([(call.target.class_descriptor, call.target.name) for call in calls])
 print([(access.field.name, access.is_write) for access in accesses])
 # --8<-- [end:typed]
