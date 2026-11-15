@@ -38,6 +38,13 @@ type checker see.
 - **Views.** `CallGraph.nodes`, `CallGraph.edges`, `Xrefs.referrers` and
   `Cfg.blocks` and `Method.instructions` are read-only sequences that do not copy the data. They support
   `len()`, indexing, slicing and iteration.
+- **Equality.** `Class`, `Method`, `Field` and `ClassRef` objects are equal
+  when they point at the same class, method or field of the same analysis, so
+  they work as dictionary keys and in sets. One analysis is one
+  `AnalysisContext`, or every result of `Apk.analysis()` on one `Apk`. The same
+  file loaded twice gives two analyses, and their objects are not equal.
+  Identities (`MethodId`, `FieldId`) and the small value classes (`TypeRef`,
+  `ResourceName` and the like) are equal when their content is equal.
 - **Lifetime.** Every object keeps the analysis it came from alive. You never
   have to keep the `AnalysisContext` or `Apk` around yourself.
 

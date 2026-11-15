@@ -52,6 +52,16 @@
   `TypeError`. The type stubs now also say that `Model.read` takes any
   bytes-like object (`bytes`, `bytearray`, `memoryview`), which it always
   accepted.
+- `Class`, `Method`, `Field` and `ClassRef` objects now compare equal when they
+  point at the same class, method or field of the same analysis, and they can
+  be dictionary keys and set members. Before, `ctx.find_class("LA;") ==
+  ctx.find_class("LA;")` was `False`, because each call makes a new Python
+  object, and a `set` of methods did not remove duplicates. The same file
+  loaded twice gives two analyses, and their objects are not equal.
+- `TypeRef`, `EnumRef`, `FieldRef`, `MethodRef`, `MethodTypeRef`,
+  `MethodHandleRef` and `ResourceName` could be compared but not hashed, so
+  they could not be dictionary keys or set members. They now have a hash that
+  matches their equality.
 - `Method.instructions` is now a `dexpp.InstructionView`, a read-only
   sequence over the decoded bytecode, like `Cfg.blocks`. It copies nothing up
   front; before, every read of the property built a new list of every

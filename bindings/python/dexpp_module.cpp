@@ -7,6 +7,10 @@
  *  - Null handles (is_valid() == false) and not-found sentinels become None.
  *  - The C++ enums are Python enum.Enum classes, converted by value
  *    (dexpp_enums.hpp).
+ *  - Class, Method, Field and ClassRef use the C++ operator== and std::hash:
+ *    equal when they point at the same thing of the same analysis.  Every
+ *    class with __eq__ also has __hash__ (pybind11 makes a class that defines
+ *    only __eq__ unhashable).
  *  - TypeDescriptor is flattened to a plain str: unlike the other handles it
  *    does not keep the AnalysisContext alive, so exposing it as an object
  *    would let Python code dangle it past the context's lifetime.
@@ -346,31 +350,46 @@ PYBIND11_MODULE(dexpp, m)
     py::class_<AnnotationValue::TypeRef>(m, "TypeRef")
         .def_readonly("descriptor", &AnnotationValue::TypeRef::descriptor)
         .def(py::self == py::self)
+        .def("__hash__",
+             [](const AnnotationValue::TypeRef &t) {
+                 return std::hash<std::string>{}(t.descriptor);
+             })
         .def("__repr__",
              [](const AnnotationValue::TypeRef &t) { return "TypeRef(" + t.descriptor + ")"; });
 
     py::class_<AnnotationValue::EnumRef>(m, "EnumRef")
         .def_readonly("constant", &AnnotationValue::EnumRef::constant)
         .def(py::self == py::self)
+        .def("__hash__",
+             [](const AnnotationValue::EnumRef &e) { return FieldIdHash{}(e.constant); })
         .def("__repr__", [](const AnnotationValue::EnumRef &e) {
             return "EnumRef(" + e.constant.class_descriptor + "->" + e.constant.name + ")";
         });
 
     py::class_<AnnotationValue::FieldRef>(m, "FieldRef")
         .def_readonly("field", &AnnotationValue::FieldRef::field)
-        .def(py::self == py::self);
+        .def(py::self == py::self)
+        .def("__hash__", [](const AnnotationValue::FieldRef &f) { return FieldIdHash{}(f.field); });
 
     py::class_<AnnotationValue::MethodRef>(m, "MethodRef")
         .def_readonly("method", &AnnotationValue::MethodRef::method)
-        .def(py::self == py::self);
+        .def(py::self == py::self)
+        .def("__hash__",
+             [](const AnnotationValue::MethodRef &r) { return MethodIdHash{}(r.method); });
 
     py::class_<AnnotationValue::MethodTypeRef>(m, "MethodTypeRef")
         .def_readonly("proto", &AnnotationValue::MethodTypeRef::proto)
-        .def(py::self == py::self);
+        .def(py::self == py::self)
+        .def("__hash__", [](const AnnotationValue::MethodTypeRef &t) {
+            return std::hash<std::string>{}(t.proto);
+        });
 
     py::class_<AnnotationValue::MethodHandleRef>(m, "MethodHandleRef")
         .def_readonly("index", &AnnotationValue::MethodHandleRef::index)
-        .def(py::self == py::self);
+        .def(py::self == py::self)
+        .def("__hash__", [](const AnnotationValue::MethodHandleRef &h) {
+            return std::hash<uint32_t>{}(h.index);
+        });
 
     py::class_<Annotation>(m, "Annotation")
         .def_readonly("type_descriptor", &Annotation::type_descriptor)
@@ -585,6 +604,8 @@ PYBIND11_MODULE(dexpp, m)
                                [](const ClassRef &r) { return std::string(r.descriptor()); })
         .def_property_readonly("is_resolved", &ClassRef::is_resolved)
         .def("resolve", [](const ClassRef &r) { return class_or_none(r.resolve()); })
+        .def(py::self == py::self)
+        .def("__hash__", [](const ClassRef &r) { return std::hash<ClassRef>{}(r); })
         .def("__repr__",
              [](const ClassRef &r) { return "ClassRef(" + std::string(r.descriptor()) + ")"; });
 
@@ -609,6 +630,8 @@ PYBIND11_MODULE(dexpp, m)
                                        return py::none();
                                    return annotation_value_to_py(*v);
                                })
+        .def(py::self == py::self)
+        .def("__hash__", [](const Field &f) { return std::hash<Field>{}(f); })
         .def("__repr__", [](const Field &f) { return "Field(" + std::string(f.name()) + ")"; });
 
     // ===== forward references & try blocks =====
@@ -691,6 +714,8 @@ PYBIND11_MODULE(dexpp, m)
         .def_property_readonly("type_uses", &Method::type_uses)
         .def_property_readonly("try_blocks", &Method::try_blocks)
         .def_property_readonly("annotations", &Method::annotations)
+        .def(py::self == py::self)
+        .def("__hash__", [](const Method &m_) { return std::hash<Method>{}(m_); })
         .def("__repr__", [](const Method &m_) {
             return "Method(" + std::string(m_.declaring_class().descriptor()) + "->" +
                    std::string(m_.name()) + ")";
@@ -721,6 +746,8 @@ PYBIND11_MODULE(dexpp, m)
         .def_property_readonly("is_interface", &Class::is_interface)
         .def_property_readonly("is_final", &Class::is_final)
         .def_property_readonly("is_enum", &Class::is_enum)
+        .def(py::self == py::self)
+        .def("__hash__", [](const Class &c) { return std::hash<Class>{}(c); })
         .def("__repr__", [](const Class &c) { return "Class(" + std::string(c.name()) + ")"; });
 
     // ===== call graph =====
@@ -1102,6 +1129,10 @@ PYBIND11_MODULE(dexpp, m)
         .def_readonly("type", &ResourceName::type)
         .def_readonly("entry", &ResourceName::entry)
         .def(py::self == py::self)
+        .def("__hash__",
+             [](const ResourceName &n) {
+                 return py::hash(py::make_tuple(n.package, n.type, n.entry));
+             })
         .def("__repr__", [](const ResourceName &n) {
             return "ResourceName(" + n.package + ":" + n.type + "/" + n.entry + ")";
         });

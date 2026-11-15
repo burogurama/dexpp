@@ -322,52 +322,86 @@ class FieldId:
 # ===== annotations =====
 
 class TypeRef:
-    """A class literal as an annotation value, such as `String.class`."""
+    """A class literal as an annotation value, such as `String.class`.
+
+    It is a plain value: two are equal when their content is equal, and it can be a
+    dictionary key or a set member.
+    """
 
     @property
     def descriptor(self) -> str:
         """Descriptor of the type."""
+    def __eq__(self, other: object) -> bool: ...
+    def __hash__(self) -> int: ...
 
 class EnumRef:
-    """An enum constant as an annotation value."""
+    """An enum constant as an annotation value.
+
+    It is a plain value: two are equal when their content is equal, and it can be a
+    dictionary key or a set member.
+    """
 
     @property
     def constant(self) -> FieldId:
         """The static field that holds the enum constant."""
+    def __eq__(self, other: object) -> bool: ...
+    def __hash__(self) -> int: ...
 
 class FieldRef:
     """A reference to a field as an annotation value. It is rare outside system
     annotations.
+
+    It is a plain value: two are equal when their content is equal, and it can be a
+    dictionary key or a set member.
     """
 
     @property
     def field(self) -> FieldId:
         """The field."""
+    def __eq__(self, other: object) -> bool: ...
+    def __hash__(self) -> int: ...
 
 class MethodRef:
     """A reference to a method as an annotation value. It is rare outside system
     annotations.
+
+    It is a plain value: two are equal when their content is equal, and it can be a
+    dictionary key or a set member.
     """
 
     @property
     def method(self) -> MethodId:
         """The method."""
+    def __eq__(self, other: object) -> bool: ...
+    def __hash__(self) -> int: ...
 
 class MethodTypeRef:
-    """A method prototype as an annotation value."""
+    """A method prototype as an annotation value.
+
+    It is a plain value: two are equal when their content is equal, and it can be a
+    dictionary key or a set member.
+    """
 
     @property
     def proto(self) -> str:
         """The prototype, such as `(I)V`."""
+    def __eq__(self, other: object) -> bool: ...
+    def __hash__(self) -> int: ...
 
 class MethodHandleRef:
-    """A method handle as an annotation value."""
+    """A method handle as an annotation value.
+
+    It is a plain value: two are equal when their content is equal, and it can be a
+    dictionary key or a set member.
+    """
 
     @property
     def index(self) -> int:
         """Index of the handle in the DEX file's method handle table. It is not resolved
         further.
         """
+    def __eq__(self, other: object) -> bool: ...
+    def __hash__(self) -> int: ...
 
 AnnotationValue = Union[
     None, bool, int, float, str,
@@ -989,6 +1023,10 @@ class ClassRef:
     The class may or may not be in the loaded files. Superclasses and interfaces are
     given as references because they are often framework classes, which an app does
     not contain.
+
+    Two references are equal when they name the same class and come from the same
+    analysis, so a reference can be a dictionary key or a set member. A `ClassRef`
+    is never equal to a `Class`.
     """
 
     @property
@@ -999,9 +1037,16 @@ class ClassRef:
         """True when the class is defined in a loaded file."""
     def resolve(self) -> Optional[Class]:
         """The `Class`, or `None` when the class is not defined in a loaded file."""
+    def __eq__(self, other: object) -> bool: ...
+    def __hash__(self) -> int: ...
 
 class Field:
-    """A field declared by a class in a loaded DEX file."""
+    """A field declared by a class in a loaded DEX file.
+
+    Two `Field` objects are equal when they are the same field of the same analysis,
+    so a field can be a dictionary key or a set member. The same file loaded twice
+    gives two analyses, and their fields are not equal.
+    """
 
     @property
     def name(self) -> str:
@@ -1034,9 +1079,16 @@ class Field:
         `None` when the field is not static or has no recorded value. The field then
         starts at the default of its type: zero, false or null.
         """
+    def __eq__(self, other: object) -> bool: ...
+    def __hash__(self) -> int: ...
 
 class Method:
-    """A method defined by a class in a loaded DEX file."""
+    """A method defined by a class in a loaded DEX file.
+
+    Two `Method` objects are equal when they are the same method of the same analysis,
+    so a method can be a dictionary key or a set member. The same file loaded twice
+    gives two analyses, and their methods are not equal.
+    """
 
     @property
     def name(self) -> str:
@@ -1119,9 +1171,16 @@ class Method:
     @property
     def annotations(self) -> list[Annotation]:
         """The annotations on the method."""
+    def __eq__(self, other: object) -> bool: ...
+    def __hash__(self) -> int: ...
 
 class Class:
-    """A class defined in a loaded DEX file."""
+    """A class defined in a loaded DEX file.
+
+    Two `Class` objects are equal when they are the same class of the same analysis,
+    so a class can be a dictionary key or a set member. The same file loaded twice
+    gives two analyses, and their classes are not equal.
+    """
 
     @property
     def name(self) -> str:
@@ -1173,6 +1232,8 @@ class Class:
     @property
     def is_enum(self) -> bool:
         """True when the class is an enum."""
+    def __eq__(self, other: object) -> bool: ...
+    def __hash__(self) -> int: ...
 
 # ===== call graph =====
 
@@ -1710,7 +1771,11 @@ class Manifest:
         """`android:allowBackup` of `<application>`, or `None` when it is not set."""
 
 class ResourceName:
-    """The full name of a resource: `package:type/entry`."""
+    """The full name of a resource: `package:type/entry`.
+
+    It is a plain value: two are equal when their content is equal, and it can be a
+    dictionary key or a set member.
+    """
 
     @property
     def package(self) -> str:
@@ -1721,6 +1786,8 @@ class ResourceName:
     @property
     def entry(self) -> str:
         """The entry name, such as `app_name`."""
+    def __eq__(self, other: object) -> bool: ...
+    def __hash__(self) -> int: ...
 
 class ResourceTable:
     """The decoded `resources.arsc` table of an APK.

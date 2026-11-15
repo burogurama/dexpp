@@ -586,6 +586,75 @@ def test_handles_outlive_context():
     assert [m.name for m in cls.methods]
 
 
+def test_handles_are_equal_when_they_point_at_the_same_thing():
+    ctx = dexpp.AnalysisContext.from_dex("tests/data/shapes.dex")
+    circle = ctx.find_class("LCircle;")
+    rectangle = ctx.find_class("LRectangle;")
+    assert circle == ctx.find_class("LCircle;")
+    assert hash(circle) == hash(ctx.find_class("LCircle;"))
+    assert circle != rectangle
+    assert circle in ctx.classes
+    assert len(set(ctx.classes) | set(ctx.classes)) == len(ctx.classes)
+
+    methods = circle.methods
+    assert methods[0] == circle.methods[0] and methods[0] != methods[1]
+    assert len({*methods, *circle.methods}) == len(methods)
+    names = {method: method.name for method in methods}
+    assert names[circle.methods[-1]] == methods[-1].name
+    fields = rectangle.fields
+    assert len({*fields, *ctx.find_class("LRectangle;").fields}) == len(fields) == 2
+
+    # ClassRef: the same name in the same analysis.
+    parent = circle.superclass
+    assert parent == rectangle.superclass and hash(parent) == hash(rectangle.superclass)
+    assert parent != ctx.find_class("LAbstractShape;").interfaces[0]
+    assert methods[0].declaring_class == circle.fields[0].declaring_class
+
+    # Different kinds of object are never equal, even with the same name.
+    assert parent != ctx.find_class("LAbstractShape;")
+    assert circle != "LCircle;" and methods[0] != circle
+
+    # The same file loaded twice gives two analyses.
+    other = dexpp.AnalysisContext.from_dex("tests/data/shapes.dex")
+    assert other.find_class("LCircle;") != circle
+    assert other.find_class("LCircle;").methods[0] != methods[0]
+    assert other.find_class("LCircle;").superclass != parent
+
+    # Apk.analysis() is built once, so its results are one analysis.
+    apk = dexpp.Apk.open("tests/data/sample.apk")
+    assert apk.analysis().find_class("LTestDex;") == apk.analysis().find_class("LTestDex;")
+
+
+def test_every_class_with_equality_is_hashable():
+    # pybind11 makes a class that defines __eq__ without __hash__ unhashable.
+    for name, value in vars(dexpp).items():
+        if isinstance(value, type) and "__eq__" in vars(value):
+            assert vars(value).get("__hash__") is not None, name
+
+    # The value records hash by their content.
+    annotated = dexpp.AnalysisContext.from_dex("tests/data/annotated.dex")
+    def element(method_name):
+        method = next(m for m in annotated.find_class("LAnnotated;").methods if m.name == method_name)
+        return next(a for a in method.annotations if a.type_descriptor == "LMarker;")
+    target = element("greet").elements["target"]
+    assert isinstance(target, dexpp.TypeRef)
+    assert target == element("greet").elements["target"]
+    assert len({target, element("greet").elements["target"]}) == 1
+
+    retention = next(
+        a for a in annotated.find_class("LMarker;").annotations
+        if a.type_descriptor == "Ljava/lang/annotation/Retention;"
+    )
+    policy = retention.elements["value"]
+    assert isinstance(policy, dexpp.EnumRef) and policy.constant.name == "RUNTIME"
+    assert hash(policy) == hash(retention.elements["value"])
+
+    resources = dexpp.Apk.open("tests/data/sample.apk").resources
+    app_name = resources.id_of("string", "app_name")
+    assert resources.name_of(app_name) == resources.name_of(app_name)
+    assert len({resources.name_of(app_name), resources.name_of(app_name)}) == 1
+
+
 # ===== editable DEX model (dex::model) =====
 
 # shapes.dex: interface LShape;, abstract LAbstractShape; implementing it, and
