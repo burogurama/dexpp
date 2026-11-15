@@ -23,6 +23,10 @@ struct AnalysisContextImpl;
  *  and no direct supertypes recorded, but participate in subtype queries
  *  initiated from loaded descendants.
  *
+ *  A class defined in more than one loaded DEX file takes its superclass,
+ *  interfaces and interface flag from its first definition only: the one
+ *  `AnalysisContext::find_class()` returns, and the one Android loads.
+ *
  *  All query results return `std::string_view` views into the hierarchy's
  *  internal storage; valid for the lifetime of the AnalysisContext.
  *

@@ -173,6 +173,79 @@ class ApkTest {
         }
     }
 
+    /** refs.apk writes its boolean and integer attributes as resource references. */
+    @Test
+    void manifestReferences() throws IOException {
+        try (Apk apk = apk("refs.apk")) {
+            ResourceTable rt = apk.resources().orElseThrow();
+            Manifest m = apk.manifest().orElseThrow();
+            assertEquals(OptionalLong.of(23), m.minSdk());
+            assertEquals(rt.idOf("integer", "min_sdk"), m.minSdkReference());
+            assertEquals(OptionalLong.of(34), m.targetSdk());
+            assertTrue(m.targetSdkReference().isPresent());
+            assertEquals(Optional.of(true), m.debuggable());
+            assertEquals(rt.idOf("bool", "debug"), m.debuggableReference());
+            assertEquals(Optional.of(false), m.allowBackup());
+            assertTrue(m.allowBackupReference().isPresent());
+            // A plain value has no reference.
+            assertEquals(OptionalLong.of(42), m.versionCode());
+            assertEquals(OptionalInt.empty(), m.versionCodeReference());
+
+            Map<String, Component> byName = new HashMap<>();
+            for (Component c : m.components()) {
+                byName.put(c.name().substring(c.name().lastIndexOf('.') + 1), c);
+            }
+            Component exported = byName.get("ExportedActivity");
+            assertEquals(Optional.of(true), exported.exported());
+            assertEquals(rt.idOf("bool", "yes"), exported.exportedReference());
+            assertTrue(exported.isExported());
+            Component hidden = byName.get("HiddenActivity");
+            assertEquals(Optional.of(false), hidden.exported());
+            assertFalse(hidden.isExported());
+            // A reference to a string: written, but unknown, so possibly exported.
+            Component text = byName.get("TextActivity");
+            assertEquals(Optional.empty(), text.exported());
+            assertEquals(rt.idOf("string", "not_a_bool"), text.exportedReference());
+            assertTrue(text.isExported());
+            assertTrue(text.isReachable());
+
+            assertEquals(
+                    OptionalInt.of(2),
+                    m.declaredPermissionProtectionLevel("com.dexpp.refs.P_SIGNATURE"));
+            assertEquals(
+                    OptionalInt.empty(), m.declaredPermissionProtectionLevel("com.dexpp.refs.P_TEXT"));
+            assertFalse(byName.get("GuardedService").isReachable());
+            assertTrue(byName.get("TextGuardedService").isReachable());
+        }
+        // sample.apk writes plain values: no references.
+        try (Apk apk = apk("sample.apk")) {
+            Manifest m = apk.manifest().orElseThrow();
+            assertEquals(OptionalInt.empty(), m.minSdkReference());
+            assertEquals(OptionalInt.empty(), m.debuggableReference());
+            for (Component c : m.components()) {
+                assertEquals(OptionalInt.empty(), c.exportedReference(), c.name());
+            }
+        }
+    }
+
+    @Test
+    void resolveBoolAndInt() throws IOException {
+        try (Apk apk = apk("refs.apk")) {
+            ResourceTable rt = apk.resources().orElseThrow();
+            assertEquals(Optional.of(true), rt.resolveBool(rt.idOf("bool", "yes").orElseThrow()));
+            assertEquals(Optional.of(false), rt.resolveBool(rt.idOf("bool", "no").orElseThrow()));
+            assertEquals(
+                    Optional.of(true), rt.resolveBool(rt.idOf("bool", "same_as_yes").orElseThrow()));
+            assertEquals(
+                    OptionalLong.of(23), rt.resolveInt(rt.idOf("integer", "min_sdk").orElseThrow()));
+            int notABool = rt.idOf("string", "not_a_bool").orElseThrow();
+            assertEquals(Optional.empty(), rt.resolveBool(notABool));
+            assertEquals(OptionalLong.empty(), rt.resolveInt(notABool));
+            assertEquals(Optional.empty(), rt.resolveBool(0x7f999999));
+            assertEquals(OptionalLong.empty(), rt.resolveInt(0x7f999999));
+        }
+    }
+
     @Test
     void anApkWithoutAManifestOrResources() throws IOException {
         // app.apk is a ZIP of DEX files only.

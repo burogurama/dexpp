@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -97,8 +98,24 @@ struct AnalysisContextImpl : public std::enable_shared_from_this<AnalysisContext
      *  ApkLoadOptions::threads by the APK loader. */
     unsigned threads = 0;
 
+    /** Hashes a std::string key and a std::string_view query the same way,
+     *  so class_index lookups do not copy the descriptor. */
+    struct DescriptorHash
+    {
+        using is_transparent = void;
+        std::size_t operator()(std::string_view s) const noexcept
+        {
+            return std::hash<std::string_view>{}(s);
+        }
+    };
+
+    /** Class descriptor -> (dex_idx, class_def_idx) of the definition the
+     *  context uses for that class.  See is_winning_definition() for the rule
+     *  when a class is defined more than once. */
     mutable std::once_flag class_index_flag;
-    mutable std::unordered_map<std::string, std::pair<std::size_t, uint32_t>> class_index;
+    mutable std::unordered_map<std::string, std::pair<std::size_t, uint32_t>, DescriptorHash,
+                               std::equal_to<>>
+        class_index;
 
     mutable std::once_flag call_graph_flag;
     mutable std::optional<CallGraph> call_graph_cache;
@@ -132,8 +149,27 @@ struct AnalysisContextImpl : public std::enable_shared_from_this<AnalysisContext
     std::span<const Instruction> get_instructions(std::size_t dex_idx, uint32_t code_off) const;
     const Cfg &get_cfg(std::size_t dex_idx, uint32_t code_off) const;
 
+    /** The definition the context uses for the class @p descriptor, as
+     *  (dex_idx, class_def_idx), or nullopt when no loaded DEX defines it. */
     std::optional<std::pair<std::size_t, uint32_t>>
     find_class_index(std::string_view descriptor) const;
+
+    /** True when class_defs[@p class_def_idx] of DEX @p dex_idx is the
+     *  definition the context uses for its class.
+     *
+     *  When a class is defined more than once, the first definition wins: the
+     *  one in the earliest loaded DEX file (load order is multidex order for
+     *  an APK: classes.dex, classes2.dex, ...), and inside one DEX file the
+     *  first class_def.  That is what Android does: an app's class loader asks
+     *  its DEX files in order and stops at the first one that defines the
+     *  class (DexPathList.findClass in libcore, and
+     *  ClassLinker::FindClassInBaseDexClassLoaderClassPath in ART).  The later
+     *  definitions are never loaded, so their code never runs.
+     *
+     *  find_class(), ClassRef::resolve(), the class hierarchy, the call graph
+     *  and the cross-references all follow this rule.  classes() still lists
+     *  every definition. */
+    bool is_winning_definition(std::size_t dex_idx, uint32_t class_def_idx) const;
 
     const CallGraph &get_call_graph() const;
     const ClassHierarchy &get_class_hierarchy() const;

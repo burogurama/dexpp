@@ -184,9 +184,12 @@ public final class Apk implements AutoCloseable {
         return new Manifest(
                 Mem.string(m, Layouts.Manifest.PACKAGE),
                 optLong(m, Layouts.Manifest.HAS_VERSION_CODE, Layouts.Manifest.VERSION_CODE),
+                optReference(m, Layouts.Manifest.VERSION_CODE_REFERENCE),
                 Mem.optString(m, Layouts.Manifest.VERSION_NAME),
                 optLong(m, Layouts.Manifest.HAS_MIN_SDK, Layouts.Manifest.MIN_SDK),
+                optReference(m, Layouts.Manifest.MIN_SDK_REFERENCE),
                 optLong(m, Layouts.Manifest.HAS_TARGET_SDK, Layouts.Manifest.TARGET_SDK),
+                optReference(m, Layouts.Manifest.TARGET_SDK_REFERENCE),
                 Mem.strings(
                         Mem.pointer(m, Layouts.Manifest.PERMISSIONS),
                         Mem.i64(m, Layouts.Manifest.PERMISSION_COUNT)),
@@ -194,11 +197,19 @@ public final class Apk implements AutoCloseable {
                 components,
                 Mem.optString(m, Layouts.Manifest.LAUNCHER_ACTIVITY),
                 Mem.triState(m, Layouts.Manifest.DEBUGGABLE),
-                Mem.triState(m, Layouts.Manifest.ALLOW_BACKUP));
+                optReference(m, Layouts.Manifest.DEBUGGABLE_REFERENCE),
+                Mem.triState(m, Layouts.Manifest.ALLOW_BACKUP),
+                optReference(m, Layouts.Manifest.ALLOW_BACKUP_REFERENCE));
     }
 
     private static OptionalLong optLong(MemorySegment m, long has, long value) {
         return Mem.bool(m, has) ? OptionalLong.of(Mem.i64(m, value)) : OptionalLong.empty();
+    }
+
+    /** A {@code uint32_t} resource id where 0 means none. */
+    private static OptionalInt optReference(MemorySegment m, long offset) {
+        int id = Mem.i32(m, offset);
+        return id == 0 ? OptionalInt.empty() : OptionalInt.of(id);
     }
 
     private static Component component(MemorySegment c, long b) {
@@ -223,6 +234,7 @@ public final class Apk implements AutoCloseable {
                 Mem.string(c, b + Layouts.Component.NAME),
                 ComponentKind.of(Mem.i32(c, b + Layouts.Component.KIND)),
                 Mem.triState(c, b + Layouts.Component.EXPORTED),
+                optReference(c, b + Layouts.Component.EXPORTED_REFERENCE),
                 Mem.optString(c, b + Layouts.Component.PERMISSION),
                 filters,
                 Mem.bool(c, b + Layouts.Component.GUARDED_BY_SIGNATURE_PERMISSION),

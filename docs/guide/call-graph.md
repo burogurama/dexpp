@@ -172,5 +172,18 @@ they can be put in sets and used as dictionary keys.
 - **Framework callbacks.** Android calls methods such as `onCreate` itself.
   Nothing in the app calls them, so they have no callers in the graph.
 
-When the same method is defined in more than one loaded DEX file, the last
-definition wins, as on Android.
+When the same class is defined in more than one loaded DEX file, the first
+definition wins, as on Android. "First" means the earliest DEX file in load
+order: for an APK, `classes.dex`, then `classes2.dex`, and so on. An Android
+class loader searches the DEX files in that order and stops at the first one
+that defines the class, so a later definition is never loaded and its code
+never runs. The graph does the same:
+
+- only the first definition's methods are resolved nodes, and `node.method`
+  returns the method of that definition;
+- only the code of that definition adds edges. A method that only a later
+  definition has gets no node from it, and calls made in a later definition's
+  code are not in the graph.
+
+`find_class`, the class hierarchy and the cross-references use the same
+definition. `classes()` still lists every definition.

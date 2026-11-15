@@ -34,6 +34,14 @@ constexpr FrameworkAttribute kAllowBackup{"allowBackup", 0x01010280};
 
 constexpr std::string_view kAndroidNamespace = "http://schemas.android.com/apk/res/android";
 
+/** A boolean or integer attribute as read: its value when known, and its
+ *  reference id when it is written as a reference. */
+template <typename T> struct TypedRead
+{
+    std::optional<T> value;
+    std::optional<uint32_t> reference;
+};
+
 /** Finds framework attributes on an element the way Android does.
  *
  *  Android reads a framework attribute by its resource id: the document's
@@ -52,7 +60,10 @@ constexpr std::string_view kAndroidNamespace = "http://schemas.android.com/apk/r
 class AttributeLookup
 {
   public:
-    explicit AttributeLookup(bool by_resource_id) : by_resource_id_(by_resource_id) {}
+    AttributeLookup(bool by_resource_id, const ResourceTable *resources)
+        : by_resource_id_(by_resource_id), resources_(resources)
+    {
+    }
 
     const axml::XmlAttribute *find(const axml::XmlNode &node,
                                    const FrameworkAttribute &attribute) const
@@ -65,20 +76,36 @@ class AttributeLookup
         return nullptr;
     }
 
-    std::optional<bool> boolean(const axml::XmlNode &node,
-                                const FrameworkAttribute &attribute) const
+    /** A boolean attribute: a literal value, or a reference resolved
+     *  through the resource table. */
+    TypedRead<bool> boolean(const axml::XmlNode &node, const FrameworkAttribute &attribute) const
     {
-        if (const auto *a = find(node, attribute))
-            return a->as_bool();
-        return std::nullopt;
+        TypedRead<bool> out;
+        if (const auto *a = find(node, attribute)) {
+            out.value = a->as_bool();
+            if (!out.value.has_value()) {
+                out.reference = reference_of(*a);
+                if (out.reference.has_value() && resources_ && is_resource_reference(*a))
+                    out.value = resources_->resolve_bool(*out.reference);
+            }
+        }
+        return out;
     }
 
-    std::optional<int64_t> integer(const axml::XmlNode &node,
-                                   const FrameworkAttribute &attribute) const
+    /** An integer attribute: a literal value, or a reference resolved
+     *  through the resource table. */
+    TypedRead<int64_t> integer(const axml::XmlNode &node, const FrameworkAttribute &attribute) const
     {
-        if (const auto *a = find(node, attribute))
-            return a->as_int();
-        return std::nullopt;
+        TypedRead<int64_t> out;
+        if (const auto *a = find(node, attribute)) {
+            out.value = a->as_int();
+            if (!out.value.has_value()) {
+                out.reference = reference_of(*a);
+                if (out.reference.has_value() && resources_ && is_resource_reference(*a))
+                    out.value = resources_->resolve_int(*out.reference);
+            }
+        }
+        return out;
     }
 
     std::optional<std::string> text(const axml::XmlNode &node,
@@ -97,7 +124,35 @@ class AttributeLookup
     }
 
   private:
+    // Res_value data types of the references an attribute can hold
+    // (ResourceTypes.h).  A resource reference ("@bool/x") names a resource;
+    // an attribute reference ("?attr/x") names a theme attribute, whose value
+    // depends on the theme the app runs with.  The dynamic forms are the same
+    // references into a shared library's resources.
+    static constexpr uint8_t kReference = 0x01;
+    static constexpr uint8_t kAttribute = 0x02;
+    static constexpr uint8_t kDynamicReference = 0x07;
+    static constexpr uint8_t kDynamicAttribute = 0x08;
+
+    /** The id a reference-typed value holds; nullopt for any other value. */
+    static std::optional<uint32_t> reference_of(const axml::XmlAttribute &a)
+    {
+        const uint8_t type = a.typed.type;
+        if (type == kReference || type == kAttribute || type == kDynamicReference ||
+            type == kDynamicAttribute)
+            return a.typed.data;
+        return std::nullopt;
+    }
+
+    /** True for a reference to a resource, which the resource table can
+     *  resolve; a theme attribute cannot be resolved without a theme. */
+    static bool is_resource_reference(const axml::XmlAttribute &a)
+    {
+        return a.typed.type == kReference || a.typed.type == kDynamicReference;
+    }
+
     bool by_resource_id_;
+    const ResourceTable *resources_;
 };
 
 // android:name on a component may be a leaf (".Foo") or partial ("sub.Foo");
@@ -143,7 +198,9 @@ void collect_components(const AttributeLookup &attrs, const axml::XmlNode &app,
             Component c;
             c.kind = tag.kind;
             c.name = qualify(attrs.name_of(*node), package);
-            c.exported = attrs.boolean(*node, framework::kExported);
+            auto exported = attrs.boolean(*node, framework::kExported);
+            c.exported = exported.value;
+            c.exported_reference = exported.reference;
             c.permission = attrs.text(*node, framework::kPermission);
             for (const auto *filter : node->children_named("intent-filter"))
                 c.intent_filters.push_back(parse_filter(attrs, *filter));
@@ -154,10 +211,10 @@ void collect_components(const AttributeLookup &attrs, const axml::XmlNode &app,
 
 } // namespace
 
-Manifest::Manifest(axml::XmlDocument doc) : doc_(std::move(doc))
+Manifest::Manifest(axml::XmlDocument doc, const ResourceTable *resources) : doc_(std::move(doc))
 {
     const axml::XmlNode &root = doc_.root;
-    const AttributeLookup attrs(doc_.has_resource_map);
+    const AttributeLookup attrs(doc_.has_resource_map, resources);
 
     // `package` is not a framework attribute: it has no namespace and no
     // resource id, and Android reads it by name.
@@ -168,12 +225,18 @@ Manifest::Manifest(axml::XmlDocument doc) : doc_(std::move(doc))
             break;
         }
 
-    version_code_ = attrs.integer(root, framework::kVersionCode);
+    auto version_code = attrs.integer(root, framework::kVersionCode);
+    version_code_ = version_code.value;
+    version_code_reference_ = version_code.reference;
     version_name_ = attrs.text(root, framework::kVersionName);
 
     if (const auto *uses_sdk = root.child("uses-sdk")) {
-        min_sdk_ = attrs.integer(*uses_sdk, framework::kMinSdkVersion);
-        target_sdk_ = attrs.integer(*uses_sdk, framework::kTargetSdkVersion);
+        auto min_sdk = attrs.integer(*uses_sdk, framework::kMinSdkVersion);
+        min_sdk_ = min_sdk.value;
+        min_sdk_reference_ = min_sdk.reference;
+        auto target_sdk = attrs.integer(*uses_sdk, framework::kTargetSdkVersion);
+        target_sdk_ = target_sdk.value;
+        target_sdk_reference_ = target_sdk.reference;
     }
 
     for (const auto *up : root.children_named("uses-permission")) {
@@ -185,15 +248,25 @@ Manifest::Manifest(axml::XmlDocument doc) : doc_(std::move(doc))
         std::string n = attrs.name_of(*dp);
         if (n.empty())
             continue;
-        // protectionLevel defaults to "normal" (0) when omitted.
-        int level = static_cast<int>(attrs.integer(*dp, framework::kProtectionLevel).value_or(0));
-        declared_permission_levels_[n] = level;
+        // protectionLevel defaults to "normal" (0) when omitted, and is
+        // unknown (nullopt) when it is a reference that could not be resolved.
+        auto level = attrs.integer(*dp, framework::kProtectionLevel);
+        std::optional<int> known = 0;
+        if (level.value.has_value())
+            known = static_cast<int>(*level.value);
+        else if (level.reference.has_value())
+            known = std::nullopt;
+        declared_permission_levels_[n] = known;
         declared_permissions_.push_back(std::move(n));
     }
 
     if (const auto *app = root.child("application")) {
-        debuggable_ = attrs.boolean(*app, framework::kDebuggable);
-        allow_backup_ = attrs.boolean(*app, framework::kAllowBackup);
+        auto debuggable = attrs.boolean(*app, framework::kDebuggable);
+        debuggable_ = debuggable.value;
+        debuggable_reference_ = debuggable.reference;
+        auto allow_backup = attrs.boolean(*app, framework::kAllowBackup);
+        allow_backup_ = allow_backup.value;
+        allow_backup_reference_ = allow_backup.reference;
         collect_components(attrs, *app, package_, components_);
     }
 
@@ -210,7 +283,9 @@ Manifest::Manifest(axml::XmlDocument doc) : doc_(std::move(doc))
         auto it = declared_permission_levels_.find(*c.permission);
         if (it == declared_permission_levels_.end())
             continue; // undeclared (e.g. platform) permission — treated as reachable.
-        int base = it->second & kProtectionMaskBase;
+        if (!it->second.has_value())
+            continue; // level unknown (unresolved reference) — treated as reachable.
+        int base = *it->second & kProtectionMaskBase;
         if (base == kProtectionSignature || base == kProtectionSignatureOrSystem)
             c.guarded_by_signature_permission = true;
     }
@@ -221,7 +296,7 @@ std::optional<int> Manifest::declared_permission_protection_level(std::string_vi
     auto it = declared_permission_levels_.find(std::string(name));
     if (it == declared_permission_levels_.end())
         return std::nullopt;
-    return it->second;
+    return it->second; // nullopt when the level is an unresolved reference
 }
 
 std::optional<std::string_view> Manifest::version_name() const

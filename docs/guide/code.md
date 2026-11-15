@@ -35,6 +35,13 @@ order: `classes.dex`, `classes2.dex`, `classes3.dex`, and so on.
   is in the app's package, or below it, when `cls.package == manifest.package`
   or `cls.package.startswith(manifest.package + ".")`. It is an empty string
   for a class in the default package.
+- A class can be defined in more than one loaded file. Then `classes()` lists
+  every definition, and `find_class` returns the first one: the definition in
+  the earliest file, in load order. Android does the same. An app's class
+  loader searches its DEX files in multidex order and stops at the first one
+  that defines the class, so a later definition is never loaded. The call
+  graph, the class hierarchy and the cross-references also use only the first
+  definition.
 - `cls.superclass` and `cls.interfaces` are `ClassRef` values, not classes.
   The superclass is often a framework class that is not in the file, so a
   reference only carries the descriptor. Call `ref.resolve()` to get the

@@ -14,7 +14,7 @@ using namespace dexpp_c;
 
 namespace {
 
-/** 1 / 0 for an explicit boolean, -1 when it is absent. */
+/** 1 / 0 for an explicit boolean, -1 when it is absent or unknown. */
 int tri_state(std::optional<bool> v)
 {
     if (!v)
@@ -35,6 +35,7 @@ DexppComponent component(const dex::apk::Component &c)
     out.name = cstr(c.name);
     out.kind = component_kind(c.kind);
     out.exported = tri_state(c.exported);
+    out.exported_reference = c.exported_reference.value_or(0);
     out.permission = c.permission ? cstr(*c.permission) : nullptr;
     out.guarded_by_signature_permission = c.guarded_by_signature_permission ? 1 : 0;
     out.is_exported = c.is_exported() ? 1 : 0;
@@ -119,11 +120,14 @@ int dexpp_apk_manifest(const DexppApk *apk, DexppManifest *out)
     r.package = cstr(m->package());
     r.has_version_code = m->version_code().has_value() ? 1 : 0;
     r.version_code = m->version_code().value_or(0);
+    r.version_code_reference = m->version_code_reference().value_or(0);
     r.version_name = optional_string(m->version_name());
     r.has_min_sdk = m->min_sdk().has_value() ? 1 : 0;
     r.min_sdk = m->min_sdk().value_or(0);
+    r.min_sdk_reference = m->min_sdk_reference().value_or(0);
     r.has_target_sdk = m->target_sdk().has_value() ? 1 : 0;
     r.target_sdk = m->target_sdk().value_or(0);
+    r.target_sdk_reference = m->target_sdk_reference().value_or(0);
     r.permissions = string_array(m->permissions(), &r.permission_count);
 
     const std::vector<std::string> &declared = m->declared_permissions();
@@ -143,7 +147,9 @@ int dexpp_apk_manifest(const DexppApk *apk, DexppManifest *out)
 
     r.launcher_activity = optional_string(m->launcher_activity());
     r.debuggable = tri_state(m->debuggable());
+    r.debuggable_reference = m->debuggable_reference().value_or(0);
     r.allow_backup = tri_state(m->allow_backup());
+    r.allow_backup_reference = m->allow_backup_reference().value_or(0);
     *out = r;
     return 1;
 }
@@ -198,6 +204,30 @@ int dexpp_apk_resolve_string(const DexppApk *apk, uint32_t id, DexppText *out)
     if (!value)
         return 0;
     *out = text(*value);
+    return 1;
+}
+
+int dexpp_apk_resolve_bool(const DexppApk *apk, uint32_t id, int *out)
+{
+    const dex::apk::ResourceTable *table = apk->apk.resources();
+    if (table == nullptr)
+        return 0;
+    std::optional<bool> value = table->resolve_bool(id);
+    if (!value)
+        return 0;
+    *out = *value ? 1 : 0;
+    return 1;
+}
+
+int dexpp_apk_resolve_int(const DexppApk *apk, uint32_t id, int64_t *out)
+{
+    const dex::apk::ResourceTable *table = apk->apk.resources();
+    if (table == nullptr)
+        return 0;
+    std::optional<int64_t> value = table->resolve_int(id);
+    if (!value)
+        return 0;
+    *out = *value;
     return 1;
 }
 

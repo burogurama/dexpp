@@ -379,6 +379,7 @@ final class Layouts {
         static final long NAME = B.ptr("name");
         static final long KIND = B.i32("kind");
         static final long EXPORTED = B.i32("exported");
+        static final long EXPORTED_REFERENCE = B.i32("exported_reference");
         static final long PERMISSION = B.ptr("permission");
         static final long INTENT_FILTERS = B.ptr("intent_filters");
         static final long INTENT_FILTER_COUNT = B.size("intent_filter_count");
@@ -402,11 +403,14 @@ final class Layouts {
         static final long PACKAGE = B.ptr("package");
         static final long HAS_VERSION_CODE = B.i32("has_version_code");
         static final long VERSION_CODE = B.i64("version_code");
+        static final long VERSION_CODE_REFERENCE = B.i32("version_code_reference");
         static final long VERSION_NAME = B.ptr("version_name");
         static final long HAS_MIN_SDK = B.i32("has_min_sdk");
         static final long MIN_SDK = B.i64("min_sdk");
+        static final long MIN_SDK_REFERENCE = B.i32("min_sdk_reference");
         static final long HAS_TARGET_SDK = B.i32("has_target_sdk");
         static final long TARGET_SDK = B.i64("target_sdk");
+        static final long TARGET_SDK_REFERENCE = B.i32("target_sdk_reference");
         static final long PERMISSIONS = B.ptr("permissions");
         static final long PERMISSION_COUNT = B.size("permission_count");
         static final long DECLARED_PERMISSIONS = B.ptr("declared_permissions");
@@ -415,7 +419,9 @@ final class Layouts {
         static final long COMPONENT_COUNT = B.size("component_count");
         static final long LAUNCHER_ACTIVITY = B.ptr("launcher_activity");
         static final long DEBUGGABLE = B.i32("debuggable");
+        static final long DEBUGGABLE_REFERENCE = B.i32("debuggable_reference");
         static final long ALLOW_BACKUP = B.i32("allow_backup");
+        static final long ALLOW_BACKUP_REFERENCE = B.i32("allow_backup_reference");
         static final StructLayout LAYOUT = B.build("DexppManifest");
     }
 

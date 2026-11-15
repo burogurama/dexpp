@@ -41,7 +41,9 @@ class Apk
     std::optional<std::vector<uint8_t>> read(std::string_view name) const;
 
     /** The decoded AndroidManifest.xml.  Parsed once on first call and cached.
-     *  nullptr if the APK has no manifest or it fails to decode. */
+     *  nullptr if the APK has no manifest or it fails to decode.  Boolean and
+     *  integer attributes given as resource references are resolved through
+     *  resources() (see manifest.hpp). */
     const Manifest *manifest() const;
 
     /** The decoded resources.arsc table.  Parsed once on first call and cached.

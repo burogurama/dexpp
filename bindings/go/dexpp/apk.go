@@ -133,10 +133,18 @@ type Component struct {
 	// ".MainActivity", is completed with the app's package.
 	Name string
 	Kind ComponentKind
-	// Exported is the android:exported attribute as the manifest writes it,
-	// or nil when the attribute is missing. IsExported gives the effective
-	// answer.
+	// Exported is the android:exported attribute: the value the manifest
+	// writes, or the value of the resource it refers to. It is nil when the
+	// attribute is missing, or when it is a reference that could not be
+	// resolved (then ExportedReference is set). IsExported gives the
+	// effective answer.
 	Exported *bool
+	// ExportedReference is the resource id when android:exported is written
+	// as a reference, such as "@bool/is_exported" (or a theme attribute,
+	// "?attr/name"), whether it was resolved or not. It is nil for a plain
+	// value or a missing attribute. Exported nil with ExportedReference set
+	// means the value is unknown.
+	ExportedReference *uint32
 	// Permission is the permission a caller must hold to use the component,
 	// or nil when there is none.
 	Permission    *string
@@ -147,7 +155,9 @@ type Component struct {
 	GuardedBySignaturePermission bool
 	// IsExported says whether other apps can address the component: the
 	// Exported attribute when the manifest sets it, otherwise true when the
-	// component has an intent filter.
+	// component has an intent filter. When the attribute is a reference that
+	// could not be resolved, its value is unknown and IsExported is true:
+	// the component may be exported.
 	IsExported bool
 	// IsReachable says whether an app from another developer can reach the
 	// component: it is exported, and it is not guarded by a signature-level
@@ -162,7 +172,8 @@ type Component struct {
 type DeclaredPermission struct {
 	Name string
 	// ProtectionLevel is the android:protectionLevel as the raw Android
-	// value, or nil when it is not known. The low four bits are the base
+	// value, or nil when it is not known: the attribute is a resource
+	// reference that could not be resolved. The low four bits are the base
 	// level: 0 normal, 1 dangerous, 2 signature, 3 signatureOrSystem. Higher
 	// bits are flags. A declaration without the attribute counts as normal.
 	ProtectionLevel *int32
@@ -170,12 +181,23 @@ type DeclaredPermission struct {
 
 // Manifest is the decoded AndroidManifest.xml. A field the manifest may leave
 // out is nil when it is not set.
+//
+// A boolean or integer attribute can be written as a resource reference,
+// such as android:debuggable="@bool/debug". Its field then holds the value
+// the APK's resource table gives, in the default configuration, and the
+// matching ...Reference field holds the reference id. When the reference
+// cannot be resolved, the value field is nil and the ...Reference field is
+// still set: the attribute is written, but its value is unknown. A
+// ...Reference field is nil for a plain value or a missing attribute.
 type Manifest struct {
-	Package     string  // the package attribute of <manifest>
-	VersionCode *int64  // android:versionCode
-	VersionName *string // android:versionName
-	MinSDK      *int64  // android:minSdkVersion of <uses-sdk>
-	TargetSDK   *int64  // android:targetSdkVersion of <uses-sdk>
+	Package              string  // the package attribute of <manifest>
+	VersionCode          *int64  // android:versionCode
+	VersionCodeReference *uint32 // the reference id of android:versionCode
+	VersionName          *string // android:versionName
+	MinSDK               *int64  // android:minSdkVersion of <uses-sdk>
+	MinSDKReference      *uint32 // the reference id of android:minSdkVersion
+	TargetSDK            *int64  // android:targetSdkVersion of <uses-sdk>
+	TargetSDKReference   *uint32 // the reference id of android:targetSdkVersion
 	// Permissions are the permissions the app asks for: the name of each
 	// <uses-permission>.
 	Permissions []string
@@ -186,9 +208,11 @@ type Manifest struct {
 	// manifest order.
 	Components []Component
 	// LauncherActivity is the name of the activity the launcher starts.
-	LauncherActivity *string
-	Debuggable       *bool // android:debuggable of <application>
-	AllowBackup      *bool // android:allowBackup of <application>
+	LauncherActivity     *string
+	Debuggable           *bool   // android:debuggable of <application>
+	DebuggableReference  *uint32 // the reference id of android:debuggable
+	AllowBackup          *bool   // android:allowBackup of <application>
+	AllowBackupReference *uint32 // the reference id of android:allowBackup
 }
 
 // ComponentsOf returns the components of one kind, in manifest order.
@@ -223,6 +247,15 @@ func optInt64(has C.int, v C.int64_t) *int64 {
 	return &out
 }
 
+// optReference converts a C reference id (0 for none).
+func optReference(id C.uint32_t) *uint32 {
+	if id == 0 {
+		return nil
+	}
+	out := uint32(id)
+	return &out
+}
+
 // optBool converts a C tri-state (1, 0, or -1 for absent).
 func optBool(v C.int) *bool {
 	if v < 0 {
@@ -237,6 +270,7 @@ func goComponent(c *C.DexppComponent) Component {
 		Name:                         C.GoString(c.name),
 		Kind:                         ComponentKind(c.kind),
 		Exported:                     optBool(c.exported),
+		ExportedReference:            optReference(c.exported_reference),
 		Permission:                   goOptString(c.permission),
 		GuardedBySignaturePermission: c.guarded_by_signature_permission != 0,
 		IsExported:                   c.is_exported != 0,
@@ -267,15 +301,20 @@ func (a *Apk) Manifest() (Manifest, bool) {
 	}
 	defer C.dexpp_manifest_clear(&m)
 	out := Manifest{
-		Package:          C.GoString(m._package),
-		VersionCode:      optInt64(m.has_version_code, m.version_code),
-		VersionName:      goOptString(m.version_name),
-		MinSDK:           optInt64(m.has_min_sdk, m.min_sdk),
-		TargetSDK:        optInt64(m.has_target_sdk, m.target_sdk),
-		Permissions:      goStrings(m.permissions, m.permission_count),
-		LauncherActivity: goOptString(m.launcher_activity),
-		Debuggable:       optBool(m.debuggable),
-		AllowBackup:      optBool(m.allow_backup),
+		Package:              C.GoString(m._package),
+		VersionCode:          optInt64(m.has_version_code, m.version_code),
+		VersionCodeReference: optReference(m.version_code_reference),
+		VersionName:          goOptString(m.version_name),
+		MinSDK:               optInt64(m.has_min_sdk, m.min_sdk),
+		MinSDKReference:      optReference(m.min_sdk_reference),
+		TargetSDK:            optInt64(m.has_target_sdk, m.target_sdk),
+		TargetSDKReference:   optReference(m.target_sdk_reference),
+		Permissions:          goStrings(m.permissions, m.permission_count),
+		LauncherActivity:     goOptString(m.launcher_activity),
+		Debuggable:           optBool(m.debuggable),
+		DebuggableReference:  optReference(m.debuggable_reference),
+		AllowBackup:          optBool(m.allow_backup),
+		AllowBackupReference: optReference(m.allow_backup_reference),
 	}
 	if m.declared_permissions != nil && m.declared_permission_count > 0 {
 		declared := unsafe.Slice(m.declared_permissions, int(m.declared_permission_count))
@@ -311,9 +350,10 @@ type ResourceName struct {
 func (n ResourceName) String() string { return n.Package + ":" + n.Type + "/" + n.Entry }
 
 // ResourceTable is the decoded resources.arsc table of an APK. It maps
-// resource ids to names and to string values. When a resource has several
-// variants, for example one per language, the value of the default
-// configuration is used. It reads through the Apk it came from, so it needs
+// resource ids to names and to string, boolean and integer values. When a
+// resource has several variants, for example one per language, the value of
+// the default configuration is used. A resource whose value refers to another
+// resource is followed to the end. It reads through the Apk it came from, so it needs
 // that Apk to stay open.
 type ResourceTable struct{ apk *Apk }
 
@@ -359,6 +399,31 @@ func (t *ResourceTable) ResolveString(id uint32) (string, bool) {
 		panicNil("ResourceTable")
 	}
 	return t.apk.ResolveString(id)
+}
+
+// ResolveBool returns the value of a resource as a boolean: a bool resource,
+// or any integer-typed value (nonzero is true), as Android reads it. The
+// second result is false when the id is missing or its value is of another
+// type, such as a string.
+func (t *ResourceTable) ResolveBool(id uint32) (bool, bool) {
+	defer runtime.KeepAlive(t)
+	var out C.int
+	if C.dexpp_apk_resolve_bool(t.p(), C.uint32_t(id), &out) == 0 {
+		return false, false
+	}
+	return out != 0, true
+}
+
+// ResolveInt returns the value of a resource as an integer: an integer
+// resource, or any other integer-typed value, read as its signed 32-bit data.
+// The bool is false when the id is missing or its value is of another type.
+func (t *ResourceTable) ResolveInt(id uint32) (int64, bool) {
+	defer runtime.KeepAlive(t)
+	var out C.int64_t
+	if C.dexpp_apk_resolve_int(t.p(), C.uint32_t(id), &out) == 0 {
+		return 0, false
+	}
+	return int64(out), true
 }
 
 // IDOf returns the id of the resource with this type and entry name, such as

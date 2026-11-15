@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Source of refs.apk: a manifest whose attribute values are resource
+     references. The values are in RefsValues.xml (res/values) and
+     RefsValuesV31.xml (res/values-v31). tests/apk/manifest_test.cc
+     says how the APK was built. aapt2 refuses a reference for
+     android:versionCode, so it is a literal here; the tests cover that case
+     with a manifest built in memory. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.dexpp.refs"
+    android:versionCode="42"
+    android:versionName="1.0">
+    <uses-sdk android:minSdkVersion="@integer/min_sdk" android:targetSdkVersion="@integer/target_sdk" />
+    <permission android:name="com.dexpp.refs.P_SIGNATURE" android:protectionLevel="@integer/signature_level" />
+    <permission android:name="com.dexpp.refs.P_TEXT" android:protectionLevel="@string/not_a_number" />
+    <application android:debuggable="@bool/debug" android:allowBackup="@bool/allow_backup">
+        <activity android:name=".ExportedActivity" android:exported="@bool/yes" />
+        <activity android:name=".HiddenActivity" android:exported="@bool/no">
+            <intent-filter>
+                <action android:name="com.dexpp.refs.OPEN" />
+            </intent-filter>
+        </activity>
+        <activity android:name=".ChainedActivity" android:exported="@bool/same_as_yes" />
+        <activity android:name=".IntegerActivity" android:exported="@integer/one" />
+        <activity android:name=".TextActivity" android:exported="@string/not_a_bool" />
+        <activity android:name=".ThemeActivity" android:exported="?android:attr/windowFullscreen" />
+        <activity android:name=".VariantActivity" android:exported="@bool/differs_on_v31" />
+        <service android:name=".GuardedService" android:exported="@bool/yes"
+            android:permission="com.dexpp.refs.P_SIGNATURE" />
+        <service android:name=".TextGuardedService" android:exported="@bool/yes"
+            android:permission="com.dexpp.refs.P_TEXT" />
+    </application>
+</manifest>

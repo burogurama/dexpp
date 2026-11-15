@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Resources for refs.apk (res/values/values.xml); see RefsManifest.xml. -->
+<resources>
+    <integer name="min_sdk">23</integer>
+    <integer name="target_sdk">34</integer>
+    <integer name="signature_level">2</integer>
+    <integer name="one">1</integer>
+    <bool name="debug">true</bool>
+    <bool name="allow_backup">false</bool>
+    <bool name="yes">true</bool>
+    <bool name="no">false</bool>
+    <bool name="same_as_yes">@bool/yes</bool>
+    <bool name="differs_on_v31">false</bool>
+    <string name="not_a_bool">true</string>
+    <string name="not_a_number">signature</string>
+</resources>

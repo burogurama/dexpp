@@ -179,6 +179,9 @@ ClassHierarchy build_class_hierarchy(const detail::AnalysisContextImpl &impl)
 
     // Pass 1: register every loaded class with its direct supertypes; ensure
     // unloaded supertypes referenced by loaded classes have placeholder nodes.
+    // A class defined more than once takes everything from its first
+    // definition, the one find_class() returns (the classes are visited in
+    // the same order, so the first visit is that definition).
     for (std::size_t i = 0; i < impl.dex_files().size(); ++i) {
         const auto &dex = impl.dex_files()[i];
         for (uint32_t j = 0; j < static_cast<uint32_t>(dex.class_defs().size()); ++j) {
@@ -186,6 +189,8 @@ ClassHierarchy build_class_hierarchy(const detail::AnalysisContextImpl &impl)
             std::string desc(impl.type_descriptor_of(i, cdef.class_idx));
 
             auto &node = h.nodes_[desc];
+            if (node.loaded)
+                continue; // a later definition of a class: never loaded on Android
             node.loaded = true;
             node.is_iface =
                 has_flag(static_cast<AccessFlags>(cdef.access_flags), AccessFlags::Interface);

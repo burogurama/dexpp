@@ -359,7 +359,6 @@ CallGraph build_call_graph(std::shared_ptr<const detail::AnalysisContextImpl> im
         // direct then virtual; its call sites are sites[sites_begin, sites_end).
         struct Method
         {
-            uint32_t class_idx;
             uint32_t method_idx;
             uint32_t access_flags;
             uint32_t code_off;
@@ -367,6 +366,9 @@ CallGraph build_call_graph(std::shared_ptr<const detail::AnalysisContextImpl> im
             std::size_t sites_end;
         };
         std::vector<Method> methods;
+        // The methods of class_def j: methods[method_offsets[j],
+        // method_offsets[j + 1]).
+        std::vector<std::size_t> method_offsets;
         std::vector<detail::InvokeSite> sites;
         // Interface type indices of class_def j: iface_types[iface_offsets[j],
         // iface_offsets[j + 1]); none when the list does not parse.
@@ -408,8 +410,10 @@ CallGraph build_call_graph(std::shared_ptr<const detail::AnalysisContextImpl> im
         }
 
         p.iface_offsets.reserve(dex.class_defs().size() + 1);
+        p.method_offsets.reserve(dex.class_defs().size() + 1);
         for (const auto &cdef : dex.class_defs()) {
             p.iface_offsets.push_back(p.iface_types.size());
+            p.method_offsets.push_back(p.methods.size());
             if (cdef.interfaces_off != 0) {
                 auto list = raw::parser::parse_type_list(impl->buffer_of(i), cdef.interfaces_off);
                 if (list.has_value())
@@ -428,12 +432,12 @@ CallGraph build_call_graph(std::shared_ptr<const detail::AnalysisContextImpl> im
                     if (em.code_off != 0)
                         if (const raw::CodeItem *ci = impl->get_code_item(i, em.code_off))
                             detail::find_invokes(ci->insns, p.sites);
-                    p.methods.push_back(DexPrep::Method{cdef.class_idx, em.method_idx,
-                                                        em.access_flags, em.code_off, begin,
-                                                        p.sites.size()});
+                    p.methods.push_back(DexPrep::Method{em.method_idx, em.access_flags, em.code_off,
+                                                        begin, p.sites.size()});
                 }
         }
         p.iface_offsets.push_back(p.iface_types.size());
+        p.method_offsets.push_back(p.methods.size());
     };
 
     {
@@ -576,6 +580,14 @@ CallGraph build_call_graph(std::shared_ptr<const detail::AnalysisContextImpl> im
     // A. Register every defined method as a resolved node.  A defined method is
     // keyed by its class_def's class, which in a well-formed DEX is also its
     // method_id's class.
+    //
+    // A class defined more than once keeps only its first definition, in DEX
+    // load order and then class_def order: the one find_class() returns, and
+    // the one Android loads (see AnalysisContextImpl::is_winning_definition).
+    // The methods of a later definition get no node and no edge.  Classes are
+    // compared by interned id, which is descriptor equality, as in the class
+    // index.  wins[i][j] records whether class_def j of DEX i is kept; the
+    // hierarchy arrays below read it too.
     struct Defined
     {
         uint32_t node_idx;
@@ -583,18 +595,37 @@ CallGraph build_call_graph(std::shared_ptr<const detail::AnalysisContextImpl> im
         const DexPrep::Method *method;
     };
     std::vector<Defined> defined;
+    std::vector<std::vector<bool>> wins(dex_count);
+    std::vector<bool> class_taken; // by class id
     std::size_t site_total = 0;
     for (std::size_t i = 0; i < dex_count; ++i) {
-        for (const auto &m : prep[i].methods) {
-            uint32_t node_idx = node_of(class_id(i, m.class_idx), method_sig(i, m.method_idx));
-            g.nodes_[node_idx].resolved = true;
-            // Last-loaded wins on duplicate definitions.
-            g.resolved_refs_[node_idx] =
-                CallGraph::ResolvedRef{i, m.method_idx, m.access_flags, m.code_off};
-            if (m.code_off != 0)
-                defined.push_back({node_idx, i, &m});
+        const auto class_defs = impl->dex_files()[i].class_defs();
+        wins[i].assign(class_defs.size(), false);
+        for (std::size_t j = 0; j < class_defs.size(); ++j) {
+            uint32_t cls = class_id(i, class_defs[j].class_idx);
+            if (class_taken.size() <= cls)
+                class_taken.resize(cls + 1, false);
+            if (class_taken[cls])
+                continue;
+            class_taken[cls] = true;
+            wins[i][j] = true;
+            for (std::size_t k = prep[i].method_offsets[j]; k < prep[i].method_offsets[j + 1];
+                 ++k) {
+                const auto &m = prep[i].methods[k];
+                uint32_t node_idx = node_of(cls, method_sig(i, m.method_idx));
+                // A method listed twice in one class (a damaged file): the
+                // first listing wins, as for classes.
+                if (g.nodes_[node_idx].resolved)
+                    continue;
+                g.nodes_[node_idx].resolved = true;
+                g.resolved_refs_[node_idx] =
+                    CallGraph::ResolvedRef{i, m.method_idx, m.access_flags, m.code_off};
+                if (m.code_off != 0) {
+                    defined.push_back({node_idx, i, &m});
+                    site_total += m.sites_end - m.sites_begin;
+                }
+            }
         }
-        site_total += prep[i].sites.size();
     }
 
     // B. One Declared edge per call site.  The sites were found by
@@ -644,17 +675,18 @@ CallGraph build_call_graph(std::shared_ptr<const detail::AnalysisContextImpl> im
     // ---- The class hierarchy as integer arrays ----------------------------
     // Superclass, direct interfaces and children per class id, read from the
     // class_defs by the same rules build_class_hierarchy() uses for
-    // ClassHierarchy (keep the two in sync): for a class defined more than
-    // once, its superclass is the last one a definition names and its
-    // interfaces are every definition's, in order; an interface list that
-    // fails to parse contributes none.  Children are subclasses and
-    // implementers, in no particular order — only the set of descendants
-    // matters.
+    // ClassHierarchy (keep the two in sync): a class defined more than once
+    // takes its superclass and interfaces from its first definition only (the
+    // one kept in A); an interface list that fails to parse contributes none.
+    // Children are subclasses and implementers, in no particular order — only
+    // the set of descendants matters.
     std::vector<uint32_t> super_by_class;
     std::vector<std::pair<uint32_t, uint32_t>> class_iface; // (class, interface), in order
     for (std::size_t i = 0; i < dex_count; ++i) {
         const auto class_defs = impl->dex_files()[i].class_defs();
         for (std::size_t j = 0; j < class_defs.size(); ++j) {
+            if (!wins[i][j])
+                continue;
             const auto &cdef = class_defs[j];
             uint32_t cls = class_id(i, cdef.class_idx);
             if (cdef.superclass_idx != kNone) {

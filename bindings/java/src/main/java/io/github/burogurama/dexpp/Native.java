@@ -1739,6 +1739,28 @@ final class Native {
         }
     }
 
+    private static final MethodHandle dexpp_apk_resolve_bool =
+            downcall("dexpp_apk_resolve_bool", JAVA_INT, ADDRESS, JAVA_INT, ADDRESS);
+
+    static int dexpp_apk_resolve_bool(MemorySegment apk, int id, MemorySegment out) {
+        try {
+            return (int) dexpp_apk_resolve_bool.invokeExact(apk, id, out);
+        } catch (Throwable t) {
+            throw failure(t);
+        }
+    }
+
+    private static final MethodHandle dexpp_apk_resolve_int =
+            downcall("dexpp_apk_resolve_int", JAVA_INT, ADDRESS, JAVA_INT, ADDRESS);
+
+    static int dexpp_apk_resolve_int(MemorySegment apk, int id, MemorySegment out) {
+        try {
+            return (int) dexpp_apk_resolve_int.invokeExact(apk, id, out);
+        } catch (Throwable t) {
+            throw failure(t);
+        }
+    }
+
     private static final MethodHandle dexpp_apk_resource_id =
             downcall("dexpp_apk_resource_id", JAVA_INT, ADDRESS, ADDRESS, ADDRESS, ADDRESS);
 
