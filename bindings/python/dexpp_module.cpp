@@ -4,7 +4,7 @@
  *  - std::expected errors raise dexpp's own exceptions (dexpp_errors.hpp):
  *    InvalidApkError, InvalidDexError, or their base class dexpp.Error, which
  *    is a ValueError.  A path that cannot be opened raises FileNotFoundError.
- *  - Null handles (is_valid() == false) and not-found sentinels become None.
+ *  - Not-found results (std::nullopt, null pointers) become None.
  *  - The C++ enums are Python enum.Enum classes, converted by value
  *    (dexpp_enums.hpp).
  *  - Class, Method, Field and ClassRef use the C++ operator== and std::hash:
@@ -48,14 +48,6 @@ using namespace dex::apk;
 void register_model(py::module_ &m);
 
 namespace {
-
-/** Convert a possibly-null handle to a Python object (None when invalid). */
-py::object class_or_none(Class cls)
-{
-    if (!cls.is_valid())
-        return py::none();
-    return py::cast(std::move(cls));
-}
 
 std::string method_repr_id(const MethodId &id)
 {
@@ -632,7 +624,7 @@ PYBIND11_MODULE(dexpp, m)
         .def_property_readonly("descriptor",
                                [](const ClassRef &r) { return std::string(r.descriptor()); })
         .def_property_readonly("is_resolved", &ClassRef::is_resolved)
-        .def("resolve", [](const ClassRef &r) { return class_or_none(r.resolve()); })
+        .def("resolve", &ClassRef::resolve)
         .def(py::self == py::self)
         .def("__hash__", [](const ClassRef &r) { return std::hash<ClassRef>{}(r); })
         .def("__repr__",

@@ -61,7 +61,7 @@ std::vector<ClassRef> Class::interfaces() const
     refs.reserve(type_list->type_ids.size());
     for (auto type_idx : type_list->type_ids) {
         auto desc = impl_->type_descriptor_of(dex_idx_, type_idx);
-        refs.emplace_back(desc, impl_);
+        refs.push_back(ClassRef(desc, impl_));
     }
     return refs;
 }
@@ -76,12 +76,12 @@ std::vector<Method> Class::methods() const
     std::vector<Method> result;
     result.reserve(cd->direct_methods.size() + cd->virtual_methods.size());
 
-    for (const auto &em : cd->direct_methods) {
-        result.emplace_back(impl_, dex_idx_, em.method_idx, em.access_flags, em.code_off);
-    }
-    for (const auto &em : cd->virtual_methods) {
-        result.emplace_back(impl_, dex_idx_, em.method_idx, em.access_flags, em.code_off);
-    }
+    // push_back, not emplace_back: the constructor is private, and only this
+    // class may call it, not the vector's allocator.
+    for (const auto &em : cd->direct_methods)
+        result.push_back(Method(impl_, dex_idx_, em.method_idx, em.access_flags, em.code_off));
+    for (const auto &em : cd->virtual_methods)
+        result.push_back(Method(impl_, dex_idx_, em.method_idx, em.access_flags, em.code_off));
     return result;
 }
 
@@ -95,12 +95,10 @@ std::vector<Field> Class::fields() const
     std::vector<Field> result;
     result.reserve(cd->static_fields.size() + cd->instance_fields.size());
 
-    for (const auto &ef : cd->static_fields) {
-        result.emplace_back(impl_, dex_idx_, ef.field_idx, ef.access_flags);
-    }
-    for (const auto &ef : cd->instance_fields) {
-        result.emplace_back(impl_, dex_idx_, ef.field_idx, ef.access_flags);
-    }
+    for (const auto &ef : cd->static_fields)
+        result.push_back(Field(impl_, dex_idx_, ef.field_idx, ef.access_flags));
+    for (const auto &ef : cd->instance_fields)
+        result.push_back(Field(impl_, dex_idx_, ef.field_idx, ef.access_flags));
     return result;
 }
 

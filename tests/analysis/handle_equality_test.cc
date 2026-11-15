@@ -2,6 +2,8 @@
 
 #include <functional>
 #include <optional>
+#include <stdexcept>
+#include <string>
 #include <string_view>
 #include <unordered_set>
 #include <vector>
@@ -20,8 +22,9 @@ constexpr const char *SHAPES = "tests/data/shapes.dex";
 Class class_named(const AnalysisContext &ctx, std::string_view descriptor)
 {
     std::optional<Class> cls = ctx.find_class(descriptor);
-    EXPECT_TRUE(cls.has_value()) << descriptor;
-    return cls.value_or(Class{});
+    if (!cls.has_value())
+        throw std::runtime_error("no class " + std::string(descriptor));
+    return *cls;
 }
 
 template <typename T> std::size_t hash_of(const T &value) { return std::hash<T>{}(value); }
@@ -46,17 +49,15 @@ TEST(HandleEqualityTest, SameClassFromTwoLookupsIsEqual)
     EXPECT_NE(a, class_named(ctx, "LRectangle;"));
 }
 
-TEST(HandleEqualityTest, NullClassEqualsOnlyNull)
+TEST(HandleEqualityTest, ResolveGivesTheClassFindClassGives)
 {
     auto ctx = AnalysisContext::from_dex(SHAPES).value();
-    EXPECT_EQ(Class{}, Class{});
-    EXPECT_EQ(hash_of(Class{}), hash_of(Class{}));
-    EXPECT_NE(Class{}, class_named(ctx, "LCircle;"));
-    EXPECT_NE(class_named(ctx, "LCircle;"), Class{});
+    ClassRef shape = class_named(ctx, "LAbstractShape;").interfaces().front();
+    EXPECT_EQ(shape.resolve(), std::optional<Class>(class_named(ctx, "LShape;")));
 
-    // resolve() gives the null handle for a class that is not loaded.
+    // resolve() gives nullopt for a class that is not loaded.
     ClassRef object = class_named(ctx, "LShape;").superclass().value();
-    EXPECT_EQ(object.resolve(), Class{});
+    EXPECT_FALSE(object.resolve().has_value());
 }
 
 TEST(HandleEqualityTest, CopiesOfAContextShareItsHandles)
@@ -137,13 +138,14 @@ TEST(HandleEqualityTest, ClassRefsCompareByDescriptor)
 
 TEST(HandleEqualityTest, HandlesStayEqualAfterTheContextIsGone)
 {
-    Class a;
-    Class b;
+    std::optional<Class> a;
+    std::optional<Class> b;
     {
         auto ctx = AnalysisContext::from_dex(SHAPES).value();
         a = class_named(ctx, "LCircle;");
         b = class_named(ctx, "LCircle;");
     }
-    EXPECT_EQ(a, b);
-    EXPECT_EQ(a.methods(), b.methods());
+    ASSERT_TRUE(a.has_value() && b.has_value());
+    EXPECT_EQ(*a, *b);
+    EXPECT_EQ(a->methods(), b->methods());
 }

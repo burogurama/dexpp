@@ -528,8 +528,7 @@ aliases.
   `std::unordered_map` and `std::unordered_set`. Two handles are equal when
   they come from the same analysis (one `AnalysisContext`, or copies of it) and
   point at the same class, method or field. Handles from two contexts that
-  loaded the same file are not equal. A default-constructed `Class` equals only
-  another default-constructed one.
+  loaded the same file are not equal.
 - `Method::annotations()`, `Field::annotations()` and `Field::initial_value()`
   (and the same calls in Python, C and Go) no longer go through every class of
   the DEX file to find the member's class. Each DEX file now builds a table
@@ -575,6 +574,21 @@ aliases.
   the internal parser layer, so it was the one public function that tied users
   to that layer. `Method::cfg()` is the way to get a control-flow graph. The
   public headers no longer include any `raw/` header.
+- The handles `Class`, `Method`, `Field` and `ClassRef` can no longer be built
+  by hand: their constructors, which took the library's private
+  implementation type, are private. Get them from the library as before
+  (`AnalysisContext::classes()` and `find_class()`, `Class::methods()`,
+  `fields()`, `superclass()` and `interfaces()`, `declaring_class()`,
+  `CallGraph::method_for()`, `Xrefs::referrer_method()`). The public
+  constructor `ClassRef(descriptor, const AnalysisContext *)` is removed too;
+  use `AnalysisContext::find_class(descriptor)` to look a class up.
+- There is no null `Class` any more. `ClassRef::resolve()` returns
+  `std::optional<Class>`, `std::nullopt` when the class is not loaded, the
+  same as `AnalysisContext::find_class()`. Before, it returned a
+  default-constructed `Class` whose `is_valid()` was false. `Class` has no
+  default constructor and no `is_valid()` now, so every `Class` points at a
+  class. The bindings do not change: Python still gives `None`, C `NULL`, Go
+  `nil` and Java an empty `Optional`.
 - `TypeDescriptor` is removed. `Method::return_type()`, `Field::type()` and
   `ParameterRegister::type` now give a `std::string_view`, and
   `Method::parameters()` a `std::vector<std::string_view>`, like every other

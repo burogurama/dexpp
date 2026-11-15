@@ -377,7 +377,7 @@ std::vector<Class> AnalysisContext::classes() const
     for (std::size_t i = 0; i < impl_->dex_files_vec.size(); ++i) {
         const auto &dex = impl_->dex_files_vec[i];
         for (uint32_t j = 0; j < static_cast<uint32_t>(dex.class_defs().size()); ++j) {
-            result.emplace_back(impl_, i, j);
+            result.push_back(Class(impl_, i, j)); // the constructor is private
         }
     }
     return result;

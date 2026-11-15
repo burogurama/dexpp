@@ -19,22 +19,15 @@ namespace detail {
 struct AnalysisContextImpl;
 } // namespace detail
 
-/** A lightweight, non-owning handle to a single DEX field.
+/** A lightweight handle to a single DEX field.
  *
- *  Instances are normally obtained from Class::fields().  The handle stores the
- *  absolute field_ids index and the access flags from the EncodedField entry in
- *  class_data_item. */
+ *  Get one from Class::fields().  The handle keeps shared ownership of the
+ *  analysis, so it remains valid after every AnalysisContext wrapper has been
+ *  destroyed.  It stores the absolute field_ids index and the access flags
+ *  from the EncodedField entry in class_data_item. */
 class Field
 {
   public:
-    /** Used by the library; get handles from Class::fields() instead.
-     *  @param impl           The context the handle belongs to and keeps alive.
-     *  @param dex_idx        Index of the DEX file inside that context.
-     *  @param field_abs_idx  Absolute index into the DEX file's field_ids table.
-     *  @param access_flags   Flags from the enclosing EncodedField. */
-    Field(std::shared_ptr<const detail::AnalysisContextImpl> impl, std::size_t dex_idx,
-          uint32_t field_abs_idx, uint32_t access_flags);
-
     /** Simple name of the field (e.g. "out", "TAG"). */
     std::string_view name() const;
 
@@ -73,6 +66,14 @@ class Field
 
   private:
     friend struct std::hash<Field>;
+    friend class Class; // the library makes the handles; Class::fields() does
+
+    /** @param impl           The context the handle belongs to and keeps alive.
+     *  @param dex_idx        Index of the DEX file inside that context.
+     *  @param field_abs_idx  Absolute index into the DEX file's field_ids table.
+     *  @param access_flags   Flags from the enclosing EncodedField. */
+    Field(std::shared_ptr<const detail::AnalysisContextImpl> impl, std::size_t dex_idx,
+          uint32_t field_abs_idx, uint32_t access_flags);
 
     std::shared_ptr<const detail::AnalysisContextImpl> impl_;
     std::size_t dex_idx_;

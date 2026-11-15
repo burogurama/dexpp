@@ -127,8 +127,6 @@ class AnalysisContext
     [[nodiscard]] const Xrefs &xrefs() const;
 
   private:
-    friend class ClassRef;
-
     explicit AnalysisContext(std::shared_ptr<detail::AnalysisContextImpl> impl);
 
     std::shared_ptr<detail::AnalysisContextImpl> impl_;

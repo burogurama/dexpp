@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 
@@ -14,38 +15,30 @@ namespace detail {
 struct AnalysisContextImpl;
 } // namespace detail
 
-class AnalysisContext;
-
-/** A lightweight, non-owning reference to a class identified by its type descriptor.
+/** A reference to a class by its type descriptor, which may or may not be
+ *  defined in the loaded DEX files: the superclass, the interfaces and the
+ *  declaring class of a member are ClassRefs, because they can name a class
+ *  from outside the app, such as "Ljava/lang/Object;".
  *
- *  ClassRef keeps a shared_ptr to the underlying AnalysisContext implementation,
- *  so the referenced data stays alive for the ClassRef's lifetime regardless of
- *  whether the original AnalysisContext wrapper has been destroyed.  The
- *  descriptor is owned (copied in), so the public constructor is safe to call
- *  with a temporary string. */
+ *  Get one from Class::superclass(), Class::interfaces(),
+ *  Method::declaring_class() or Field::declaring_class().  ClassRef keeps
+ *  shared ownership of the analysis, so it stays valid after every
+ *  AnalysisContext wrapper has been destroyed, and it owns its descriptor.
+ *  To look a class up by a descriptor you have, use
+ *  AnalysisContext::find_class(). */
 class ClassRef
 {
   public:
-    /** Public constructor — accepts a context pointer.  The implementation pointer
-     *  is captured via shared ownership, so the ClassRef survives even if the
-     *  original AnalysisContext is later destroyed. */
-    ClassRef(std::string_view descriptor, const AnalysisContext *ctx);
-
-    /** Internal constructor used by other handles to forward shared ownership
-     *  without an extra hop through a raw context pointer. */
-    ClassRef(std::string_view descriptor, std::shared_ptr<const detail::AnalysisContextImpl> impl);
-
     /** The 'L...;' type descriptor string (e.g. "Ljava/lang/Object;").  The
      *  returned view is valid for this ClassRef's lifetime. */
     std::string_view descriptor() const { return descriptor_; }
 
-    /** Looks up the class in the associated context.
-     *  @return a Class handle for the resolved class, or a default-constructed
-     *          (is_valid() == false) Class if the class is not defined in any
-     *          loaded DEX file. */
-    Class resolve() const;
+    /** Looks up the class in the analysis it came from, the same way
+     *  AnalysisContext::find_class() does.
+     *  @return the Class, or std::nullopt if no loaded DEX file defines it. */
+    std::optional<Class> resolve() const;
 
-    /** Returns true iff resolve() would return a valid handle. */
+    /** True when resolve() would find the class. */
     bool is_resolved() const;
 
     /** Two references are equal when they come from the same analysis (one
@@ -56,6 +49,12 @@ class ClassRef
 
   private:
     friend struct std::hash<ClassRef>;
+    // The library makes the references; these are the places that do.
+    friend class Class;
+    friend class Method;
+    friend class Field;
+
+    ClassRef(std::string_view descriptor, std::shared_ptr<const detail::AnalysisContextImpl> impl);
 
     std::string descriptor_;
     std::shared_ptr<const detail::AnalysisContextImpl> impl_;

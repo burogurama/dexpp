@@ -244,10 +244,10 @@ int dexpp_class_ref_is_resolved(const DexppClassRef *ref) { return ref->ref.is_r
 
 DexppClass *dexpp_class_ref_resolve(const DexppClassRef *ref)
 {
-    dex::Class cls = ref->ref.resolve();
-    if (!cls.is_valid())
+    std::optional<dex::Class> cls = ref->ref.resolve();
+    if (!cls.has_value())
         return nullptr;
-    return new DexppClass{std::move(cls)};
+    return new DexppClass{std::move(*cls)};
 }
 
 void dexpp_class_ref_free(DexppClassRef *ref) { delete ref; }

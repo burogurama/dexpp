@@ -20,21 +20,16 @@ namespace detail {
 struct AnalysisContextImpl;
 } // namespace detail
 
-/** A lightweight, non-owning handle to a single DEX class definition.
+/** A lightweight handle to a single DEX class definition.
  *
- *  Instances are normally obtained from AnalysisContext::classes() or
- *  AnalysisContext::find_class().  The handle keeps shared ownership of the
- *  underlying implementation so it remains valid even after every
- *  AnalysisContext wrapper has been destroyed.
- *
- *  A default-constructed Class has is_valid() == false and must not have any
- *  other method called on it. */
+ *  Get one from AnalysisContext::classes(), AnalysisContext::find_class() or
+ *  ClassRef::resolve().  The handle keeps shared ownership of the analysis, so
+ *  it remains valid even after every AnalysisContext wrapper has been
+ *  destroyed.  A Class always points at a class: there is no null Class, and
+ *  a lookup that finds nothing returns std::nullopt instead. */
 class Class
 {
   public:
-    Class(std::shared_ptr<const detail::AnalysisContextImpl> impl, std::size_t dex_idx,
-          uint32_t class_def_idx);
-
     /** The class descriptor, such as "Lcom/example/Foo;".  Method::name() and
      *  Field::name() are simple names; a class is named by its descriptor. */
     std::string_view descriptor() const;
@@ -72,21 +67,20 @@ class Class
     bool is_final() const { return has_flag(access_flags(), AccessFlags::Final); }
     bool is_enum() const { return has_flag(access_flags(), AccessFlags::Enum); }
 
-    /** Returns false for a default-constructed "null" Class handle. */
-    bool is_valid() const { return impl_ != nullptr; }
-
-    /** Default constructor produces an invalid handle (is_valid() == false). */
-    Class() : impl_(nullptr), dex_idx_(0), class_def_idx_(0) {}
-
     /** Two handles are equal when they come from the same analysis (one
      *  AnalysisContext, or copies of it) and point at the same class
      *  definition.  Handles from two contexts that loaded the same file are
-     *  not equal.  A default-constructed handle equals only another
-     *  default-constructed one.  std::hash<Class> is consistent with it. */
+     *  not equal.  std::hash<Class> is consistent with it. */
     bool operator==(const Class &) const = default;
 
   private:
     friend struct std::hash<Class>;
+    // The library makes the handles; these are the places that do.
+    friend class AnalysisContext;
+    friend class ClassRef;
+
+    Class(std::shared_ptr<const detail::AnalysisContextImpl> impl, std::size_t dex_idx,
+          uint32_t class_def_idx);
 
     std::shared_ptr<const detail::AnalysisContextImpl> impl_;
     std::size_t dex_idx_;

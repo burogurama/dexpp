@@ -141,9 +141,11 @@ The ideas are the same as in Python. The guides explain them:
 - `Class`, `Method`, `Field` and `ClassRef` are small handles. Each keeps the
   analysis alive, so a handle stays valid after the `AnalysisContext` it came
   from is destroyed. Copying a handle is cheap.
-- A default-constructed handle is a *null* handle. Only `is_valid()` may be
-  called on it. `ClassRef::resolve()` returns a null `Class` when the class is
-  not loaded.
+- You get handles from the library, never by building them yourself: the
+  constructors are private. So a handle always points at something; there is
+  no null handle. A lookup that may find nothing returns `std::optional`:
+  `AnalysisContext::find_class()` and `ClassRef::resolve()` give
+  `std::nullopt` when no loaded DEX file defines the class.
 - `std::string_view` and `std::span` results point into the analysis. They
   stay valid as long as the context, or any handle from it, is alive.
 - The references returned by `call_graph()`, `class_hierarchy()`, `xrefs()` and

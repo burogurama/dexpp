@@ -60,7 +60,7 @@ TEST(AnalysisContextTest, FindClassHitsForPresentClass)
 
     auto cls = ctx->find_class("LTestDex;");
     ASSERT_TRUE(cls.has_value());
-    EXPECT_TRUE(cls->is_valid());
+    EXPECT_EQ(cls->descriptor(), "LTestDex;");
 }
 
 TEST(AnalysisContextTest, FindClassMissesForAbsentClass)
@@ -281,12 +281,14 @@ TEST(ClassRefTest, ResolveHitsForKnownClass)
     auto ctx = AnalysisContext::from_dex("tests/data/classes.dex");
     ASSERT_TRUE(ctx.has_value());
 
-    ClassRef ref("LTestDex;", &*ctx);
+    // A method's declaring class is a ClassRef to a loaded class.
+    ClassRef ref = ctx->find_class("LTestDex;")->methods().front().declaring_class();
     EXPECT_TRUE(ref.is_resolved());
 
-    auto cls = ref.resolve();
-    ASSERT_TRUE(cls.is_valid());
-    EXPECT_EQ(cls.descriptor(), "LTestDex;");
+    std::optional<Class> cls = ref.resolve();
+    ASSERT_TRUE(cls.has_value());
+    EXPECT_EQ(cls->descriptor(), "LTestDex;");
+    EXPECT_EQ(cls, ctx->find_class("LTestDex;"));
 }
 
 TEST(ClassRefTest, ResolveMissesForUnknownClass)
@@ -294,9 +296,11 @@ TEST(ClassRefTest, ResolveMissesForUnknownClass)
     auto ctx = AnalysisContext::from_dex("tests/data/classes.dex");
     ASSERT_TRUE(ctx.has_value());
 
-    ClassRef ref("LUnknown;", &*ctx);
+    // The superclass, java.lang.Object, is not defined in the DEX file.
+    ClassRef ref = ctx->find_class("LTestDex;")->superclass().value();
+    EXPECT_EQ(ref.descriptor(), "Ljava/lang/Object;");
     EXPECT_FALSE(ref.is_resolved());
-    EXPECT_FALSE(ref.resolve().is_valid());
+    EXPECT_FALSE(ref.resolve().has_value());
 }
 
 // ---------------------------------------------------------------------------

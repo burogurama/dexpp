@@ -87,23 +87,17 @@ struct ParameterRegister
     bool is_wide; ///< True for long / double (occupies reg and reg + 1).
 };
 
-/** A lightweight, non-owning handle to a single DEX method.
+/** A lightweight handle to a single DEX method.
  *
- *  Instances are normally obtained from Class::methods().  The handle stores the
- *  absolute method_ids index plus the access flags and code offset that come from
- *  the EncodedMethod entry in class_data_item (not from the MethodIdItem itself). */
+ *  Get one from Class::methods(), CallGraph::method_for() or
+ *  Xrefs::referrer_method().  The handle keeps shared ownership of the
+ *  analysis, so it remains valid after every AnalysisContext wrapper has been
+ *  destroyed.  It stores the absolute method_ids index plus the access flags
+ *  and code offset that come from the EncodedMethod entry in class_data_item
+ *  (not from the MethodIdItem itself). */
 class Method
 {
   public:
-    /** Used by the library; get handles from Class::methods() instead.
-     *  @param impl            The context the handle belongs to and keeps alive.
-     *  @param dex_idx         Index of the DEX file inside that context.
-     *  @param method_abs_idx  Absolute index into the DEX file's method_ids table.
-     *  @param access_flags    Flags from the enclosing EncodedMethod.
-     *  @param code_off        Byte offset of the code_item, or 0 for abstract/native. */
-    Method(std::shared_ptr<const detail::AnalysisContextImpl> impl, std::size_t dex_idx,
-           uint32_t method_abs_idx, uint32_t access_flags, uint32_t code_off);
-
     /** Simple name of the method (e.g. "<init>", "main"). */
     std::string_view name() const;
 
@@ -190,6 +184,18 @@ class Method
 
   private:
     friend struct std::hash<Method>;
+    // The library makes the handles; these are the places that do.
+    friend class Class;
+    friend class CallGraph;
+    friend class Xrefs;
+
+    /** @param impl            The context the handle belongs to and keeps alive.
+     *  @param dex_idx         Index of the DEX file inside that context.
+     *  @param method_abs_idx  Absolute index into the DEX file's method_ids table.
+     *  @param access_flags    Flags from the enclosing EncodedMethod.
+     *  @param code_off        Byte offset of the code_item, or 0 for abstract/native. */
+    Method(std::shared_ptr<const detail::AnalysisContextImpl> impl, std::size_t dex_idx,
+           uint32_t method_abs_idx, uint32_t access_flags, uint32_t code_off);
 
     std::shared_ptr<const detail::AnalysisContextImpl> impl_;
     std::size_t dex_idx_;

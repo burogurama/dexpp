@@ -317,9 +317,9 @@ TEST(DuplicateClassSameFile, LoadingAFileTwiceAddsNothing)
         auto method = g2.method_for(g2.nodes()[n]);
         ASSERT_TRUE(method.has_value());
         auto declaring = method->declaring_class().resolve();
-        ASSERT_TRUE(declaring.is_valid());
+        ASSERT_TRUE(declaring.has_value());
         // The class index points into the first copy; so does the method.
-        EXPECT_EQ(twice->find_class(descriptor_of(declaring)), declaring);
+        EXPECT_EQ(twice->find_class(descriptor_of(*declaring)), declaring);
     }
 
     const Xrefs &x1 = once->xrefs();
