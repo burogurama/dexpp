@@ -30,18 +30,19 @@ verify signatures.
 
 ## Install (Python)
 
-dexpp needs Python 3.14 or newer.
+dexpp needs Python 3.10 or newer.
 
 ```bash
 pip install dexpp
 ```
 
-PyPI has prebuilt wheels for CPython 3.14 on Linux x86_64 (glibc 2.28+ and
-musl), macOS 14 or newer (Apple Silicon and Intel) and Windows x64. The same
-wheels are attached to each
+PyPI has prebuilt wheels for CPython 3.10, 3.11, 3.12, 3.13 and 3.14 on Linux
+x86_64 (glibc 2.28+ and musl), macOS 14 or newer (Apple Silicon and Intel) and
+Windows x64. The same wheels are attached to each
 [GitHub release](https://github.com/burogurama/dexpp/releases).
 
-On other platforms, pip builds dexpp from the source distribution. That needs
+On other platforms and Python versions, pip builds dexpp from the source
+distribution. That needs
 a C++23 compiler (GCC ≥ 13, Clang ≥ 19, Apple Clang from Xcode 16 or MSVC from
 Visual Studio 2022) and CMake ≥ 3.18. `pip install .` builds a checkout the
 same way.

@@ -2,13 +2,14 @@
 
 ## Python
 
-dexpp needs **Python 3.14 or newer**.
+dexpp needs **Python 3.10 or newer**.
 
 ```bash
 pip install dexpp
 ```
 
-PyPI has prebuilt wheels for CPython 3.14 on:
+PyPI has prebuilt wheels for CPython 3.10, 3.11, 3.12, 3.13 and 3.14, for each
+of these systems:
 
 | System | Wheels |
 | ------ | ------ |
@@ -19,8 +20,8 @@ PyPI has prebuilt wheels for CPython 3.14 on:
 The same wheels are attached to each
 [GitHub release](https://github.com/burogurama/dexpp/releases).
 
-On any other platform, pip builds dexpp from the source distribution. That
-needs:
+On any other platform or Python version, pip builds dexpp from the source
+distribution. That needs:
 
 - a C++23 compiler: GCC 13 or newer, Clang 19 or newer, Apple Clang from
   Xcode 16 or newer, or MSVC from Visual Studio 2022 or newer;
