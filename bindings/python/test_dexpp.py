@@ -894,7 +894,7 @@ def _stub_class_problems(class_node):
         else:
             continue
         stub_members.add(member)
-        if member not in dir(runtime_class):
+        if not hasattr(runtime_class, member):
             problems.append(f"the module has no {name}.{member}")
         if documented is False:
             problems.append(f"{name}.{member} has no docstring")
@@ -944,6 +944,38 @@ def test_stub_matches_module_and_is_documented():
         problems.append(f"the stub has no {name}")
 
     assert problems == [], "\n".join(problems)
+
+
+def test_access_flags():
+    import enum
+
+    ctx = dexpp.AnalysisContext.from_dex("tests/data/classes.dex")
+    cls = ctx.find_class("LTestDex;")
+    flags = cls.access_flags
+    assert isinstance(flags, dexpp.AccessFlags)
+    assert isinstance(flags, enum.IntFlag) and isinstance(flags, int)
+    # Still the number it was, so code that tests bits by value keeps working.
+    assert flags == 0x1 and flags & 0x1
+    assert dexpp.AccessFlags.PUBLIC in flags
+    assert dexpp.AccessFlags.FINAL not in flags
+
+    methods = {m.name: m for m in cls.methods}
+    assert dexpp.AccessFlags.CONSTRUCTOR in methods["<init>"].access_flags
+    hello = methods["helloDex"].access_flags
+    assert hello == dexpp.AccessFlags.PUBLIC | dexpp.AccessFlags.STATIC
+    assert methods["helloDex"].is_static and dexpp.AccessFlags.STATIC in hello
+
+    field = next(iter(cls.fields), None)
+    if field is not None:
+        assert isinstance(field.access_flags, dexpp.AccessFlags)
+
+    info = dexpp.Model.read_file("tests/data/shapes.dex").class_info("LShape;")
+    assert isinstance(info.access_flags, dexpp.AccessFlags)
+    assert dexpp.AccessFlags.INTERFACE in info.access_flags
+
+    # The DEX format gives two pairs of flags the same bit.
+    assert dexpp.AccessFlags.BRIDGE is dexpp.AccessFlags.VOLATILE
+    assert dexpp.AccessFlags.VARARGS is dexpp.AccessFlags.TRANSIENT
 
 
 def test_type_aliases_exist_at_runtime():

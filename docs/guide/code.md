@@ -48,8 +48,10 @@ static initializer is named `<clinit>`.
 `method.has_code` is false for abstract and native methods. For those,
 `instructions` is an empty list and `cfg` is an empty graph.
 
-`access_flags` is the raw DEX flag value as an `int`. The `is_public`,
-`is_static`, `is_final` and similar properties read single bits of it.
+`access_flags` is a `dexpp.AccessFlags`, an `enum.IntFlag` with one member per
+DEX flag. Test a flag with `in`, as the example does. It is also an `int`, so
+code that compares bits by value keeps working. The `is_public`, `is_static`,
+`is_final` and similar properties are shortcuts for single flags.
 
 ## Bytecode
 

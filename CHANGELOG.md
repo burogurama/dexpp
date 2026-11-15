@@ -15,6 +15,10 @@
 
 ### Python bindings
 
+- `access_flags` (on `Class`, `Method`, `Field` and `ClassInfo`) is now a
+  `dexpp.AccessFlags`, an `enum.IntFlag` with one member per DEX flag:
+  `dexpp.AccessFlags.STATIC in method.access_flags`. It is still an `int`, so
+  code that compared it with numbers keeps working.
 - dexpp now raises its own exceptions, one per kind of error, where it raised
   a plain `ValueError` before:
 

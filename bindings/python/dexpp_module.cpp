@@ -28,6 +28,7 @@
 #include <vector>
 
 #include "dex.hpp"
+#include "dexpp_access_flags.hpp"
 #include "dexpp_errors.hpp"
 
 namespace py = pybind11;
@@ -286,6 +287,7 @@ PYBIND11_MODULE(dexpp, m)
     m.attr("__version__") = DEXPP_VERSION;
 
     dexpp_py::define_error_classes(m);
+    dexpp_py::define_access_flags(m);
 
     // ===== free functions =====
 
@@ -605,8 +607,11 @@ PYBIND11_MODULE(dexpp, m)
         .def_property_readonly("declaring_class", &Field::declaring_class)
         .def_property_readonly("type",
                                [](const Field &f) { return std::string(f.type().descriptor()); })
-        .def_property_readonly(
-            "access_flags", [](const Field &f) { return static_cast<uint32_t>(f.access_flags()); })
+        .def_property_readonly("access_flags",
+                               [](const Field &f) {
+                                   return dexpp_py::access_flags_to_py(
+                                       static_cast<uint32_t>(f.access_flags()));
+                               })
         .def_property_readonly("is_public", &Field::is_public)
         .def_property_readonly("is_static", &Field::is_static)
         .def_property_readonly("is_final", &Field::is_final)
@@ -674,9 +679,11 @@ PYBIND11_MODULE(dexpp, m)
                                        out.emplace_back(p.descriptor());
                                    return out;
                                })
-        .def_property_readonly(
-            "access_flags",
-            [](const Method &m_) { return static_cast<uint32_t>(m_.access_flags()); })
+        .def_property_readonly("access_flags",
+                               [](const Method &m_) {
+                                   return dexpp_py::access_flags_to_py(
+                                       static_cast<uint32_t>(m_.access_flags()));
+                               })
         .def_property_readonly("has_code", &Method::has_code)
         .def_property_readonly("is_constructor", &Method::is_constructor)
         .def_property_readonly("is_static", &Method::is_static)
@@ -711,8 +718,11 @@ PYBIND11_MODULE(dexpp, m)
         .def_property_readonly("methods", &Class::methods)
         .def_property_readonly("fields", &Class::fields)
         .def_property_readonly("annotations", &Class::annotations)
-        .def_property_readonly(
-            "access_flags", [](const Class &c) { return static_cast<uint32_t>(c.access_flags()); })
+        .def_property_readonly("access_flags",
+                               [](const Class &c) {
+                                   return dexpp_py::access_flags_to_py(
+                                       static_cast<uint32_t>(c.access_flags()));
+                               })
         .def_property_readonly("source_file",
                                [](const Class &c) -> py::object {
                                    auto sf = c.source_file();

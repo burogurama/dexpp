@@ -24,6 +24,10 @@ print(missing)
 for method in circle.methods:
     visibility: str = "public" if method.is_public is True else "non-public"
     print(visibility, method.name, method.parameters, "->", method.return_type)
+
+constructor: dexpp.Method = circle.methods[0]
+flags: dexpp.AccessFlags = constructor.access_flags
+print(constructor.name, int(flags), dexpp.AccessFlags.CONSTRUCTOR in flags)
 # --8<-- [end:methods]
 
 # --8<-- [start:instructions]
