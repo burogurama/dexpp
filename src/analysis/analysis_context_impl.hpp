@@ -76,6 +76,15 @@ struct AnalysisContextImpl : public std::enable_shared_from_this<AnalysisContext
          *  with decode_strings = false; string_of() fills this on demand. */
         mutable std::mutex strings_mutex;
         mutable std::unordered_map<uint32_t, std::string> string_cache;
+        /** The class_def lookup behind class_def_of_type(), built on its
+         *  first call.  class_def_by_type[type_idx] is the index of the first
+         *  class_def that names type_idx, or kNoClassDef.  A class_def whose
+         *  type index is past the type table (a damaged file) cannot go in
+         *  that table; it goes in class_def_by_bad_type as a (type_idx,
+         *  class_def index) pair, sorted. */
+        mutable std::once_flag class_def_table_flag;
+        mutable std::vector<uint32_t> class_def_by_type;
+        mutable std::vector<std::pair<uint32_t, uint32_t>> class_def_by_bad_type;
 
         explicit DexSlot(ManagedBuffer buf) : buffer(std::move(buf)) {}
     };
@@ -133,9 +142,19 @@ struct AnalysisContextImpl : public std::enable_shared_from_this<AnalysisContext
     /** class_defs index (within the SAME dex) whose class_idx == type_idx,
      *  or nullopt if that type is not defined in this DEX.  Used by Method /
      *  Field handles to reach their declaring class's annotations directory
-     *  without cross-DEX name lookups (linear scan; annotation queries are
-     *  rare and uncached by design). */
+     *  and static values without cross-DEX name lookups.
+     *
+     *  When several class_defs name the same type (a damaged file), the first
+     *  one in class_defs order wins.  A type index past the type table still
+     *  finds a class_def that names that same index.  The lookup table is
+     *  built on the first call for each DEX (std::call_once), so loading does
+     *  not pay for it and concurrent readers are safe. */
     std::optional<uint32_t> class_def_of_type(std::size_t dex_idx, uint32_t type_idx) const;
+
+    /** Marks a type index that no class_def names in DexSlot::class_def_by_type.
+     *  A real class_defs index is always smaller: there are at most
+     *  UINT32_MAX class_defs, numbered from 0. */
+    static constexpr uint32_t kNoClassDef = UINT32_MAX;
 
     /** Full prototype descriptor (e.g. "(ILjava/lang/String;)V") for
      *  proto_ids[proto_idx].  Cached; the reference stays valid for the impl's

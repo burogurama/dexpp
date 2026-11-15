@@ -1,6 +1,8 @@
 #include "annotations.hpp"
 
+#include <algorithm>
 #include <utility>
+#include <vector>
 
 #include "analysis_context_impl.hpp"
 #include "raw/parser.hpp"
@@ -10,10 +12,46 @@ namespace dex::detail {
 std::optional<uint32_t> AnalysisContextImpl::class_def_of_type(std::size_t dex_idx,
                                                                uint32_t type_idx) const
 {
-    const auto &defs = dex_files_vec[dex_idx].class_defs();
-    for (uint32_t j = 0; j < static_cast<uint32_t>(defs.size()); ++j)
-        if (defs[j].class_idx == type_idx)
-            return j;
+    if (dex_idx >= slots.size())
+        return std::nullopt;
+    const DexSlot &slot = *slots[dex_idx];
+
+    // Built once per DEX, on first use.  call_once makes every other thread
+    // wait until the tables are complete, and nothing changes them afterwards,
+    // so later reads need no lock.
+    std::call_once(slot.class_def_table_flag, [&] {
+        const auto &dex = dex_files_vec[dex_idx];
+        const auto defs = dex.class_defs();
+        std::vector<uint32_t> by_type(dex.type_ids().size(), kNoClassDef);
+        std::vector<std::pair<uint32_t, uint32_t>> by_bad_type;
+        for (uint32_t j = 0; j < static_cast<uint32_t>(defs.size()); ++j) {
+            const uint32_t type = defs[j].class_idx;
+            if (type < by_type.size()) {
+                // Keep the first class_def that names the type.
+                if (by_type[type] == kNoClassDef)
+                    by_type[type] = j;
+            }
+            else {
+                by_bad_type.emplace_back(type, j);
+            }
+        }
+        // Pairs sort by type index, then by class_def index, so the first
+        // class_def that names a type comes first among its pairs.
+        std::ranges::sort(by_bad_type);
+        slot.class_def_by_type = std::move(by_type);
+        slot.class_def_by_bad_type = std::move(by_bad_type);
+    });
+
+    if (type_idx < slot.class_def_by_type.size()) {
+        const uint32_t def = slot.class_def_by_type[type_idx];
+        if (def == kNoClassDef)
+            return std::nullopt;
+        return def;
+    }
+    const auto &bad = slot.class_def_by_bad_type;
+    auto it = std::ranges::lower_bound(bad, std::pair<uint32_t, uint32_t>{type_idx, 0});
+    if (it != bad.end() && it->first == type_idx)
+        return it->second;
     return std::nullopt;
 }
 

@@ -12,10 +12,18 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <cstddef>
+#include <cstdint>
 #include <stdexcept>
 #include <string>
+#include <string_view>
+#include <utility>
+#include <vector>
 
+#include "../raw/test_utils.hpp"
+#include "../raw/zip_builder.hpp"
 #include "dex.hpp"
+#include "raw/parser.hpp"
 
 using namespace dex;
 
@@ -174,4 +182,203 @@ TEST(InitialValueTest, InstanceFieldHasNone)
     auto cls = ctx->find_class("LPet;");
     ASSERT_TRUE(cls.has_value());
     EXPECT_FALSE(field_named(*cls, "name").initial_value().has_value());
+}
+
+// ---- Finding a member's class_def in a damaged file ----
+//
+// Method::annotations(), Field::annotations() and Field::initial_value() find
+// the class_def of the member's class by the class's type index.  These tests
+// patch annotated.dex in memory so that lookup meets a damaged class_defs
+// table, and load the result as the only DEX of an in-memory APK (nothing is
+// added to tests/data, where the model round-trip test would read it).
+
+namespace {
+
+// annotated.dex and where its tables are, read with the raw parser.
+struct AnnotatedDex
+{
+    std::vector<uint8_t> bytes;
+    std::size_t class_defs_off = 0;
+    std::size_t method_ids_off = 0;
+    std::size_t field_ids_off = 0;
+    std::size_t method_count = 0;
+    std::size_t field_count = 0;
+    uint32_t type_count = 0;
+    uint32_t annotated_type = 0; ///< type index of LAnnotated;
+    uint32_t annotated_def = 0;  ///< class_defs index of LAnnotated;
+    uint32_t marker_def = 0;     ///< class_defs index of LMarker;
+};
+
+AnnotatedDex annotated_dex()
+{
+    AnnotatedDex d;
+    d.bytes = load_buf("tests/data/annotated.dex");
+    auto dex = raw::parser::parse_buffer(d.bytes);
+    if (!dex.has_value())
+        throw std::runtime_error(dex.error().message);
+    d.class_defs_off = dex->header().class_defs_off;
+    d.method_ids_off = dex->header().method_ids_off;
+    d.field_ids_off = dex->header().field_ids_off;
+    d.method_count = dex->method_ids().size();
+    d.field_count = dex->field_ids().size();
+    d.type_count = static_cast<uint32_t>(dex->type_ids().size());
+    const auto defs = dex->class_defs();
+    for (uint32_t j = 0; j < static_cast<uint32_t>(defs.size()); ++j) {
+        const std::string &name = dex->strings()[dex->type_ids()[defs[j].class_idx]];
+        if (name == "LAnnotated;") {
+            d.annotated_def = j;
+            d.annotated_type = defs[j].class_idx;
+        }
+        else if (name == "LMarker;") {
+            d.marker_def = j;
+        }
+    }
+    return d;
+}
+
+void put_u16(std::vector<uint8_t> &bytes, std::size_t off, uint16_t value)
+{
+    bytes[off] = static_cast<uint8_t>(value);
+    bytes[off + 1] = static_cast<uint8_t>(value >> 8);
+}
+
+void put_u32(std::vector<uint8_t> &bytes, std::size_t off, uint32_t value)
+{
+    put_u16(bytes, off, static_cast<uint16_t>(value));
+    put_u16(bytes, off + 2, static_cast<uint16_t>(value >> 16));
+}
+
+constexpr std::size_t kClassDefSize = 32; // class_def_item; class_idx is its first field
+constexpr std::size_t kMemberIdSize = 8;  // method_id_item / field_id_item; class_idx first
+
+void set_class_def_type(AnnotatedDex &d, uint32_t def, uint32_t type)
+{
+    put_u32(d.bytes, d.class_defs_off + def * kClassDefSize, type);
+}
+
+void swap_class_defs(AnnotatedDex &d, uint32_t a, uint32_t b)
+{
+    auto at = [&](uint32_t def) {
+        return d.bytes.begin() +
+               static_cast<std::ptrdiff_t>(d.class_defs_off + def * kClassDefSize);
+    };
+    std::swap_ranges(at(a), at(a) + static_cast<std::ptrdiff_t>(kClassDefSize), at(b));
+}
+
+// Make every method_id and field_id that names type @p from name @p to.
+void move_members_to_type(AnnotatedDex &d, uint16_t from, uint16_t to)
+{
+    for (std::size_t i = 0; i < d.method_count; ++i) {
+        std::size_t off = d.method_ids_off + i * kMemberIdSize;
+        if ((d.bytes[off] | d.bytes[off + 1] << 8) == from)
+            put_u16(d.bytes, off, to);
+    }
+    for (std::size_t i = 0; i < d.field_count; ++i) {
+        std::size_t off = d.field_ids_off + i * kMemberIdSize;
+        if ((d.bytes[off] | d.bytes[off + 1] << 8) == from)
+            put_u16(d.bytes, off, to);
+    }
+}
+
+AnalysisContext load_dex_bytes(const std::vector<uint8_t> &dex_bytes)
+{
+    auto ctx =
+        AnalysisContext::from_apk_buffer(build_zip({stored_entry("classes.dex", dex_bytes)}));
+    if (!ctx.has_value())
+        throw std::runtime_error(ctx.error().message);
+    return std::move(*ctx);
+}
+
+// The class whose class_data defines a method named @p method.  After the
+// patches, find_class by name may give another class_def.
+Class class_defining(const AnalysisContext &ctx, std::string_view method)
+{
+    for (const auto &c : ctx.classes())
+        for (const auto &m : c.methods())
+            if (m.name() == method)
+                return c;
+    throw std::runtime_error("no class defines " + std::string(method));
+}
+
+// What the three lookups give for Annotated's members.
+struct Seen
+{
+    bool greet_marker = false; ///< greet() has its @Marker
+    bool magic_marker = false; ///< MAGIC has its @Marker
+    bool magic_value = false;  ///< MAGIC has its initial value 42
+};
+
+Seen seen_in(const std::vector<uint8_t> &dex_bytes)
+{
+    auto ctx = load_dex_bytes(dex_bytes);
+    Class cls = class_defining(ctx, "greet");
+    Seen s;
+    s.greet_marker = find_marker(method_named(cls, "greet").annotations()) != nullptr;
+    s.magic_marker = find_marker(field_named(cls, "MAGIC").annotations()) != nullptr;
+    auto value = field_named(cls, "MAGIC").initial_value();
+    s.magic_value = value.has_value() && std::get<int64_t>(value->value) == 42;
+    return s;
+}
+
+} // namespace
+
+TEST(ClassDefLookupTest, UnpatchedFileFindsEverything)
+{
+    auto d = annotated_dex();
+    auto s = seen_in(d.bytes);
+    EXPECT_TRUE(s.greet_marker && s.magic_marker && s.magic_value);
+}
+
+TEST(ClassDefLookupTest, DuplicateTypeUsesTheFirstClassDef)
+{
+    // Two class_defs name LAnnotated;: its own, and Marker's changed to name
+    // it too.  The lookup takes the first one in class_defs order, whatever
+    // the other one holds.
+    auto d = annotated_dex();
+    ASSERT_LT(d.annotated_def, d.marker_def) << "the fixture's class_def order changed";
+
+    // Annotated's own class_def first: its annotations and static values are found.
+    auto own_first = d;
+    set_class_def_type(own_first, own_first.marker_def, own_first.annotated_type);
+    auto s = seen_in(own_first.bytes);
+    EXPECT_TRUE(s.greet_marker);
+    EXPECT_TRUE(s.magic_marker);
+    EXPECT_TRUE(s.magic_value);
+
+    // Marker's class_def first: the lookup lands on it, and it has no member
+    // annotations and no static values, even though Annotated's own class_def
+    // comes right after it.
+    auto other_first = d;
+    swap_class_defs(other_first, d.annotated_def, d.marker_def);
+    // Marker's class_def now sits at Annotated's old position, the earlier one.
+    set_class_def_type(other_first, d.annotated_def, d.annotated_type);
+    s = seen_in(other_first.bytes);
+    EXPECT_FALSE(s.greet_marker);
+    EXPECT_FALSE(s.magic_marker);
+    EXPECT_FALSE(s.magic_value);
+}
+
+TEST(ClassDefLookupTest, TypeIndexPastTheTypeTable)
+{
+    // The members of Annotated name a type index past the end of the type
+    // table.  No class_def names that index, so nothing is found.
+    auto d = annotated_dex();
+    const auto past = static_cast<uint16_t>(d.type_count + 3);
+
+    auto unnamed = d;
+    move_members_to_type(unnamed, static_cast<uint16_t>(unnamed.annotated_type), past);
+    auto s = seen_in(unnamed.bytes);
+    EXPECT_FALSE(s.greet_marker);
+    EXPECT_FALSE(s.magic_marker);
+    EXPECT_FALSE(s.magic_value);
+
+    // Annotated's class_def names that same index too: it is found, even
+    // though the index has no entry in the type table.
+    auto named = d;
+    move_members_to_type(named, static_cast<uint16_t>(named.annotated_type), past);
+    set_class_def_type(named, named.annotated_def, past);
+    s = seen_in(named.bytes);
+    EXPECT_TRUE(s.greet_marker);
+    EXPECT_TRUE(s.magic_marker);
+    EXPECT_TRUE(s.magic_value);
 }

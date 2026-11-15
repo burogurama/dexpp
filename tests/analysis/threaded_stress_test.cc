@@ -1,10 +1,12 @@
 // Concurrent-access stress test.  The AnalysisContext implementation is built
 // around lazy, mutex-guarded per-DEX caches (strings, class data, code items,
-// instructions, CFGs) and std::call_once whole-program singletons (class
-// index, call graph, class hierarchy, xrefs).  Nothing in the API states that
-// concurrent *reads* of one context are safe, and no test pinned it — so this
-// exercises exactly that: many threads racing to trigger the first-access lazy
-// initialisation of the same context, then reading through the handles.
+// instructions, CFGs), a std::call_once per-DEX table (the class_def lookup
+// behind member annotations and static values) and std::call_once
+// whole-program singletons (class index, call graph, class hierarchy, xrefs).
+// Nothing in the API states that concurrent *reads* of one context are safe,
+// and no test pinned it — so this exercises exactly that: many threads racing
+// to trigger the first-access lazy initialisation of the same context, then
+// reading through the handles.
 //
 // The assertions (every thread agrees on what it observed) catch torn reads;
 // the real oracle is ThreadSanitizer, under which a missing or wrong lock
@@ -34,6 +36,8 @@ struct Observed
     std::size_t xref_strings = 0;
     std::size_t instructions = 0;
     std::size_t cfg_blocks = 0;
+    std::size_t annotations = 0;
+    std::size_t initial_values = 0;
     bool hierarchy_nonempty = false;
 
     bool operator==(const Observed &) const = default;
@@ -51,10 +55,18 @@ Observed walk(const AnalysisContext &ctx)
 
     // Per-DEX lazy caches, reached through handles: instruction and CFG caches
     // (same map, different keys, concurrently) plus find_class's class index.
+    // Member annotations and static values go through the per-DEX class_def
+    // table, which the first of the racing threads to get here builds.
     for (const auto &c : ctx.classes()) {
         ++o.classes;
         (void)ctx.find_class(c.name());
+        for (const auto &f : c.fields()) {
+            o.annotations += f.annotations().size();
+            if (f.initial_value().has_value())
+                ++o.initial_values;
+        }
         for (const auto &m : c.methods()) {
+            o.annotations += m.annotations().size();
             o.instructions += m.instructions().size();
             o.cfg_blocks += m.cfg().blocks().size();
             (void)m.calls();
@@ -74,7 +86,8 @@ TEST(ThreadedStress, ConcurrentLazyInitAndReads)
         // A fresh context each iteration so the first-access races (lazy cache
         // fills, call_once) actually run every time, not just once overall.
         auto ctx = AnalysisContext::from_dex_files(
-            {"tests/data/classes.dex", "tests/data/fibonacci.dex", "tests/data/polymorphic.dex"});
+            {"tests/data/classes.dex", "tests/data/fibonacci.dex", "tests/data/polymorphic.dex",
+             "tests/data/annotated.dex"});
         ASSERT_TRUE(ctx.has_value()) << ctx.error().message;
 
         std::vector<Observed> seen(kThreads);
@@ -97,6 +110,8 @@ TEST(ThreadedStress, ConcurrentLazyInitAndReads)
         // Sanity: the walk actually observed a non-trivial program.
         EXPECT_GT(seen[0].cg_nodes, 0u);
         EXPECT_GT(seen[0].instructions, 0u);
+        EXPECT_GT(seen[0].annotations, 0u);
+        EXPECT_GT(seen[0].initial_values, 0u);
         EXPECT_TRUE(seen[0].hierarchy_nonempty);
     }
 }

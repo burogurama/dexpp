@@ -237,6 +237,12 @@
   point at the same class, method or field. Handles from two contexts that
   loaded the same file are not equal. A default-constructed `Class` equals only
   another default-constructed one.
+- `Method::annotations()`, `Field::annotations()` and `Field::initial_value()`
+  (and the same calls in Python, C and Go) no longer go through every class of
+  the DEX file to find the member's class. Each DEX file now builds a table
+  from type index to class the first time one of them is called, so the cost
+  of a call no longer grows with the size of the file. The results do not
+  change.
 
 ### C++ API (breaking)
 
