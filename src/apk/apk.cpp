@@ -83,7 +83,9 @@ const Manifest *Apk::manifest() const
         auto doc = axml::parse(std::span<const uint8_t>(*data));
         if (!doc.has_value())
             return;
-        impl_->manifest_cache.emplace(std::move(*doc));
+        // Boolean and integer attributes may be resource references; the
+        // resource table resolves them (resources() has its own once_flag).
+        impl_->manifest_cache.emplace(std::move(*doc), resources());
     });
     return impl_->manifest_cache.has_value() ? &*impl_->manifest_cache : nullptr;
 }

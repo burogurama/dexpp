@@ -26,8 +26,22 @@ constexpr uint16_t ENTRY_FLAG_COMPLEX = 0x0001;
 constexpr uint8_t TYPE_FLAG_SPARSE = 0x01;
 constexpr uint8_t TYPE_FLAG_OFFSET16 = 0x02;
 
+// Res_value data types (ResourceTypes.h).
+constexpr uint8_t RES_VALUE_TYPE_REFERENCE = 0x01;
 constexpr uint8_t RES_VALUE_TYPE_STRING = 0x03;
+constexpr uint8_t RES_VALUE_TYPE_DYNAMIC_REFERENCE = 0x07;
+constexpr uint8_t RES_VALUE_TYPE_FIRST_INT = 0x10;
+constexpr uint8_t RES_VALUE_TYPE_LAST_INT = 0x1f;
 constexpr uint32_t NO_ENTRY32 = 0xFFFFFFFF;
+
+// How many references value_entry() follows before it gives up: the limit
+// Android's AssetManager2::ResolveReference uses.
+constexpr int kMaxReferenceSteps = 20;
+
+bool is_int_type(uint8_t type)
+{
+    return type >= RES_VALUE_TYPE_FIRST_INT && type <= RES_VALUE_TYPE_LAST_INT;
+}
 
 uint8_t rd8(std::span<const uint8_t> buf, std::size_t pos) { return buf[pos]; }
 
@@ -230,17 +244,46 @@ std::optional<ResourceName> ResourceTable::name_of(uint32_t id) const
     return ResourceName{package_name_, it->second.type, it->second.entry};
 }
 
+const ResourceTable::Entry *ResourceTable::value_entry(uint32_t id) const
+{
+    for (int step = 0; step <= kMaxReferenceSteps; ++step) {
+        auto it = entries_.find(id);
+        if (it == entries_.end() || !it->second.has_value)
+            return nullptr;
+        const Entry &e = it->second;
+        if (e.value_type != RES_VALUE_TYPE_REFERENCE &&
+            e.value_type != RES_VALUE_TYPE_DYNAMIC_REFERENCE)
+            return &e;
+        id = e.value_data;
+    }
+    return nullptr; // a reference loop, or a longer chain than Android follows
+}
+
 std::optional<std::string_view> ResourceTable::resolve_string(uint32_t id) const
 {
-    auto it = entries_.find(id);
-    if (it == entries_.end() || !it->second.has_value)
+    const Entry *e = value_entry(id);
+    if (!e || e->value_type != RES_VALUE_TYPE_STRING)
         return std::nullopt;
-    if (it->second.value_type != RES_VALUE_TYPE_STRING)
-        return std::nullopt;
-    uint32_t sidx = it->second.value_data;
+    uint32_t sidx = e->value_data;
     if (sidx >= value_pool_.size())
         return std::nullopt;
     return value_pool_[sidx];
+}
+
+std::optional<bool> ResourceTable::resolve_bool(uint32_t id) const
+{
+    const Entry *e = value_entry(id);
+    if (!e || !is_int_type(e->value_type))
+        return std::nullopt;
+    return e->value_data != 0;
+}
+
+std::optional<int64_t> ResourceTable::resolve_int(uint32_t id) const
+{
+    const Entry *e = value_entry(id);
+    if (!e || !is_int_type(e->value_type))
+        return std::nullopt;
+    return static_cast<int32_t>(e->value_data);
 }
 
 std::optional<uint32_t> ResourceTable::id_of(std::string_view type, std::string_view entry) const

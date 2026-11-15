@@ -266,6 +266,8 @@ struct TestAttr
     uint32_t resource_id; ///< 0: the name string gets no resource id.
     std::optional<std::string> text = std::nullopt;
     std::optional<bool> boolean = std::nullopt;
+    /** Any other typed value, such as a reference; used when `text` is unset. */
+    std::optional<axml::TypedValue> typed = std::nullopt;
 };
 
 struct TestElement
@@ -414,9 +416,18 @@ class AxmlWriter
             put32(out, a.text.has_value() ? plain_.at(*a.text) : no_entry);
             put16(out, 8); // Res_value size
             out.push_back(0);
-            out.push_back(a.text.has_value() ? 0x03 : 0x12); // TYPE_STRING or TYPE_INT_BOOLEAN
-            put32(out, a.text.has_value() ? plain_.at(*a.text)
-                                          : (a.boolean.value_or(false) ? 0xFFFFFFFF : 0));
+            if (a.text.has_value()) {
+                out.push_back(0x03); // TYPE_STRING
+                put32(out, plain_.at(*a.text));
+            }
+            else if (a.typed.has_value()) {
+                out.push_back(a.typed->type);
+                put32(out, a.typed->data);
+            }
+            else {
+                out.push_back(0x12); // TYPE_INT_BOOLEAN
+                put32(out, a.boolean.value_or(false) ? 0xFFFFFFFF : 0);
+            }
         }
         if (map_after_start)
             append_resource_map(out);
@@ -543,4 +554,245 @@ TEST(ManifestAttributes, AResourceMapAfterTheFirstElementIsIgnored)
     Manifest m = one_activity({{kAndroidNs, "visible", kExportedId, std::nullopt, true}},
                               /*with_intent_filter=*/false, ResourceMap::AfterTheFirstElement);
     EXPECT_EQ(only_component(m).exported, std::nullopt);
+}
+
+// ===== attribute values given by resource references =====
+//
+// tests/data/refs.apk sets its boolean and integer attributes through
+// resource references, such as android:exported="@bool/yes".  Its sources are
+// RefsManifest.xml, RefsValues.xml (res/values/values.xml) and
+// RefsValuesV31.xml (res/values-v31/values.xml).  It was built with the
+// Android SDK's aapt2 against platforms/android-34/android.jar:
+//
+//   aapt2 compile --dir res -o compiled.zip
+//   aapt2 link -o refs.apk -I android.jar --manifest RefsManifest.xml compiled.zip
+//   zip -X -j refs.apk classes.dex          # tests/data/classes.dex
+
+namespace {
+
+constexpr uint32_t kVersionCodeId = 0x0101021b;
+constexpr uint8_t kTypeReference = 0x01;
+constexpr uint8_t kTypeIntDec = 0x10;
+
+Apk open_refs()
+{
+    auto apk = Apk::open("tests/data/refs.apk");
+    EXPECT_TRUE(apk.has_value()) << (apk ? "" : apk.error().message);
+    return std::move(*apk);
+}
+
+uint32_t resource_id(const Apk &apk, std::string_view type, std::string_view entry)
+{
+    const ResourceTable *table = apk.resources();
+    EXPECT_NE(table, nullptr);
+    auto id = table ? table->id_of(type, entry) : std::nullopt;
+    EXPECT_TRUE(id.has_value()) << type << "/" << entry;
+    return id.value_or(0);
+}
+
+/** A <manifest> with @p attrs and one activity ".A" with @p activity_attrs. */
+axml::XmlDocument crafted_manifest(std::vector<TestAttr> attrs,
+                                   std::vector<TestAttr> activity_attrs)
+{
+    TestElement activity{"activity", {{kAndroidNs, "name", kNameId, ".A"}}, {}};
+    for (TestAttr &a : activity_attrs)
+        activity.attrs.push_back(std::move(a));
+    TestElement root{"manifest", {{"", "package", 0, "com.test"}}, {}};
+    for (TestAttr &a : attrs)
+        root.attrs.push_back(std::move(a));
+    root.children.push_back({"application", {}, {std::move(activity)}});
+    auto doc = axml::parse(AxmlWriter().write(root, ResourceMap::BeforeTheElements));
+    EXPECT_TRUE(doc.has_value()) << (doc ? "" : doc.error().message);
+    return doc ? std::move(*doc) : axml::XmlDocument{};
+}
+
+TestAttr reference_attr(std::string name, uint32_t attribute_id, uint32_t target)
+{
+    return TestAttr{kAndroidNs,   std::move(name), attribute_id,
+                    std::nullopt, std::nullopt,    axml::TypedValue{kTypeReference, target}};
+}
+
+} // namespace
+
+TEST(ManifestReferences, BooleansAndIntegersAreResolved)
+{
+    Apk apk = open_refs();
+    const Manifest *m = apk.manifest();
+    ASSERT_NE(m, nullptr);
+
+    EXPECT_EQ(m->min_sdk(), 23);
+    EXPECT_EQ(m->min_sdk_reference(), resource_id(apk, "integer", "min_sdk"));
+    EXPECT_EQ(m->target_sdk(), 34);
+    EXPECT_EQ(m->target_sdk_reference(), resource_id(apk, "integer", "target_sdk"));
+    EXPECT_EQ(m->debuggable(), std::optional<bool>(true));
+    EXPECT_EQ(m->debuggable_reference(), resource_id(apk, "bool", "debug"));
+    EXPECT_EQ(m->allow_backup(), std::optional<bool>(false));
+    EXPECT_EQ(m->allow_backup_reference(), resource_id(apk, "bool", "allow_backup"));
+
+    // A plain value has no reference.
+    EXPECT_EQ(m->version_code(), 42);
+    EXPECT_EQ(m->version_code_reference(), std::nullopt);
+}
+
+TEST(ManifestReferences, ExportedIsResolved)
+{
+    Apk apk = open_refs();
+    const Manifest *m = apk.manifest();
+    ASSERT_NE(m, nullptr);
+
+    // No intent filter, so without the reference it would read as not
+    // exported.
+    const Component *c = find_component(*m, "com.dexpp.refs.ExportedActivity");
+    ASSERT_NE(c, nullptr);
+    EXPECT_EQ(c->exported, std::optional<bool>(true));
+    EXPECT_EQ(c->exported_reference, resource_id(apk, "bool", "yes"));
+    EXPECT_TRUE(c->is_exported());
+    EXPECT_TRUE(c->is_reachable());
+
+    // An intent filter, but the reference says false.
+    c = find_component(*m, "com.dexpp.refs.HiddenActivity");
+    ASSERT_NE(c, nullptr);
+    EXPECT_EQ(c->exported, std::optional<bool>(false));
+    EXPECT_FALSE(c->is_exported());
+    EXPECT_FALSE(c->is_reachable());
+
+    // @bool/same_as_yes is itself @bool/yes.
+    c = find_component(*m, "com.dexpp.refs.ChainedActivity");
+    ASSERT_NE(c, nullptr);
+    EXPECT_EQ(c->exported, std::optional<bool>(true));
+
+    // @integer/one: Android reads an integer as a boolean, nonzero is true.
+    c = find_component(*m, "com.dexpp.refs.IntegerActivity");
+    ASSERT_NE(c, nullptr);
+    EXPECT_EQ(c->exported, std::optional<bool>(true));
+
+    // false in the default configuration, true in values-v31: the default
+    // configuration's value is used.
+    c = find_component(*m, "com.dexpp.refs.VariantActivity");
+    ASSERT_NE(c, nullptr);
+    EXPECT_EQ(c->exported, std::optional<bool>(false));
+}
+
+TEST(ManifestReferences, AnUnresolvedExportedCountsAsExported)
+{
+    Apk apk = open_refs();
+    const Manifest *m = apk.manifest();
+    ASSERT_NE(m, nullptr);
+
+    // @string/not_a_bool: a reference to a value of the wrong type.
+    const Component *c = find_component(*m, "com.dexpp.refs.TextActivity");
+    ASSERT_NE(c, nullptr);
+    EXPECT_EQ(c->exported, std::nullopt);
+    EXPECT_EQ(c->exported_reference, resource_id(apk, "string", "not_a_bool"));
+    EXPECT_TRUE(c->is_exported());
+    EXPECT_TRUE(c->is_reachable());
+
+    // ?android:attr/windowFullscreen: a theme attribute, unknown without the
+    // theme.
+    c = find_component(*m, "com.dexpp.refs.ThemeActivity");
+    ASSERT_NE(c, nullptr);
+    EXPECT_EQ(c->exported, std::nullopt);
+    EXPECT_EQ(c->exported_reference, 0x0101020du);
+    EXPECT_TRUE(c->is_exported());
+}
+
+TEST(ManifestReferences, ProtectionLevelsAreResolved)
+{
+    Apk apk = open_refs();
+    const Manifest *m = apk.manifest();
+    ASSERT_NE(m, nullptr);
+    EXPECT_EQ(m->declared_permissions().size(), 2u);
+
+    // @integer/signature_level is 2, signature: the service is guarded.
+    EXPECT_EQ(m->declared_permission_protection_level("com.dexpp.refs.P_SIGNATURE"), 2);
+    const Component *c = find_component(*m, "com.dexpp.refs.GuardedService");
+    ASSERT_NE(c, nullptr);
+    EXPECT_TRUE(c->guarded_by_signature_permission);
+    EXPECT_FALSE(c->is_reachable());
+
+    // @string/not_a_number: the level is unknown, so it does not guard.
+    EXPECT_EQ(m->declared_permission_protection_level("com.dexpp.refs.P_TEXT"), std::nullopt);
+    c = find_component(*m, "com.dexpp.refs.TextGuardedService");
+    ASSERT_NE(c, nullptr);
+    EXPECT_FALSE(c->guarded_by_signature_permission);
+    EXPECT_TRUE(c->is_reachable());
+}
+
+TEST(ManifestReferences, WithoutTheResourceTableOnlyTheReferenceIsKnown)
+{
+    // A Manifest built from the document alone cannot resolve anything: every
+    // value is unknown, but no reference reads as "not written".
+    auto doc = axml::parse(manifest_bytes("tests/data/refs.apk"));
+    ASSERT_TRUE(doc.has_value());
+    Manifest m(std::move(*doc));
+    Apk apk = open_refs();
+
+    EXPECT_EQ(m.min_sdk(), std::nullopt);
+    EXPECT_EQ(m.min_sdk_reference(), resource_id(apk, "integer", "min_sdk"));
+    EXPECT_EQ(m.debuggable(), std::nullopt);
+    EXPECT_EQ(m.debuggable_reference(), resource_id(apk, "bool", "debug"));
+    EXPECT_EQ(m.version_code(), 42);
+
+    const Component *hidden = find_component(m, "com.dexpp.refs.HiddenActivity");
+    ASSERT_NE(hidden, nullptr);
+    EXPECT_EQ(hidden->exported, std::nullopt);
+    EXPECT_EQ(hidden->exported_reference, resource_id(apk, "bool", "no"));
+    EXPECT_TRUE(hidden->is_exported()); // unknown: possibly exported
+
+    // The signature level is unknown too, so the service is not guarded.
+    EXPECT_EQ(m.declared_permission_protection_level("com.dexpp.refs.P_SIGNATURE"), std::nullopt);
+    const Component *guarded = find_component(m, "com.dexpp.refs.GuardedService");
+    ASSERT_NE(guarded, nullptr);
+    EXPECT_FALSE(guarded->guarded_by_signature_permission);
+    EXPECT_TRUE(guarded->is_reachable());
+}
+
+TEST(ManifestReferences, AMissingIdIsNotResolved)
+{
+    // aapt2 does not link a reference to a missing resource, nor a reference
+    // for android:versionCode; build such a manifest by hand and read it with
+    // refs.apk's resource table.
+    Apk apk = open_refs();
+    const ResourceTable *table = apk.resources();
+    ASSERT_NE(table, nullptr);
+    const uint32_t missing = 0x7f990000;
+    const uint32_t min_sdk = resource_id(apk, "integer", "min_sdk");
+
+    Manifest known(crafted_manifest({reference_attr("versionCode", kVersionCodeId, min_sdk)},
+                                    {reference_attr("exported", kExportedId, missing)}),
+                   table);
+    EXPECT_EQ(known.version_code(), 23);
+    EXPECT_EQ(known.version_code_reference(), min_sdk);
+    const Component &c = only_component(known);
+    EXPECT_EQ(c.exported, std::nullopt);
+    EXPECT_EQ(c.exported_reference, missing);
+    EXPECT_TRUE(c.is_exported());
+
+    Manifest unknown(crafted_manifest({reference_attr("versionCode", kVersionCodeId, missing)}, {}),
+                     table);
+    EXPECT_EQ(unknown.version_code(), std::nullopt);
+    EXPECT_EQ(unknown.version_code_reference(), missing);
+
+    // A plain integer is still read as before.
+    Manifest plain(
+        crafted_manifest({TestAttr{kAndroidNs, "versionCode", kVersionCodeId, std::nullopt,
+                                   std::nullopt, axml::TypedValue{kTypeIntDec, 5}}},
+                         {}),
+        table);
+    EXPECT_EQ(plain.version_code(), 5);
+    EXPECT_EQ(plain.version_code_reference(), std::nullopt);
+}
+
+TEST(ManifestReferences, PlainValuesHaveNoReference)
+{
+    auto apk = open_sample();
+    const Manifest *m = apk.manifest();
+    ASSERT_NE(m, nullptr);
+    EXPECT_EQ(m->debuggable_reference(), std::nullopt);
+    EXPECT_EQ(m->allow_backup_reference(), std::nullopt);
+    EXPECT_EQ(m->min_sdk_reference(), std::nullopt);
+    EXPECT_EQ(m->target_sdk_reference(), std::nullopt);
+    EXPECT_EQ(m->version_code_reference(), std::nullopt);
+    for (const Component &c : m->components())
+        EXPECT_EQ(c.exported_reference, std::nullopt) << c.name;
 }
