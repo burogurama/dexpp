@@ -1,0 +1,3 @@
+com.dexpp.reach.SigActivity is exported, but guarded by com.dexpp.reach.P_SIGNATURE (level 2)
+com.dexpp.reach.SigService is exported, but guarded by com.dexpp.reach.P_SIGNATURE (level 2)
+5 of 8 components are reachable

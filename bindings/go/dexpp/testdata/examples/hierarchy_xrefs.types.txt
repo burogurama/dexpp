@@ -1,0 +1,2 @@
+new-instance in LPet; describe at 0
+new-instance in LDog; describe at 0

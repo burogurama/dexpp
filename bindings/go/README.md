@@ -79,11 +79,13 @@ if n, ok := g.Find(loadURL); ok {
 }
 ```
 
-`example_test.go` holds a testable example for each area (loading,
-bytecode, control-flow graph, references, annotations, call graph, hierarchy
-and cross-references, APK metadata, signing, the model, errors). `go test`
-runs them and checks their output, and the documentation site shows them on
-its "C and Go" page.
+The `example_*_test.go` files hold the testable examples that the guides of
+the documentation site show in their Go tabs, one file per guide (APK
+metadata, code, call graph, hierarchy and cross-references, the model,
+errors). `go test` runs them and checks their output. `testdata/examples/`
+keeps a copy of each `// Output:` comment for the site, and
+`TestDocsExampleOutputs` checks that the copies match; after changing an
+example, run `go test ./dexpp -run TestDocsExampleOutputs -update`.
 
 | Area | Go API |
 | ---- | ------ |

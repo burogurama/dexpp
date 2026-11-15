@@ -1,0 +1,8 @@
+block 0 [0x0, 0x2) [branch-taken->2 branch-not-taken->1]
+block 1 [0x2, 0x5) []
+block 2 [0x5, 0x9) [branch-taken->4 branch-not-taken->3]
+block 3 [0x9, 0xa) []
+block 4 [0xa, 0x14) [fallthrough->5]
+block 5 [0x14, 0x16) [branch-taken->7 branch-not-taken->6]
+block 6 [0x16, 0x20) [goto->5]
+block 7 [0x20, 0x23) []

@@ -1,0 +1,6 @@
+LMarker; runtime
+  level = 3 (int64)
+  name = cls (string)
+  tags = [a b] ([]interface {})
+GREETING = hello (string)
+MAGIC = 42 (int64)

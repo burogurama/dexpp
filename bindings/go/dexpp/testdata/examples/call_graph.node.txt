@@ -1,0 +1,2 @@
+LKennel;->noise kind: defined
+  calls LAnimal;->sound interface at offset 0
