@@ -1,0 +1,5 @@
+non-public <init> [Ljava/lang/String;, D] -> V
+public area [] -> D
+public getRadius [] -> D
+public perimeter [] -> D
+<init> 65536 true

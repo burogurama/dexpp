@@ -3,9 +3,14 @@
 The C API is a C layer over the C++ library. It exists so that languages
 that can call C, such as Go, can use dex++. The Go package is built on it.
 
-Both cover the same ground as the [Python binding](quickstart.md): the whole
+Both cover the same ground as the Python and Java bindings: the whole
 analysis API, the APK metadata, and the editable model a whole class at a
 time. Only building or changing code inside a method needs [C++](cpp.md).
+
+This page is the reference for building and using them: setup, errors and
+memory. The [quick start](quickstart.md) and the guides show every area with
+Go examples, next to Python and Java. The table below gives the names to look
+for.
 
 | Area | C | Go |
 | ---- | - | -- |
@@ -171,114 +176,53 @@ The dexpp libraries are linked statically, so a Go program built with the
 package needs no dexpp library at runtime. It uses the system's C++ runtime:
 libstdc++ on Linux, libc++ on macOS.
 
-The examples below are the package's testable examples, from
-`bindings/go/dexpp/example_test.go`. `go test` runs each one and checks what
-it prints. It runs them in `bindings/go/dexpp`, so they open the test files of
-the repository by the relative path `../../../tests/data`.
+### Go examples
 
-### Classes and methods
+The [quick start](quickstart.md) and the guides show a Go version of every
+example: choose the "Go" tab above any example.
 
-```go
---8<-- "bindings/go/dexpp/example_test.go:load"
-```
+- [APK metadata](guide/apk.md): the manifest, components, resources, signing
+  and archive entries.
+- [Classes, methods and bytecode](guide/code.md): loading, classes, methods,
+  instructions, the control-flow graph, try blocks and annotations.
+- [Call graph](guide/call-graph.md), and
+  [Class hierarchy and cross-references](guide/hierarchy-xrefs.md).
+- [Editing DEX files](guide/editing-dex.md): the editable model.
 
-`FromAPK` loads every `classes*.dex` of an APK instead.
-`dexpp.WithThreads(1)` keeps all its work on the calling thread:
-`dexpp.FromAPK(path, dexpp.WithThreads(1))`.
-
-### Bytecode and the control-flow graph
-
-`Method.Instructions` returns the decoded bytecode. Each instruction is one of
-28 struct types, one per family of opcodes, so a type switch tells them
-apart:
-
-```go
---8<-- "bindings/go/dexpp/example_test.go:instructions"
-```
-
-Pool operands, such as `method@3`, are raw indices into the tables of the DEX
-file. The next section gives the names.
-
-```go
---8<-- "bindings/go/dexpp/example_test.go:cfg"
-```
-
-### What a method refers to
-
-`Calls`, `FieldAccesses`, `StringLoads` and `TypeUses` list what a method's
-code refers to, with names instead of indices:
-
-```go
---8<-- "bindings/go/dexpp/example_test.go:references"
-```
-
-Annotations are copied into Go values. An element value has one of the types
-listed for `dexpp.AnnotationValue`: `nil`, `bool`, `int64`, `float64`,
-`string`, a value type such as `dexpp.TypeValue` or `dexpp.MethodHandleValue`,
-a slice, or a nested `dexpp.Annotation`.
-
-```go
---8<-- "bindings/go/dexpp/example_test.go:annotations"
-```
-
-### Call graph
-
-Nodes and edges of the call graph are numbered. `CallNode` and `CallEdge` are
-plain values that hold the numbers of their neighbours, and the methods of
-`CallGraph` take and return numbers. `Nodes()` and `Edges()` copy the whole
-table, so call them once; `Node(i)` and `Edge(i)` copy one entry.
-
-```go
---8<-- "bindings/go/dexpp/example_test.go:callgraph"
-```
-
-`EdgesWhere(origin, kind)` filters the edges inside the library:
-`g.EdgesWhere(dexpp.EdgeDeclared, dexpp.AnyInvokeKind)` gives one edge per
-call site. See [Call graph](guide/call-graph.md) for what the edges and the
-dispatch targets mean.
-
-### Class hierarchy and cross-references
-
-```go
---8<-- "bindings/go/dexpp/example_test.go:hierarchy"
-```
-
-### APK metadata
-
-```go
---8<-- "bindings/go/dexpp/example_test.go:apk"
-```
-
-```go
---8<-- "bindings/go/dexpp/example_test.go:signing"
-```
-
-As in the other bindings, the signatures are only identified, not verified.
-
-### Editing DEX files
-
-`Model` is the editable model, a whole class at a time. It covers the same
-operations as the Python `Model`: see [Editing DEX files](guide/editing-dex.md)
-for what each one does.
-
-```go
---8<-- "bindings/go/dexpp/example_test.go:model"
-```
-
-The second argument of `ReadModelFile` and the argument of `Write` say whether
-to keep debug information: line numbers and local variable names.
+The examples are the package's testable examples, in the files
+`bindings/go/dexpp/example_*_test.go`. `go test` runs each one and checks
+what it prints against its `// Output:` comment, which is the output the
+guides show. It runs them in `bindings/go/dexpp`, so they open the test files
+of the repository by the relative path `../../../tests/data`.
 
 ### Errors in Go
 
 A call that fails returns an `*dexpp.Error`. It has the `Code` of the C error,
 its `Message`, and for an invalid model the `Problems`. Each code has a
-sentinel value, so `errors.Is` tells the kinds apart, and
-`errors.Is(err, fs.ErrNotExist)` is true for a missing file. Use `errors.As`
-to read the code and the problems:
+sentinel value, listed in the [table above](#errors-in-c), so `errors.Is`
+tells the kinds apart, and `errors.Is(err, fs.ErrNotExist)` is true for a
+missing file:
 
 ```go
---8<-- "bindings/go/dexpp/example_test.go:errors"
+--8<-- "bindings/go/dexpp/example_errors_test.go:load"
 ```
+
+```text
+--8<-- "bindings/go/dexpp/testdata/examples/errors.load.txt"
+```
+
+Use `errors.As` to read the code and the message:
+
+```go
+--8<-- "bindings/go/dexpp/example_errors_test.go:base"
+```
+
+```text
+--8<-- "bindings/go/dexpp/testdata/examples/errors.base.txt"
+```
+
+The [editing guide](guide/editing-dex.md#errors) shows the errors of the
+model, with the problems of an invalid model.
 
 ### Handles and memory in Go
 

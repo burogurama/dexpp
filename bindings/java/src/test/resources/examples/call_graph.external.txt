@@ -1,0 +1,2 @@
+[LPet;->sound, Ljava/lang/Object;-><init>, Ljava/lang/StringBuilder;-><init>, Ljava/lang/StringBuilder;->append, Ljava/lang/StringBuilder;->toString]
+Optional.empty

@@ -1,40 +1,57 @@
 # Classes, methods and bytecode
 
-An `AnalysisContext` holds the code: one or more DEX files, loaded together.
+An *analysis context* holds the code: one or more DEX files, loaded together.
+Python and Java call it `AnalysisContext`; in Go it is a `*dexpp.Context`. You
+load it from an APK, from one DEX file or from several, or you get it from an
+opened APK with its `analysis()` method (Go: `Analysis()`).
 
-```python
-# One of:
-ctx: dexpp.AnalysisContext = dexpp.AnalysisContext.from_dex("classes.dex")
-ctx: dexpp.AnalysisContext = dexpp.AnalysisContext.from_dex_files(["classes.dex", "classes2.dex"])
-ctx: dexpp.AnalysisContext = dexpp.AnalysisContext.from_apk("app.apk")
-ctx: dexpp.AnalysisContext = dexpp.Apk.open("app.apk").analysis()
-```
+The examples come in Python, Go and Java. Pick your language in the tabs.
 
-`from_apk` loads every top-level `classes*.dex` entry of the APK in multidex
-order: `classes.dex`, `classes2.dex`, `classes3.dex`, and so on.
+<!-- example: code.load -->
+
+Loading an APK takes every top-level `classes*.dex` entry in multidex order:
+`classes.dex`, `classes2.dex`, `classes3.dex`, and so on.
+
+## How the names differ
+
+The three bindings have the same parts, named in the style of each language.
+In this guide, a name in the text is the Python one, and the tables give all
+three. The rules are simple:
+
+- A Python property, such as `cls.methods`, is a method in Go and Java:
+  `cls.Methods()` and `cls.methods()`.
+- Python uses `snake_case`, Go uses `CamelCase`, Java uses `camelCase`:
+  `find_class`, `FindClass`, `findClass`.
+- A lookup that may find nothing returns `None` in Python. In Go it returns
+  `nil` when the result is a handle, such as a class, and otherwise a second
+  `bool` result that is `false`. In Java it returns an empty `Optional`.
 
 ## Classes
 
-```python
---8<-- "code.py:classes"
-```
+<!-- example: code.classes -->
 
-```text
---8<-- "output/code.classes.txt"
-```
+| What | Python | Go | Java |
+| ---- | ------ | -- | ---- |
+| every class | `ctx.classes()` | `ctx.Classes()` | `ctx.classes()` |
+| one class by descriptor | `ctx.find_class(d)` | `ctx.FindClass(d)` | `ctx.findClass(d)` |
+| the class's descriptor | `cls.descriptor` | `cls.Descriptor()` | `cls.descriptor()` |
+| its package | `cls.package` | `cls.Package()` | `cls.packageName()` |
+| its superclass | `cls.superclass` | `cls.Superclass()` | `cls.superclass()` |
+| its interfaces | `cls.interfaces` | `cls.Interfaces()` | `cls.interfaces()` |
+| its fields | `cls.fields` | `cls.Fields()` | `cls.fields()` |
 
-- `ctx.classes()` returns every class of every loaded file, in file order.
-  Each call makes a new list with a new `Class` object for every class. On a
-  large app that is a lot of objects, so keep the list when you need it more
-  than once.
-- `ctx.find_class(descriptor)` returns one class, or `None`. `dexpp.Class | None`
-  is its type, so the example checks the result before it uses it.
-- `cls.descriptor` is the class descriptor, such as `Lcom/example/Foo;`.
-  `cls.package` is the package in Java source form, `com.example`, the same
-  form as `Manifest.package`, so the two can be compared directly: a class
-  is in the app's package, or below it, when `cls.package == manifest.package`
-  or `cls.package.startswith(manifest.package + ".")`. It is an empty string
-  for a class in the default package.
+- `classes()` returns every class of every loaded file, in file order. Each
+  call makes a new list with a new class object for every class. On a large
+  app that is a lot of objects, so keep the list when you need it more than
+  once.
+- `find_class(descriptor)` returns one class, or nothing. So the example checks
+  the result before it uses it.
+- The descriptor of a class is the name the DEX format gives it, such as
+  `Lcom/example/Foo;`. The package is in Java source form, `com.example`, the
+  same form as the manifest's package name, so the two can be compared
+  directly: a class is in the app's package, or below it, when the two are
+  equal or the class's package starts with the app's package and a dot. The
+  package is an empty string for a class in the default package.
 - A class can be defined in more than one loaded file. Then `classes()` lists
   every definition, and `find_class` returns the first one: the definition in
   the earliest file, in load order. Android does the same. An app's class
@@ -42,61 +59,77 @@ order: `classes.dex`, `classes2.dex`, `classes3.dex`, and so on.
   that defines the class, so a later definition is never loaded. The call
   graph, the class hierarchy and the cross-references also use only the first
   definition.
-- `cls.superclass` and `cls.interfaces` are `ClassRef` values, not classes.
-  The superclass is often a framework class that is not in the file, so a
-  reference only carries the descriptor. Call `ref.resolve()` to get the
-  `Class` when it is loaded; it returns `None` when it is not.
+- The superclass and the interfaces are class *references* (`ClassRef`), not
+  classes. The superclass is often a framework class that is not in the file,
+  so a reference only carries the descriptor. Call `resolve()` on a reference
+  (Go: `Resolve()`) to get the class when it is loaded. When it is not loaded,
+  there is no class: `None` in Python, `nil` in Go, an empty `Optional` in
+  Java.
 
 ## Methods and fields
 
-```python
---8<-- "code.py:methods"
-```
+<!-- example: code.methods -->
 
-```text
---8<-- "output/code.methods.txt"
-```
+A class's methods list the direct methods first (constructors, static and
+private methods), then the virtual ones. Constructors are named `<init>`, and
+the static initializer is named `<clinit>`.
 
-`cls.methods` lists the direct methods first (constructors, static and private
-methods), then the virtual ones. Constructors are named `<init>`, and the
-static initializer is named `<clinit>`.
+`has_code` (Go: `HasCode()`, Java: `hasCode()`) is false for abstract and
+native methods. For those, the instruction list is empty and the control-flow
+graph has no blocks.
 
-`method.has_code` is false for abstract and native methods. For those,
-`instructions` is empty and `cfg` is an empty graph.
+The access flags hold one bit per DEX flag, such as `public` or
+`constructor`. Each language tests a flag in its own way:
 
-`access_flags` is a `dexpp.AccessFlags`, an `enum.IntFlag` with one member per
-DEX flag. Test a flag with `in`, as the example does. It is also an `int`, so
-code that compares bits by value keeps working. The `is_public`, `is_static`,
-`is_final` and similar properties are shortcuts for single flags.
+| Language | Type | Test a flag |
+| -------- | ---- | ----------- |
+| Python | `dexpp.AccessFlags`, an `enum.IntFlag` | `dexpp.AccessFlags.CONSTRUCTOR in flags` |
+| Go | `dexpp.AccessFlags`, a `uint32` | `flags.Has(dexpp.AccessConstructor)` |
+| Java | `AccessFlags`, a record around an `int` | `flags.has(AccessFlags.CONSTRUCTOR)` |
+
+In all three, the flags are also a plain number: `int(flags)` in Python,
+`uint32(flags)` in Go, `flags.value()` in Java. Methods such as `is_public`,
+`is_static` and `is_final` (Go: `IsPublic()`, Java: `isPublic()`, and so on)
+are shortcuts for single flags.
 
 ## Bytecode
 
-`method.instructions` is the decoded bytecode. It is a `dexpp.InstructionView`:
-a read-only sequence that copies nothing up front and builds each instruction
-when you read it. It supports `len()`, indexing, slicing and iteration, like a
-list. `dexpp.to_string` renders one instruction as text.
+A method's instructions are its decoded bytecode. `to_string` (Go:
+`dexpp.ToString`, Java: `Dexpp.toString`) renders one instruction as text.
 
-```python
---8<-- "code.py:instructions"
-```
+<!-- example: code.instructions -->
 
-```text
---8<-- "output/code.instructions.txt"
-```
+The library decodes a method's bytecode once, the first time you ask, and
+keeps it. How you read it depends on the language:
 
-`to_string` shows constant-pool operands as raw indices, such as `field@1` or
-`string@12`. It has no context to turn them into names. To get names, use the
-resolved views below.
+- In Python, `method.instructions` is a `dexpp.InstructionView`: a read-only
+  sequence that copies nothing up front and builds each instruction when you
+  read it. It supports `len()`, indexing, slicing and iteration, like a list.
+- In Go, `method.Instructions()` returns a slice, and in Java,
+  `method.instructions()` returns a list. Each call copies every instruction
+  into new values, so keep the result when you need it more than once. The
+  same is true for the control-flow graph below.
 
-Each instruction is an object of one of 28 classes, one per family of opcodes:
+The text shows constant-pool operands as raw indices, such as `field@1` or
+`string@12`. An instruction alone has no context to turn them into names. To
+get names, use the resolved lists below.
+
+Each instruction has one of 28 types, one per family of opcodes:
 `InvokeInstruction`, `FieldInstruction`, `ConstStringInstruction`,
-`IfInstruction` and so on. Use `isinstance` to tell them apart. An opcode the
-format does not use, as in a damaged method, becomes an `InvalidInstruction`.
-Every one has a `base` with the fields they all share:
+`IfInstruction` and so on. The names are the same in the three languages. An
+opcode the format does not use, as in a damaged method, becomes an
+`InvalidInstruction`. To tell the types apart, Python uses `isinstance`, Go a
+type switch or a type assertion, and Java pattern matching (`instanceof` or a
+`switch`). Every instruction has the fields they all share:
 
-- `base.offset`: the position in the method, in code units;
-- `base.opcode`: the raw opcode byte (`dexpp.opcode_name` gives its name);
-- `base.size`: the length of the instruction in code units.
+| Field | Python | Go | Java |
+| ----- | ------ | -- | ---- |
+| the position in the method, in code units | `base.offset` | `Base().Offset` | `offset()` |
+| the raw opcode byte | `base.opcode` | `Base().Opcode` | `opcode()` |
+| the length of the instruction, in code units | `base.size` | `Base().Size` | `size()` |
+
+`opcode_name` (Go: `dexpp.OpcodeName`, Java: `Dexpp.opcodeName`) gives the
+name of an opcode byte.
 
 ## What a method refers to
 
@@ -104,25 +137,18 @@ Most analyses do not need raw instructions. They need to know what a method
 calls, which fields it touches, which strings it loads and which types it uses.
 A method answers these directly, with names already resolved:
 
-```python
---8<-- "code.py:typed"
-```
+<!-- example: code.typed -->
 
-```text
---8<-- "output/code.typed.txt"
-```
+| Python | Go | Java | One entry per | Fields |
+| ------ | -- | ---- | ------------- | ------ |
+| `calls()` | `Calls()` | `calls()` | invoke instruction | the target (a `MethodId`), the kind, the code offset |
+| `field_accesses()` | `FieldAccesses()` | `fieldAccesses()` | field read or write | the field (a `FieldId`), whether it is a write, whether it is static, the code offset |
+| `string_loads()` | `StringLoads()` | `stringLoads()` | `const-string` | the value, the code offset |
+| `type_uses()` | `TypeUses()` | `typeUses()` | `const-class`, `check-cast`, `instance-of`, `new-instance`, `new-array`, `filled-new-array` | the descriptor, the kind, the code offset |
 
-| Method | One entry per | Fields |
-| ------ | ------------- | ------ |
-| `calls()` | invoke instruction | `target` (a `MethodId`), `kind`, `code_offset` |
-| `field_accesses()` | field read or write | `field` (a `FieldId`), `is_write`, `is_static`, `code_offset` |
-| `string_loads()` | `const-string` | `value`, `code_offset` |
-| `type_uses()` | `const-class`, `check-cast`, `instance-of`, `new-instance`, `new-array`, `filled-new-array` | `descriptor`, `kind`, `code_offset` |
-
-These four are methods, not properties. Each call goes through the method's
-bytecode again, resolves the names again and makes a new list. So keep the
-list when you need it more than once. For example, do not write
-`method.calls()[i]` inside a loop.
+Each call goes through the method's bytecode again, resolves the names again
+and makes a new list. So keep the list when you need it more than once. For
+example, do not call `calls()` again for each entry inside a loop.
 
 `calls()` gives the target exactly as the bytecode names it. It does not
 follow inheritance or virtual dispatch. The [call graph](call-graph.md) does
@@ -137,40 +163,35 @@ direction, from a method, field, string or type to its users, see
 Dalvik is a register machine. Each method has a fixed number of registers, and
 its arguments arrive in the last ones.
 
-```python
---8<-- "code.py:registers"
-```
+<!-- example: code.registers -->
 
-```text
---8<-- "output/code.registers.txt"
-```
-
-`parameter_registers` lists the incoming arguments in order. For an instance
+`register_count` (Go: `RegisterCount()`, Java: `registerCount()`) is the
+number of registers. `parameter_registers` (Go: `ParameterRegisters()`, Java:
+`parameterRegisters()`) lists the incoming arguments in order. For an instance
 method the first entry is `this`. A `long` or `double` argument takes two
-registers: `reg` and `reg + 1`, and its `is_wide` is true.
+registers: `reg` and `reg + 1`, and its `is_wide` is true. Both are 0 or empty
+for a method without code.
 
 ## Control-flow graph
 
-`method.cfg` splits the bytecode into basic blocks. A basic block is a run of
-instructions that is always executed from its first instruction to its last.
+A method's control-flow graph (Python `method.cfg`, Go `method.Cfg()`, Java
+`method.cfg()`) splits the bytecode into basic blocks. A basic block is a run
+of instructions that is always executed from its first instruction to its
+last.
 
-```python
---8<-- "code.py:cfg"
-```
-
-```text
---8<-- "output/code.cfg.txt"
-```
+<!-- example: code.cfg -->
 
 - Blocks are ordered by offset, and block 0 is the entry.
-- `block.first_insn` and `block.insn_count` say which entries of
-  `method.instructions` belong to the block.
-- `block.successors` are the outgoing edges. An edge has a `target_block`
-  index and a `kind`: `FALLTHROUGH`, `GOTO`, `BRANCH_TAKEN`,
-  `BRANCH_NOT_TAKEN`, `SWITCH_CASE`, `SWITCH_DEFAULT`, `EXCEPTION` or
-  `EXCEPTION_CATCH_ALL`.
-- `block.predecessors` are the indices of the blocks that lead here.
-- `block.is_handler_entry` is true for the first block of a catch handler.
+- `first_insn` and `insn_count` (Go: `FirstInsn`, `InsnCount`; Java:
+  `firstInsn()`, `insnCount()`) say which entries of the method's instruction
+  list belong to the block.
+- `successors` are the outgoing edges. An edge has a `target_block` index and
+  a `kind`: `FALLTHROUGH`, `GOTO`, `BRANCH_TAKEN`, `BRANCH_NOT_TAKEN`,
+  `SWITCH_CASE`, `SWITCH_DEFAULT`, `EXCEPTION` or `EXCEPTION_CATCH_ALL`. In
+  Go the kinds are constants such as `dexpp.CfgBranchTaken`, and they print
+  in lower case, as `branch-taken`.
+- `predecessors` are the indices of the blocks that lead here.
+- `is_handler_entry` is true for the first block of a catch handler.
 
 A block with no successors ends the method: it returns or throws.
 
@@ -179,75 +200,72 @@ the value that case of the switch matches. An `EXCEPTION` edge goes to the
 handler of one exception class, and its `catch_type` is the descriptor of that
 class. An `EXCEPTION_CATCH_ALL` edge goes to a handler that catches every
 exception, which is how Java compiles `finally`, so it has no `catch_type`.
-On every other edge both values are `None`.
+On every other edge both values are absent: `None` in Python, an empty
+`Optional` in Java. In Go, `CaseKey` and `CatchType` are plain fields that
+hold `0` and `""` on the other edges, so check the kind first.
 
-```python
---8<-- "code.py:handlers"
-```
-
-```text
---8<-- "output/code.handlers.txt"
-```
+<!-- example: code.handlers -->
 
 ## Try blocks
 
-```python
---8<-- "code.py:try"
-```
-
-```text
---8<-- "output/code.try.txt"
-```
+<!-- example: code.try -->
 
 A try block covers the offsets from `start_offset` up to, but not including,
 `end_offset`. `handlers` are its typed `catch` clauses in order.
 `catch_all_offset` is the handler that catches everything, which is how
-`finally` is compiled; it is `None` when there is none.
+`finally` is compiled. When there is none, it is `None` in Python and an empty
+`OptionalInt` in Java; in Go, `HasCatchAll` is false.
 
 ## Annotations and initial values
 
-```python
---8<-- "code.py:annotations"
-```
+<!-- example: code.annotations -->
 
-```text
---8<-- "output/code.annotations.txt"
-```
+Classes, methods and fields each have a list of annotations. An annotation has
+a type descriptor, a visibility and its elements. Python gives the elements
+as a dictionary from name to value; Go and Java give a list of name and value
+pairs, and `Element(name)` (Java: `element(name)`) finds one.
 
-Classes, methods and fields each have an `annotations` list. An annotation has
-a `type_descriptor`, a `visibility` and its `elements` as a dictionary.
+Element values are converted to the plain values of each language:
 
-Element values are converted to plain Python values: `None`, `bool`, `int`,
-`float`, `str`, and `list` for arrays. Values that refer to something have
-their own small classes: `TypeValue` for a class literal, `EnumValue` for an
+| Value | Python | Go | Java |
+| ----- | ------ | -- | ---- |
+| null | `None` | `nil` | `NullValue` |
+| boolean | `bool` | `bool` | `BooleanValue` |
+| any integer type | `int` | `int64` | `IntValue` |
+| `float` or `double` | `float` | `float64` | `FloatValue` |
+| string | `str` | `string` | `StringValue` |
+| array | `list` | `[]AnnotationValue` | `ArrayValue` |
+| nested annotation | `Annotation` | `Annotation` | `Annotation` |
+
+In Java, `AnnotationValue` is a sealed interface and each kind of value is a
+record, so record patterns take a value apart, as the example does. In Go,
+`AnnotationValue` is `any`, so a type switch tells the kinds apart.
+
+Values that refer to something have their own small types, with the same names
+in the three languages: `TypeValue` for a class literal, `EnumValue` for an
 enum constant, `FieldValue` for a field, `MethodValue` for a method,
 `MethodTypeValue` for a method prototype, and `MethodHandleValue` for a method
-handle. A method handle reads or writes a field or calls a method: its `kind`
+handle. A method handle reads or writes a field or calls a method: its kind
 is a `MethodHandleKind` such as `STATIC_GET` or `INVOKE_STATIC`, and its
-`member` is the `FieldId` or `MethodId` it works on. A nested annotation is an
-`Annotation`.
+member is the `FieldId` or `MethodId` it works on.
 
 An element that the source left at its default value is **not** in the
-dictionary. The DEX format stores defaults on the annotation's own class, not
+elements. The DEX format stores defaults on the annotation's own class, not
 at each use.
 
-`field.initial_value` is the constant a static field starts with. It is `None`
-when the field has no recorded value, which means the field starts at its
-type's default: zero or null.
+The initial value of a field (Python `field.initial_value`, Go
+`field.InitialValue()`, Java `field.initialValue()`) is the constant a static
+field starts with. It is absent when the field has no recorded value, which
+means the field starts at its type's default: zero or null.
 
 ## All strings
 
-```python
---8<-- "code.py:strings"
-```
+<!-- example: code.strings -->
 
-```text
---8<-- "output/code.strings.txt"
-```
-
-`ctx.strings()` returns the whole string table of every loaded file. It
-includes names of classes, methods and fields, not only the strings the code
-loads. The first call decodes the whole table, and every call copies all of it
-into a new list, so it is one of the more expensive calls: keep the result when
-you need it more than once. For only the strings that the code loads, use
-`ctx.xrefs.referenced_strings()`.
+`strings()` (Go: `Strings()`) returns the whole string table of every loaded
+file. It includes names of classes, methods and fields, not only the strings
+the code loads. The first call decodes the whole table, and every call copies
+all of it into a new list, so it is one of the more expensive calls: keep the
+result when you need it more than once. For only the strings that the code
+loads, use the `referenced_strings()` of the
+[cross-references](hierarchy-xrefs.md#who-loads-a-string).

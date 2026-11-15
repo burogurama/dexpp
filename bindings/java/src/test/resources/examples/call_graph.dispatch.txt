@@ -1,0 +1,2 @@
+[LCat;->sound, LDog;->sound]
+[LAnimal;->sound, LCat;->sound, LDog;->sound]

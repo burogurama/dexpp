@@ -1,3 +1,4 @@
+2 1 4
 interface LShape; extends Ljava/lang/Object; implements []
 class LAbstractShape; extends Ljava/lang/Object; implements ['LShape;']
 class LCircle; extends LAbstractShape; implements []

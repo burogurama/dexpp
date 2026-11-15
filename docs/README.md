@@ -8,13 +8,15 @@ so it describes the latest release.
 | ---- | ---- |
 | `*.md`, `guide/`, `reference/` | The pages. `mkdocs.yml` in the repository root lists them. |
 | `examples/*.py` | The Python examples the guides show. |
-| `examples/output/` | What each example section prints. The guides show these files. |
-| `examples/check.py` | Runs the examples and compares their output with the saved one. CI runs it. |
+| `examples/output/` | What each Python example section prints. The guides show these files. |
+| `examples/check.py` | Runs the Python examples and compares their output with the saved one. CI runs it. |
 | `examples/cpp/` | The C++ examples. The unit test build compiles and runs them. |
-| `../bindings/go/dexpp/example_test.go` | The Go examples that `c-go.md` shows. `go test` runs them and checks their output. |
-| `../bindings/java/src/test/java/.../ExamplesTest.java` | The Java examples that `java.md` shows. `mvn test` runs them and compares their output with `../bindings/java/src/test/resources/examples/`. |
+| `../bindings/go/dexpp/example_*_test.go` | The Go examples the guides show. `go test` runs them and checks their output. |
+| `../bindings/go/dexpp/testdata/examples/` | The output of each Go example, a copy of its `// Output:` comment. The guides show these files. |
+| `../bindings/java/src/test/java/.../examples/` | The Java examples the guides show. `ExamplesTest` runs them. |
+| `../bindings/java/src/test/resources/examples/` | What each Java example prints. `ExamplesTest` compares it, and the guides show these files. |
 | `Doxyfile`, `cpp-mainpage.md` | Doxygen setup for the C++ and C reference. |
-| `hooks.py` | Puts the version on the site and prepares the Python stubs for the reference. |
+| `hooks.py` | Puts the version on the site, prepares the Python stubs for the reference, and turns each example line into Python, Go and Java tabs. |
 | `build.sh`, `requirements.txt` | Build the site. |
 
 ## Build the site
@@ -41,58 +43,83 @@ file fails it.
 
 ## Examples
 
-Guides do not contain example code. They include it from `examples/`, and they
-include the output from `examples/output/`:
+Pages do not contain example code. Each example exists in three languages, in
+files that the tests run, and a page includes the code and the output of all
+three with one line:
 
-````markdown
-```python
---8<-- "code.py:classes"
+```markdown
+<!-- example: code.classes -->
 ```
 
-```text
---8<-- "output/code.classes.txt"
-```
-````
+`docs/hooks.py` turns this line into three content tabs, "Python", "Go" and
+"Java". Each tab holds the code of the section `classes` of that language's
+file for the topic `code`, and the output saved for that section:
 
-`code.py:classes` is the part of `examples/code.py` between the
-`# --8<-- [start:classes]` and `# --8<-- [end:classes]` comments.
+| Language | Code | Output |
+| -------- | ---- | ------ |
+| Python | `docs/examples/code.py` | `docs/examples/output/code.classes.txt` |
+| Go | `bindings/go/dexpp/example_code_test.go` | `bindings/go/dexpp/testdata/examples/code.classes.txt` |
+| Java | `bindings/java/src/test/java/io/github/burogurama/dexpp/examples/CodeExamples.java` | `bindings/java/src/test/resources/examples/code.classes.txt` |
 
-After changing an example, write its output again and look at the diff:
+The section is the part of the file between the `--8<-- [start:classes]` and
+`--8<-- [end:classes]` comments (`#` comments in Python, `//` comments in Go
+and Java). The Java class name is the topic in CamelCase followed by
+`Examples`. Several `topic.section` names can follow `example:`, separated by
+spaces; each tab then shows all of them in that order. A missing file or
+section fails the build. Choosing a language in one tab group switches every
+group on the site (the `content.tabs.link` feature).
+
+So a new example needs the same section in all three languages, with the same
+topic and section name, and the three versions should print the same facts.
+In Go and Java, the code before a section's start marker is not shown. It sets
+up the variables that the earlier sections of the page made, since the Python
+sections of one file share their variables.
+
+### Python
+
+`docs/examples/check.py` runs each Python example one section at a time and
+saves what each section prints. After changing an example, write its output
+again and look at the diff:
 
 ```bash
 PYTHONPATH=build python3 docs/examples/check.py --update
 git diff docs/examples/output
 ```
 
-The Go snippets of `c-go.md` work the same way. They come from the testable
-examples in `bindings/go/dexpp/example_test.go`:
+### Go
 
-````markdown
-```go
---8<-- "bindings/go/dexpp/example_test.go:load"
+Each Go section is a testable example: one `func ExampleXxx()` with one start
+marker in its body and an `// Output:` comment, which `go test` checks. Keep a
+blank line between the end marker and `// Output:`. Without it, the two
+comments form one block that does not start with "Output:", and `go test`
+only compiles the example instead of running it.
+
+`testdata/examples/TOPIC.SECTION.txt` holds a copy of the `// Output:` comment
+for the site, and `TestDocsExampleOutputs` (in `docs_examples_test.go`) checks
+that the copies match. After changing an example, write the copies again and
+look at the diff:
+
+```bash
+cd bindings/go
+go test ./dexpp -run TestDocsExampleOutputs -update
+git diff dexpp/testdata/examples
 ```
-````
 
-This is the part of the file between the `// --8<-- [start:load]` and
-`// --8<-- [end:load]` comments. The output of each example is its
-`// Output:` comment, which `go test` checks. Keep a blank line between the
-end marker and `// Output:`. Without it, the two comments form one block that
-does not start with "Output:", and `go test` only compiles the example
-instead of running it.
+### Java
 
-The Java snippets of `java.md` come from the examples in
-`bindings/java/src/test/java/io/github/burogurama/dexpp/ExamplesTest.java`,
-between `// --8<-- [start:name]` and `// --8<-- [end:name]` comments. The
-output each one prints is in
-`bindings/java/src/test/resources/examples/NAME.txt`, which the page shows
-too. The tests compare the two. After changing an example, write the output
-files again and look at the diff:
+Each Java section is a static method of the topic's class, listed in
+`ExamplesTest`. The test runs each one and compares what it prints with
+`src/test/resources/examples/TOPIC.SECTION.txt`. After changing an example,
+write the output files again and look at the diff:
 
 ```bash
 cd bindings/java
 mvn test -Dtest=ExamplesTest -Ddexpp.examples.update=true
 git diff src/test/resources/examples
 ```
+
+The examples live in their own package, `io.github.burogurama.dexpp.examples`,
+so they can only use the public API.
 
 ## Explicit types
 
@@ -109,4 +136,5 @@ Every code snippet on the site states its types:
   have their type too: `(long sdk) -> ...`.
 
 Loop variables and comprehension variables take their type from the annotated
-collection they come from. The Go snippets keep Go's `:=`.
+collection they come from. The Go snippets keep Go's `:=`, as Go code usually
+does.

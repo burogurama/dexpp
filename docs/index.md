@@ -26,25 +26,23 @@ It does not decompile to Java, and it does not verify signatures.
 
 ## A first look
 
-```python
---8<-- "quickstart.py"
-```
+The same program in Python, Go and Java. Pick your language in the tabs: every
+other example on the site then switches to it too.
 
-```text
---8<-- "output/quickstart.txt"
-```
+<!-- example: quickstart.quickstart -->
 
 ## Where to go next
 
 | You want to | Read |
 | ----------- | ---- |
-| Install the Python package | [Install](install.md) |
+| Install the Python package, or set up Go or Java | [Install](install.md) |
 | See the main ideas in ten minutes | [Quick start](quickstart.md) |
 | Understand descriptors, handles and laziness | [Concepts](guide/concepts.md) |
+| Learn one area in depth, with examples in Python, Go and Java | the guides, starting with [APK metadata](guide/apk.md) |
 | Look up a Python class or method | [Python reference](reference/python/index.md) |
 | Use the library from C++ | [C++](cpp.md) and the [C++ reference](reference/cpp.md) |
-| Use the library from C or Go | [C and Go](c-go.md) |
-| Use the library from Java | [Java](java.md) |
+| Build and use the C API or the Go package | [C and Go](c-go.md) |
+| Build and use the Java package | [Java](java.md) |
 
 ## Speed and memory
 

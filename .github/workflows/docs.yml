@@ -17,6 +17,11 @@ on:
       - mkdocs.yml
       - CHANGELOG.md
       - bindings/python/dexpp.pyi
+      # The Go and Java examples the guides include, and their saved output.
+      - bindings/go/dexpp/example_*_test.go
+      - bindings/go/dexpp/testdata/examples/**
+      - bindings/java/src/test/java/io/github/burogurama/dexpp/examples/**
+      - bindings/java/src/test/resources/examples/**
       - bindings/c/*.h
       - src/**/*.hpp
       - .github/workflows/docs.yml

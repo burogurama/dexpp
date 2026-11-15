@@ -1,0 +1,1 @@
+[LShape; LAbstractShape; Lcom/example/Round; LRectangle;]

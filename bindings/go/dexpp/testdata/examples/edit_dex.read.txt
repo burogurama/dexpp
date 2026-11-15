@@ -1,0 +1,4 @@
+DEX version 35 with 4 classes
+[LShape; LAbstractShape; LCircle; LRectangle;]
+LCircle; extends LAbstractShape; - 4 methods
+LAbstractShape; implements [LShape;]

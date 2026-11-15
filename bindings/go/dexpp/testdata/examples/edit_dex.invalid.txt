@@ -1,0 +1,3 @@
+2 problems
+  not a descriptor - invalid class descriptor "not a descriptor"
+  not a descriptor-><init>(Ljava/lang/String;D)V, item 3 - invalid class descriptor "not a descriptor"

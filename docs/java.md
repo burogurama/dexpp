@@ -4,9 +4,14 @@ The Java package calls the [C API](c-go.md) of dex++ through the Foreign
 Function & Memory API of Java (the FFM API, part of Java since version 22). So
 it needs Java 22 or newer, and no JNI code.
 
-It covers the same ground as the Go package: the whole analysis API, the APK
-metadata, and the editable model a whole class at a time. Only building or
-changing code inside a method needs [C++](cpp.md).
+It covers the same ground as the Python and Go bindings: the whole analysis
+API, the APK metadata, and the editable model a whole class at a time. Only
+building or changing code inside a method needs [C++](cpp.md).
+
+This page is the reference for building and using it: setup, errors and
+memory. The [quick start](quickstart.md) and the guides show every area with
+Java examples, next to Python and Go. The table below gives the names to look
+for.
 
 | Area | Java |
 | ---- | ---- |
@@ -82,148 +87,26 @@ java --enable-native-access=ALL-UNNAMED -Ddexpp.library.path=build \
      -cp bindings/java/target/dexpp-{{ dexpp_version }}.jar:. MyTool
 ```
 
-The examples below come from the tests in
-`bindings/java/src/test/java/io/github/burogurama/dexpp/ExamplesTest.java`.
-The tests run each example and check what it prints, which is the output
-shown after the code. They run in `bindings/java`, so they open the test files
-of the repository by the relative path `../../tests/data`. Each example runs
-in a method that declares `throws IOException`.
+## Java examples
 
-## Classes and methods
+The [quick start](quickstart.md) and the guides show a Java version of every
+example: choose the "Java" tab above any example.
 
-```java
---8<-- "bindings/java/src/test/java/io/github/burogurama/dexpp/ExamplesTest.java:load"
-```
+- [APK metadata](guide/apk.md): the manifest, components, resources, signing
+  and archive entries.
+- [Classes, methods and bytecode](guide/code.md): loading, classes, methods,
+  instructions, the control-flow graph, try blocks and annotations.
+- [Call graph](guide/call-graph.md), and
+  [Class hierarchy and cross-references](guide/hierarchy-xrefs.md).
+- [Editing DEX files](guide/editing-dex.md): the editable model.
 
-```text
---8<-- "bindings/java/src/test/resources/examples/load.txt"
-```
-
-`AnalysisContext.fromApk(path)` loads every `classes*.dex` of an APK instead.
-`AnalysisContext.fromApk(path, 1)` keeps all its work on the calling thread.
-
-## Bytecode and the control-flow graph
-
-`DexMethod.instructions()` returns the decoded bytecode. `Instruction` is a
-sealed interface. Each instruction is one of 28 records, one per family of
-opcodes, so a pattern-matching `switch` tells them apart:
-
-```java
---8<-- "bindings/java/src/test/java/io/github/burogurama/dexpp/ExamplesTest.java:instructions"
-```
-
-```text
---8<-- "bindings/java/src/test/resources/examples/instructions.txt"
-```
-
-Pool operands, such as `method@3`, are raw indices into the tables of the DEX
-file. The next section gives the names.
-
-```java
---8<-- "bindings/java/src/test/java/io/github/burogurama/dexpp/ExamplesTest.java:cfg"
-```
-
-```text
---8<-- "bindings/java/src/test/resources/examples/cfg.txt"
-```
-
-## What a method refers to
-
-`calls()`, `fieldAccesses()`, `stringLoads()` and `typeUses()` list what a
-method's code refers to, with names instead of indices:
-
-```java
---8<-- "bindings/java/src/test/java/io/github/burogurama/dexpp/ExamplesTest.java:references"
-```
-
-```text
---8<-- "bindings/java/src/test/resources/examples/references.txt"
-```
-
-Annotations are copied into records. An element value is an
-`AnnotationValue`: a sealed interface whose records are `NullValue`,
-`BooleanValue`, `IntValue`, `FloatValue`, `StringValue`, `TypeValue`,
-`EnumValue`, `FieldValue`, `MethodValue`, `MethodTypeValue`,
-`MethodHandleValue`, `ArrayValue`, and a nested `Annotation`. A
-`MethodHandleValue` has a `MethodHandleKind` and a `member`, which is a
-`MethodId` or a `FieldId`: both implement the sealed interface `MemberId`.
-Record patterns take a value apart:
-
-```java
---8<-- "bindings/java/src/test/java/io/github/burogurama/dexpp/ExamplesTest.java:annotations"
-```
-
-```text
---8<-- "bindings/java/src/test/resources/examples/annotations.txt"
-```
-
-## Call graph
-
-Nodes and edges of the call graph are numbered. `CallNode` and `CallEdge` are
-records that hold the numbers of their neighbours, and the methods of
-`CallGraph` take and return numbers. `nodes()` and `edges()` copy the whole
-table, so call them once; `node(i)` and `edge(i)` copy one entry.
-
-```java
---8<-- "bindings/java/src/test/java/io/github/burogurama/dexpp/ExamplesTest.java:callgraph"
-```
-
-```text
---8<-- "bindings/java/src/test/resources/examples/callgraph.txt"
-```
-
-`edgesWhere(origin, kind)` filters the edges inside the library. `null` for a
-filter means any value, so `g.edgesWhere(EdgeOrigin.DECLARED)` gives one edge
-per call site. See [Call graph](guide/call-graph.md) for what the edges and
-the dispatch targets mean.
-
-## Class hierarchy and cross-references
-
-```java
---8<-- "bindings/java/src/test/java/io/github/burogurama/dexpp/ExamplesTest.java:hierarchy"
-```
-
-```text
---8<-- "bindings/java/src/test/resources/examples/hierarchy.txt"
-```
-
-## APK metadata
-
-```java
---8<-- "bindings/java/src/test/java/io/github/burogurama/dexpp/ExamplesTest.java:apk"
-```
-
-```text
---8<-- "bindings/java/src/test/resources/examples/apk.txt"
-```
-
-```java
---8<-- "bindings/java/src/test/java/io/github/burogurama/dexpp/ExamplesTest.java:signing"
-```
-
-```text
---8<-- "bindings/java/src/test/resources/examples/signing.txt"
-```
-
-As in the other bindings, the signatures are only identified, not verified.
-
-## Editing DEX files
-
-`Model` is the editable model, a whole class at a time. It covers the same
-operations as the Python `Model`: see [Editing DEX files](guide/editing-dex.md)
-for what each one does.
-
-```java
---8<-- "bindings/java/src/test/java/io/github/burogurama/dexpp/ExamplesTest.java:model"
-```
-
-```text
---8<-- "bindings/java/src/test/resources/examples/model.txt"
-```
-
-`Model.read`, `readFile`, `write` and `writeFile` keep debug information
-(line numbers and local variable names) by default. Each one has a second
-form with a `boolean debugInfo` argument; `false` leaves it out.
+The examples are in
+`bindings/java/src/test/java/io/github/burogurama/dexpp/examples/`, one class
+per guide. `ExamplesTest` runs each one and compares what it prints with the
+output the guides show, saved in `bindings/java/src/test/resources/examples/`.
+The tests run in `bindings/java`, so the examples open the test files of the
+repository by the relative path `../../tests/data`. Each example runs in a
+method that declares `throws IOException`.
 
 ## Errors
 
@@ -251,12 +134,25 @@ are subclasses of `ModelException`, as in Python. The file exceptions name
 the file: `getFile()` gives the path, and `getReason()` says what is wrong.
 
 ```java
---8<-- "bindings/java/src/test/java/io/github/burogurama/dexpp/ExamplesTest.java:errors"
+--8<-- "bindings/java/src/test/java/io/github/burogurama/dexpp/examples/ErrorsExamples.java:load"
 ```
 
 ```text
---8<-- "bindings/java/src/test/resources/examples/errors.txt"
+--8<-- "bindings/java/src/test/resources/examples/errors.load.txt"
 ```
+
+Catch `DexppException` when any error of the library means the same to you:
+
+```java
+--8<-- "bindings/java/src/test/java/io/github/burogurama/dexpp/examples/ErrorsExamples.java:base"
+```
+
+```text
+--8<-- "bindings/java/src/test/resources/examples/errors.base.txt"
+```
+
+The [editing guide](guide/editing-dex.md#errors) shows the exceptions of the
+model, with the problems of an invalid model.
 
 ## Handles and memory
 

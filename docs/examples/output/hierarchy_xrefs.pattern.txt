@@ -1,0 +1,2 @@
+'Goodbye, World!' loaded by <clinit> at 4
+'Hello, World!' loaded by <clinit> at 0

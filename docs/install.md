@@ -61,8 +61,8 @@ the way your shell does it.
 Run the tests from the repository root. They open their fixture files by
 relative path.
 
-## C++, C and Go
+## C++, C, Go and Java
 
-The C++ library and the C and Go bindings are used from source. There are no
-install rules and no prebuilt binaries yet. See [C++](cpp.md) and
-[C and Go](c-go.md).
+The C++ library and the C, Go and Java bindings are used from source. There
+are no install rules and no prebuilt binaries yet. See [C++](cpp.md),
+[C and Go](c-go.md) and [Java](java.md) for how to build and use each one.

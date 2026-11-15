@@ -7,11 +7,12 @@ apk: dexpp.Apk = dexpp.Apk.open("tests/data/sample.apk")
 manifest: dexpp.Manifest | None = apk.manifest
 assert manifest is not None
 
-print(manifest.package, manifest.version_code, manifest.version_name)
+print(manifest.package)
+print("version:", manifest.version_code, manifest.version_name)
 print("sdk:", manifest.min_sdk, "to", manifest.target_sdk)
 print("uses:", manifest.permissions)
 print("declares:", manifest.declared_permissions)
-print("debuggable:", manifest.debuggable, "allow_backup:", manifest.allow_backup)
+print("debuggable:", manifest.debuggable, "allow backup:", manifest.allow_backup)
 # --8<-- [end:manifest]
 
 # --8<-- [start:components]

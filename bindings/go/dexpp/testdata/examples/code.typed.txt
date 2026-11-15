@@ -1,0 +1,3 @@
+field access at 0 read
+[]
+[radius write=false]

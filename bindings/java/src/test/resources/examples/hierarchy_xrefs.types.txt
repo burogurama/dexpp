@@ -1,0 +1,2 @@
+NEW_INSTANCE in LPet; describe at 0
+NEW_INSTANCE in LDog; describe at 0

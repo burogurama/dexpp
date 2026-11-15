@@ -1,0 +1,7 @@
+[LAbstractShape;]
+[LAbstractShape;, Ljava/lang/Object;, LShape;]
+[LAbstractShape;, LCircle;, LRectangle;]
+[LAbstractShape;]
+[LCircle;, LRectangle;]
+true true
+false
