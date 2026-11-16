@@ -35,10 +35,13 @@ DexppComponent component(const dex::apk::Component &c)
 {
     DexppComponent out{};
     out.name = cstr(c.name);
+    out.name_reference = c.name_reference.value_or(0);
     out.kind = component_kind(c.kind);
     out.exported = tri_state(c.exported);
     out.exported_reference = c.exported_reference.value_or(0);
+    out.exported_varies = c.exported_varies ? 1 : 0;
     out.permission = c.permission ? cstr(*c.permission) : nullptr;
+    out.permission_reference = c.permission_reference.value_or(0);
     out.guarded_by_signature_permission = c.guarded_by_signature_permission ? 1 : 0;
     out.is_exported = c.is_exported() ? 1 : 0;
     out.is_reachable = c.is_reachable() ? 1 : 0;
@@ -146,6 +149,7 @@ int dexpp_apk_manifest(const DexppApk *apk, DexppManifest *out)
     r.version_code = m->version_code().value_or(0);
     r.version_code_reference = m->version_code_reference().value_or(0);
     r.version_name = optional_string(m->version_name());
+    r.version_name_reference = m->version_name_reference().value_or(0);
     r.has_min_sdk = m->min_sdk().has_value() ? 1 : 0;
     r.min_sdk = m->min_sdk().value_or(0);
     r.min_sdk_reference = m->min_sdk_reference().value_or(0);
@@ -160,7 +164,8 @@ int dexpp_apk_manifest(const DexppApk *apk, DexppManifest *out)
     for (std::size_t i = 0; i < declared.size(); ++i) {
         std::optional<int> level = m->declared_permission_protection_level(declared[i]);
         r.declared_permissions[i] = DexppDeclaredPermission{
-            cstr(declared[i]), level.has_value() ? 1 : 0, static_cast<int32_t>(level.value_or(0))};
+            cstr(declared[i]), level.has_value() ? 1 : 0, static_cast<int32_t>(level.value_or(0)),
+            m->declared_permission_protection_level_varies(declared[i]) ? 1 : 0};
     }
 
     const std::vector<dex::apk::Component> &components = m->components();
@@ -172,8 +177,10 @@ int dexpp_apk_manifest(const DexppApk *apk, DexppManifest *out)
     r.launcher_activity = optional_string(m->launcher_activity());
     r.debuggable = tri_state(m->debuggable());
     r.debuggable_reference = m->debuggable_reference().value_or(0);
+    r.debuggable_varies = m->debuggable_varies() ? 1 : 0;
     r.allow_backup = tri_state(m->allow_backup());
     r.allow_backup_reference = m->allow_backup_reference().value_or(0);
+    r.allow_backup_varies = m->allow_backup_varies() ? 1 : 0;
     *out = r;
     return 1;
 }
@@ -229,6 +236,40 @@ int dexpp_apk_resolve_string(const DexppApk *apk, uint32_t id, DexppText *out)
         return 0;
     *out = text(*value);
     return 1;
+}
+
+DexppResourceValue *dexpp_apk_resource_values(const DexppApk *apk, uint32_t id, size_t *count)
+{
+    *count = 0;
+    const dex::apk::ResourceTable *table = apk->apk.resources();
+    if (table == nullptr)
+        return nullptr;
+    std::vector<dex::apk::ResourceValue> values = table->values(id);
+    DexppResourceValue *out = alloc_array<DexppResourceValue>(values.size());
+    for (std::size_t i = 0; i < values.size(); ++i) {
+        const dex::apk::ResourceValue &v = values[i];
+        DexppResourceValue &o = out[i];
+        o.configuration = cstr(v.configuration);
+        o.type = v.type;
+        o.data = v.data;
+        if (v.string.has_value())
+            o.string = text(*v.string);
+        o.boolean = tri_state(v.as_bool());
+        std::optional<int64_t> integer = v.as_int();
+        o.has_integer = integer.has_value() ? 1 : 0;
+        o.integer = integer.value_or(0);
+    }
+    *count = values.size();
+    return out;
+}
+
+void dexpp_resource_value_array_free(DexppResourceValue *values, size_t count)
+{
+    for (std::size_t i = 0; values != nullptr && i < count; ++i) {
+        std::free(values[i].configuration);
+        dexpp_text_clear(&values[i].string);
+    }
+    std::free(values);
 }
 
 int dexpp_apk_resolve_bool(const DexppApk *apk, uint32_t id, int *out)

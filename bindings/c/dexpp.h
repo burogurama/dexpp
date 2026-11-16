@@ -1176,51 +1176,81 @@ typedef struct DexppIntentFilter
 /** An activity, service, receiver or provider declared in the manifest. */
 typedef struct DexppComponent
 {
-    char *name;              /**< Full class name, e.g. "com.example.Main". */
+    char *name;              /**< Full class name, e.g. "com.example.Main". Empty when
+                                  android:name is missing, or is a reference that gives no
+                                  single value. */
+    uint32_t name_reference; /**< When android:name is a resource reference: its id,
+                                  resolved or not; else 0. */
     DexppComponentKind kind; /**< The kind of component. */
     int exported; /**< android:exported: 1 or 0 as written, or as the resource it refers to
-                       says; -1 when absent or when a reference could not be resolved. */
+                       says in the default configuration; -1 when absent or when a
+                       reference could not be resolved. Text reads as Android reads it:
+                       only "1", "true" and "TRUE" are true. */
     uint32_t exported_reference;         /**< When android:exported is a resource reference
                                               ("@bool/name") or a theme attribute ("?attr/name"):
                                               its id, resolved or not; else 0. A nonzero id with
                                               exported == -1 means the value is unknown. */
-    char *permission;                    /**< The permission a caller needs, or NULL. */
+    int exported_varies;                 /**< 1 when android:exported is a reference whose value is
+                                              not the same in every resource configuration (for
+                                              example false in res/values, true in
+                                              res/values-v31); `exported` holds the default
+                                              configuration's value. */
+    char *permission;                    /**< The permission a caller needs, or NULL. Also NULL when
+                                              android:permission is a reference that gives no single
+                                              value: it cannot be resolved, or its string changes with
+                                              the configuration, which Android ignores. */
+    uint32_t permission_reference;       /**< When android:permission is a resource
+                                              reference: its id, resolved or not; else 0. */
     DexppIntentFilter *intent_filters;   /**< The intent filters. */
     size_t intent_filter_count;          /**< Number of intent filters. */
     int guarded_by_signature_permission; /**< 1 when guarded by an app-declared signature
-                                              permission. */
+                                              permission, signature in every
+                                              configuration. */
     int is_exported;  /**< The effective answer: explicit, or inferred from filters; 1 when
-                           the value is an unresolved reference (possibly exported). */
+                           the value varies between configurations or is an unresolved
+                           reference (possibly exported). */
     int is_reachable; /**< Exported and not guarded by a signature permission. */
 } DexppComponent;
 
 /** A permission the app declares. */
 typedef struct DexppDeclaredPermission
 {
-    char *name;               /**< The permission name. */
-    int has_protection_level; /**< 1 when android:protectionLevel is known: 0 when it is a
-                                   resource reference that could not be resolved. */
-    int32_t protection_level; /**< The raw value; the low 4 bits are the base level. A
-                                   declaration without the attribute is normal (0). */
+    char *name;                  /**< The permission name. */
+    int has_protection_level;    /**< 1 when android:protectionLevel is known: 0 when it is a
+                                      resource reference that could not be resolved. */
+    int32_t protection_level;    /**< The raw value, in the default configuration for a
+                                      reference; the low 4 bits are the base level. A
+                                      declaration without the attribute is normal (0). */
+    int protection_level_varies; /**< 1 when the level is a reference whose value is not the
+                                      same in every configuration. The permission then
+                                      guards a component only when every configuration gives
+                                      signature or signatureOrSystem. */
 } DexppDeclaredPermission;
 
 /** The decoded AndroidManifest.xml. Release with dexpp_manifest_clear().
  *
- *  A boolean or integer attribute may be written as a resource reference,
- *  such as android:debuggable="@bool/debug". The value is then the one the
- *  APK's resource table gives, in its default configuration, and the
- *  matching `*_reference` member holds the reference id. When the reference
- *  cannot be resolved, the value reads as absent (has_* is 0, or -1) while
- *  the `*_reference` member still holds the id: the attribute is set, but its
+ *  An attribute may be written as a resource reference, such as
+ *  android:debuggable="@bool/debug". The value is then the one the APK's
+ *  resource table gives, in its default configuration, and the matching
+ *  `*_reference` member holds the reference id. When the reference cannot be
+ *  resolved, the value reads as absent (has_* is 0, -1 or NULL) while the
+ *  `*_reference` member still holds the id: the attribute is set, but its
  *  value is unknown. A `*_reference` member is 0 for a plain value or a
- *  missing attribute. */
+ *  missing attribute.
+ *
+ *  A boolean whose resource has another value in some configuration has a
+ *  `*_varies` member set to 1. Integers hold the default configuration's
+ *  value. A text value is NULL when its string changes with the
+ *  configuration. */
 typedef struct DexppManifest
 {
     char *package;                   /**< The package attribute of `<manifest>`. */
     int has_version_code;            /**< 1 when android:versionCode is set and known. */
     int64_t version_code;            /**< android:versionCode. */
     uint32_t version_code_reference; /**< The reference id of android:versionCode, or 0. */
-    char *version_name;              /**< android:versionName, or NULL. */
+    char *version_name;              /**< android:versionName, or NULL (also when it is a
+                                          reference without a single value). */
+    uint32_t version_name_reference; /**< The reference id of android:versionName, or 0. */
     int has_min_sdk;                 /**< 1 when android:minSdkVersion is set and known. */
     int64_t min_sdk;                 /**< android:minSdkVersion. */
     uint32_t min_sdk_reference;      /**< The reference id of android:minSdkVersion, or 0. */
@@ -1236,8 +1266,12 @@ typedef struct DexppManifest
     char *launcher_activity;                       /**< The launcher activity's name, or NULL. */
     int debuggable;                /**< android:debuggable: 1, 0, or -1 when absent or unknown. */
     uint32_t debuggable_reference; /**< The reference id of android:debuggable, or 0. */
+    int debuggable_varies;         /**< 1 when android:debuggable is a reference whose value is
+                                        not the same in every configuration. */
     int allow_backup;              /**< android:allowBackup: 1, 0, or -1 when absent or unknown. */
     uint32_t allow_backup_reference; /**< The reference id of android:allowBackup, or 0. */
+    int allow_backup_varies;         /**< 1 when android:allowBackup is a reference whose value
+                                          is not the same in every configuration. */
 } DexppManifest;
 
 /** The full name of a resource: package:type/entry. Release with
@@ -1248,6 +1282,30 @@ typedef struct DexppResourceName
     char *type;    /**< e.g. "string". */
     char *entry;   /**< e.g. "app_name". */
 } DexppResourceName;
+
+/** The value of a resource in one configuration, as the table stores it (see
+ *  dexpp_apk_resource_values()). A value that refers to another resource is
+ *  not followed. */
+typedef struct DexppResourceValue
+{
+    char *configuration; /**< The configuration, written like the qualifiers of a res/ folder
+                              name: "" for the default configuration, "v31" for Android 12
+                              and newer, "fr" for French, "b+sr+Latn-land-night-v8" for a
+                              combination; the text `aapt2 dump resources` prints. */
+    uint8_t type;        /**< The Res_value data type from Android's ResourceTypes.h: for
+                              example 0x01 a reference, 0x03 a string, 0x10 a decimal integer,
+                              0x12 a boolean. */
+    uint32_t data;       /**< The raw data: the id a reference names, the integer itself, 0 or
+                              not 0 for a boolean, the string's index in the table's pool. */
+    DexppText string;    /**< The text of a string value (type 0x03); for any other type,
+                              `data` is NULL and `length` 0. */
+    int boolean;         /**< The value read as Android reads a boolean: 1 or 0 for an
+                              integer-typed value (true when not 0), for exactly "1", "true" or
+                              "TRUE" (1) or other text (0), and for a float, a dimension or a
+                              fraction (0); -1 for a reference, a null value or empty text. */
+    int has_integer;     /**< 1 for an integer-typed value (an integer, a boolean, a color). */
+    int64_t integer;     /**< That value as its signed 32-bit data, when has_integer is 1. */
+} DexppResourceValue;
 
 /** An X.509 certificate that signed the APK. */
 typedef struct DexppCertificate
@@ -1334,11 +1392,25 @@ DEXPP_C_API void dexpp_resource_name_clear(DexppResourceName *name);
  *  to the end. */
 DEXPP_C_API int dexpp_apk_resolve_string(const DexppApk *apk, uint32_t id, DexppText *out);
 
-/** The value of resource @p id as a boolean: a bool resource, or any
- *  integer-typed value (nonzero is true), as Android reads it. Returns 1 and
- *  sets @p out to 1 or 0; returns 0 when there is no resource table, the id
- *  is missing, or its value is of another type, such as a string. A resource
- *  that refers to another resource is followed to the end. */
+/** Every value of resource @p id, one for each configuration the table gives
+ *  it, in table order. Returns an array of @p count values (free with
+ *  dexpp_resource_value_array_free()); NULL with @p count 0 when there is no
+ *  resource table or no such id. A complex entry (a style, an array, a
+ *  plural) has no single value and is left out. A value that refers to
+ *  another resource is returned as it is. */
+DEXPP_C_API DexppResourceValue *dexpp_apk_resource_values(const DexppApk *apk, uint32_t id,
+                                                          size_t *count);
+
+/** Free an array of DexppResourceValue and the strings in it. Accepts NULL. */
+DEXPP_C_API void dexpp_resource_value_array_free(DexppResourceValue *values, size_t count);
+
+/** The value of resource @p id as a boolean, read as Android reads it: a bool
+ *  resource, any integer-typed value (nonzero is true), or a string ("1",
+ *  "true" and "TRUE" are true, other text is false). Returns 1 and sets
+ *  @p out to 1 or 0; returns 0 when there is no resource table, the id is
+ *  missing, or its value is null or an empty string. A resource that refers
+ *  to another resource is followed to the end, in the default
+ *  configuration. */
 DEXPP_C_API int dexpp_apk_resolve_bool(const DexppApk *apk, uint32_t id, int *out);
 
 /** The value of resource @p id as an integer: an integer resource, or any

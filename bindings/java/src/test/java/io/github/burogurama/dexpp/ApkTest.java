@@ -216,15 +216,89 @@ class ApkTest {
                     OptionalInt.empty(), m.declaredPermissionProtectionLevel("com.dexpp.refs.P_TEXT"));
             assertFalse(byName.get("GuardedService").isReachable());
             assertTrue(byName.get("TextGuardedService").isReachable());
+
+            // Values that differ between res/values and res/values-v31.
+            assertTrue(m.debuggableVaries());
+            assertTrue(m.allowBackupVaries());
+            Component variant = byName.get("VariantActivity");
+            assertEquals(Optional.of(false), variant.exported());
+            assertTrue(variant.exportedVaries());
+            assertTrue(variant.isExported());
+            assertFalse(exported.exportedVaries());
+            assertEquals(
+                    OptionalInt.of(2), m.declaredPermissionProtectionLevel("com.dexpp.refs.P_VARYING"));
+            assertTrue(m.declaredPermissionProtectionLevelVaries("com.dexpp.refs.P_VARYING"));
+            assertFalse(m.declaredPermissionProtectionLevelVaries("com.dexpp.refs.P_SIGNATURE"));
+            assertTrue(byName.get("VaryingLevelService").isReachable());
+
+            // Text given by a reference.
+            assertEquals(Optional.of("1.0"), m.versionName());
+            assertEquals(rt.idOf("string", "version_name"), m.versionNameReference());
+            Component byReference = byName.get("PermissionByReferenceService");
+            assertEquals(Optional.of("com.dexpp.refs.P_SIGNATURE"), byReference.permission());
+            assertEquals(
+                    rt.idOf("string", "signature_permission"), byReference.permissionReference());
+            assertFalse(byReference.isReachable());
+            // A string with a res/values-fr variant: Android ignores it.
+            Component localized = byName.get("LocalizedPermissionService");
+            assertEquals(Optional.empty(), localized.permission());
+            assertTrue(localized.permissionReference().isPresent());
+            assertTrue(localized.isReachable());
+            assertEquals(OptionalInt.empty(), exported.nameReference());
         }
         // sample.apk writes plain values: no references.
         try (Apk apk = apk("sample.apk")) {
             Manifest m = apk.manifest().orElseThrow();
             assertEquals(OptionalInt.empty(), m.minSdkReference());
             assertEquals(OptionalInt.empty(), m.debuggableReference());
+            assertEquals(OptionalInt.empty(), m.versionNameReference());
+            assertFalse(m.debuggableVaries());
+            assertFalse(m.allowBackupVaries());
             for (Component c : m.components()) {
                 assertEquals(OptionalInt.empty(), c.exportedReference(), c.name());
+                assertEquals(OptionalInt.empty(), c.permissionReference(), c.name());
+                assertFalse(c.exportedVaries(), c.name());
             }
+        }
+    }
+
+    @Test
+    void resourceValues() throws IOException {
+        try (Apk apk = apk("refs.apk")) {
+            ResourceTable rt = apk.resources().orElseThrow();
+            List<ResourceValue> values = rt.values(rt.idOf("bool", "differs_on_v31").orElseThrow());
+            assertEquals(2, values.size());
+            assertEquals("", values.get(0).configuration());
+            assertEquals(0x12, values.get(0).type());
+            assertEquals(0, values.get(0).data());
+            assertEquals(Optional.empty(), values.get(0).string());
+            assertEquals(Optional.of(false), values.get(0).asBool());
+            assertEquals("v31", values.get(1).configuration());
+            assertEquals(Optional.of(true), values.get(1).asBool());
+            assertEquals(OptionalLong.of(-1), values.get(1).asInt());
+
+            Map<String, String> texts = new HashMap<>();
+            for (ResourceValue v : rt.values(rt.idOf("string", "greeting").orElseThrow())) {
+                texts.put(v.configuration(), v.string().orElseThrow());
+            }
+            assertEquals(
+                    Map.of("", "Hello", "fr", "Bonjour", "b+sr+Latn-land-night-v8", "Zdravo"), texts);
+
+            // A reference is not followed.
+            List<ResourceValue> reference =
+                    rt.values(rt.idOf("bool", "same_as_yes").orElseThrow());
+            assertEquals(1, reference.size());
+            assertEquals(0x01, reference.get(0).type());
+            assertEquals(rt.idOf("bool", "yes").orElseThrow(), reference.get(0).data());
+            assertEquals(Optional.empty(), reference.get(0).asBool());
+            assertEquals(OptionalLong.empty(), reference.get(0).asInt());
+
+            assertEquals(List.of(), rt.values(0x7f999999));
+            assertEquals(
+                    Optional.of(false),
+                    rt.resolveBool(rt.idOf("string", "capital_true").orElseThrow()));
+            assertEquals(
+                    Optional.empty(), rt.resolveBool(rt.idOf("string", "empty_text").orElseThrow()));
         }
     }
 

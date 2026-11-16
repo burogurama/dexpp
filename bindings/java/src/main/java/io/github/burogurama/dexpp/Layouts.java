@@ -378,10 +378,13 @@ final class Layouts {
     static final class Component {
         private static final Builder B = new Builder();
         static final long NAME = B.ptr("name");
+        static final long NAME_REFERENCE = B.i32("name_reference");
         static final long KIND = B.i32("kind");
         static final long EXPORTED = B.i32("exported");
         static final long EXPORTED_REFERENCE = B.i32("exported_reference");
+        static final long EXPORTED_VARIES = B.i32("exported_varies");
         static final long PERMISSION = B.ptr("permission");
+        static final long PERMISSION_REFERENCE = B.i32("permission_reference");
         static final long INTENT_FILTERS = B.ptr("intent_filters");
         static final long INTENT_FILTER_COUNT = B.size("intent_filter_count");
         static final long GUARDED_BY_SIGNATURE_PERMISSION =
@@ -396,6 +399,7 @@ final class Layouts {
         static final long NAME = B.ptr("name");
         static final long HAS_PROTECTION_LEVEL = B.i32("has_protection_level");
         static final long PROTECTION_LEVEL = B.i32("protection_level");
+        static final long PROTECTION_LEVEL_VARIES = B.i32("protection_level_varies");
         static final StructLayout LAYOUT = B.build("DexppDeclaredPermission");
     }
 
@@ -406,6 +410,7 @@ final class Layouts {
         static final long VERSION_CODE = B.i64("version_code");
         static final long VERSION_CODE_REFERENCE = B.i32("version_code_reference");
         static final long VERSION_NAME = B.ptr("version_name");
+        static final long VERSION_NAME_REFERENCE = B.i32("version_name_reference");
         static final long HAS_MIN_SDK = B.i32("has_min_sdk");
         static final long MIN_SDK = B.i64("min_sdk");
         static final long MIN_SDK_REFERENCE = B.i32("min_sdk_reference");
@@ -421,8 +426,10 @@ final class Layouts {
         static final long LAUNCHER_ACTIVITY = B.ptr("launcher_activity");
         static final long DEBUGGABLE = B.i32("debuggable");
         static final long DEBUGGABLE_REFERENCE = B.i32("debuggable_reference");
+        static final long DEBUGGABLE_VARIES = B.i32("debuggable_varies");
         static final long ALLOW_BACKUP = B.i32("allow_backup");
         static final long ALLOW_BACKUP_REFERENCE = B.i32("allow_backup_reference");
+        static final long ALLOW_BACKUP_VARIES = B.i32("allow_backup_varies");
         static final StructLayout LAYOUT = B.build("DexppManifest");
     }
 
@@ -432,6 +439,18 @@ final class Layouts {
         static final long TYPE = B.ptr("type");
         static final long ENTRY = B.ptr("entry");
         static final StructLayout LAYOUT = B.build("DexppResourceName");
+    }
+
+    static final class ResourceValue {
+        private static final Builder B = new Builder();
+        static final long CONFIGURATION = B.ptr("configuration");
+        static final long TYPE = B.i8("type");
+        static final long DATA = B.i32("data");
+        static final long STRING = B.add("string", Text.LAYOUT);
+        static final long BOOLEAN = B.i32("boolean");
+        static final long HAS_INTEGER = B.i32("has_integer");
+        static final long INTEGER = B.i64("integer");
+        static final StructLayout LAYOUT = B.build("DexppResourceValue");
     }
 
     static final class Certificate {
@@ -525,6 +544,7 @@ final class Layouts {
             DeclaredPermission.LAYOUT,
             Manifest.LAYOUT,
             ResourceName.LAYOUT,
+            ResourceValue.LAYOUT,
             Certificate.LAYOUT,
             SigningInfo.LAYOUT,
             PoolStats.LAYOUT,

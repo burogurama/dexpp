@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -256,15 +257,116 @@ func TestManifestReferences(t *testing.T) {
 		t.Errorf("GuardedService = %+v, TextGuardedService = %+v", byName["GuardedService"], byName["TextGuardedService"])
 	}
 
+	// Values that differ between res/values and res/values-v31.
+	if !m.DebuggableVaries || !m.AllowBackupVaries {
+		t.Errorf("DebuggableVaries = %v, AllowBackupVaries = %v", m.DebuggableVaries, m.AllowBackupVaries)
+	}
+	variant := byName["VariantActivity"]
+	if variant.Exported == nil || *variant.Exported || !variant.ExportedVaries || !variant.IsExported {
+		t.Errorf("VariantActivity = %+v", variant)
+	}
+	if byName["ExportedActivity"].ExportedVaries {
+		t.Error("ExportedActivity varies")
+	}
+	if got, ok := m.DeclaredPermissionProtectionLevel("com.dexpp.refs.P_VARYING"); !ok || got != 2 ||
+		!m.DeclaredPermissionProtectionLevelVaries("com.dexpp.refs.P_VARYING") ||
+		m.DeclaredPermissionProtectionLevelVaries("com.dexpp.refs.P_SIGNATURE") ||
+		!byName["VaryingLevelService"].IsReachable {
+		t.Errorf("P_VARYING level = %d, %v; VaryingLevelService = %+v", got, ok, byName["VaryingLevelService"])
+	}
+
+	// Text given by a reference.
+	if m.VersionName == nil || *m.VersionName != "1.0" || m.VersionNameReference == nil ||
+		*m.VersionNameReference != id("string", "version_name") {
+		t.Errorf("VersionName = %v, reference %v", m.VersionName, m.VersionNameReference)
+	}
+	byReference := byName["PermissionByReferenceService"]
+	if byReference.Permission == nil || *byReference.Permission != "com.dexpp.refs.P_SIGNATURE" ||
+		byReference.PermissionReference == nil || *byReference.PermissionReference != id("string", "signature_permission") ||
+		byReference.IsReachable {
+		t.Errorf("PermissionByReferenceService = %+v", byReference)
+	}
+	// A string with a res/values-fr variant: Android ignores it.
+	localized := byName["LocalizedPermissionService"]
+	if localized.Permission != nil || localized.PermissionReference == nil || !localized.IsReachable {
+		t.Errorf("LocalizedPermissionService = %+v", localized)
+	}
+	if byName["ExportedActivity"].NameReference != nil {
+		t.Error("ExportedActivity has a name reference")
+	}
+
 	// sample.apk writes plain values: no references.
 	sample := mustManifest(t, mustAPK(t, "sample.apk"))
-	if sample.MinSDKReference != nil || sample.DebuggableReference != nil || sample.VersionCodeReference != nil {
+	if sample.MinSDKReference != nil || sample.DebuggableReference != nil || sample.VersionCodeReference != nil ||
+		sample.VersionNameReference != nil || sample.DebuggableVaries || sample.AllowBackupVaries {
 		t.Errorf("sample.apk has references: %+v", sample)
 	}
 	for _, c := range sample.Components {
-		if c.ExportedReference != nil {
-			t.Errorf("%s has an exported reference", c.Name)
+		if c.ExportedReference != nil || c.PermissionReference != nil || c.NameReference != nil || c.ExportedVaries {
+			t.Errorf("%s has a reference: %+v", c.Name, c)
 		}
+	}
+}
+
+func TestResourceValues(t *testing.T) {
+	rt := mustAPK(t, "refs.apk").Resources()
+	if rt == nil {
+		t.Fatal("no resource table")
+	}
+	id := func(typ, entry string) uint32 {
+		t.Helper()
+		v, ok := rt.IDOf(typ, entry)
+		if !ok {
+			t.Fatalf("IDOf(%s, %s) found nothing", typ, entry)
+		}
+		return v
+	}
+	values := rt.Values(id("bool", "differs_on_v31"))
+	if len(values) != 2 || values[0].Configuration != "" || values[1].Configuration != "v31" ||
+		values[0].Type != 0x12 || values[0].Data != 0 || values[0].String != nil {
+		t.Fatalf("Values(differs_on_v31) = %+v", values)
+	}
+	if b, ok := values[0].AsBool(); !ok || b {
+		t.Errorf("default AsBool = %v, %v", b, ok)
+	}
+	if b, ok := values[1].AsBool(); !ok || !b {
+		t.Errorf("v31 AsBool = %v, %v", b, ok)
+	}
+	if n, ok := values[1].AsInt(); !ok || n != -1 {
+		t.Errorf("v31 AsInt = %d, %v", n, ok)
+	}
+
+	texts := map[string]string{}
+	for _, v := range rt.Values(id("string", "greeting")) {
+		if v.String == nil {
+			t.Fatalf("greeting in %q has no text", v.Configuration)
+		}
+		texts[v.Configuration] = *v.String
+	}
+	want := map[string]string{"": "Hello", "fr": "Bonjour", "b+sr+Latn-land-night-v8": "Zdravo"}
+	if !reflect.DeepEqual(texts, want) {
+		t.Errorf("greeting = %v", texts)
+	}
+
+	// A reference is not followed.
+	ref := rt.Values(id("bool", "same_as_yes"))
+	if len(ref) != 1 || ref[0].Type != 0x01 || ref[0].Data != id("bool", "yes") {
+		t.Fatalf("Values(same_as_yes) = %+v", ref)
+	}
+	if _, ok := ref[0].AsBool(); ok {
+		t.Error("a reference reads as a boolean")
+	}
+	if _, ok := ref[0].AsInt(); ok {
+		t.Error("a reference reads as an integer")
+	}
+	if got := rt.Values(0x7f999999); got != nil {
+		t.Errorf("Values(0x7f999999) = %+v", got)
+	}
+	if b, ok := rt.ResolveBool(id("string", "capital_true")); !ok || b {
+		t.Errorf(`ResolveBool("True") = %v, %v`, b, ok)
+	}
+	if _, ok := rt.ResolveBool(id("string", "empty_text")); ok {
+		t.Error(`ResolveBool("") resolved`)
 	}
 }
 

@@ -340,8 +340,13 @@ TEST(CApiApk, ResolvesReferencesInTheManifest)
     EXPECT_EQ(m.version_code_reference, 0u); // a plain value
     EXPECT_EQ(m.debuggable, 1);
     EXPECT_EQ(m.debuggable_reference, debug);
+    EXPECT_EQ(m.debuggable_varies, 1); // false in values-v31
     EXPECT_EQ(m.allow_backup, 0);
     EXPECT_NE(m.allow_backup_reference, 0u);
+    EXPECT_EQ(m.allow_backup_varies, 1); // true in values-v31
+    ASSERT_NE(m.version_name, nullptr);
+    EXPECT_STREQ(m.version_name, "1.0");
+    EXPECT_NE(m.version_name_reference, 0u);
 
     std::map<std::string, const DexppComponent *> by_name;
     for (size_t i = 0; i < m.component_count; ++i)
@@ -355,7 +360,15 @@ TEST(CApiApk, ResolvesReferencesInTheManifest)
     ASSERT_NE(hidden, nullptr);
     EXPECT_EQ(hidden->exported, 0);
     EXPECT_EQ(hidden->exported_reference, no);
+    EXPECT_EQ(hidden->exported_varies, 0);
     EXPECT_EQ(hidden->is_exported, 0);
+    EXPECT_EQ(hidden->name_reference, 0u);
+    // false by default, true in values-v31: possibly exported.
+    const DexppComponent *variant = by_name["com.dexpp.refs.VariantActivity"];
+    ASSERT_NE(variant, nullptr);
+    EXPECT_EQ(variant->exported, 0);
+    EXPECT_EQ(variant->exported_varies, 1);
+    EXPECT_EQ(variant->is_exported, 1);
     // A reference to the string "true": Android reads it as true.
     const DexppComponent *text = by_name["com.dexpp.refs.TextActivity"];
     ASSERT_NE(text, nullptr);
@@ -370,9 +383,27 @@ TEST(CApiApk, ResolvesReferencesInTheManifest)
     ASSERT_EQ(declared.size(), 4u);
     EXPECT_EQ(declared["com.dexpp.refs.P_SIGNATURE"]->has_protection_level, 1);
     EXPECT_EQ(declared["com.dexpp.refs.P_SIGNATURE"]->protection_level, 2);
+    EXPECT_EQ(declared["com.dexpp.refs.P_SIGNATURE"]->protection_level_varies, 0);
     EXPECT_EQ(declared["com.dexpp.refs.P_TEXT"]->has_protection_level, 0);
+    EXPECT_EQ(declared["com.dexpp.refs.P_VARYING"]->protection_level, 2);
+    EXPECT_EQ(declared["com.dexpp.refs.P_VARYING"]->protection_level_varies, 1);
     EXPECT_EQ(by_name["com.dexpp.refs.GuardedService"]->is_reachable, 0);
     EXPECT_EQ(by_name["com.dexpp.refs.TextGuardedService"]->is_reachable, 1);
+    EXPECT_EQ(by_name["com.dexpp.refs.VaryingLevelService"]->is_reachable, 1);
+
+    // android:permission given by a reference.
+    const DexppComponent *by_reference = by_name["com.dexpp.refs.PermissionByReferenceService"];
+    ASSERT_NE(by_reference, nullptr);
+    ASSERT_NE(by_reference->permission, nullptr);
+    EXPECT_STREQ(by_reference->permission, "com.dexpp.refs.P_SIGNATURE");
+    EXPECT_NE(by_reference->permission_reference, 0u);
+    EXPECT_EQ(by_reference->is_reachable, 0);
+    // A string with a res/values-fr variant: Android ignores it.
+    const DexppComponent *localized = by_name["com.dexpp.refs.LocalizedPermissionService"];
+    ASSERT_NE(localized, nullptr);
+    EXPECT_EQ(localized->permission, nullptr);
+    EXPECT_NE(localized->permission_reference, 0u);
+    EXPECT_EQ(localized->is_reachable, 1);
     dexpp_manifest_clear(&m);
 
     // The plain-value manifest of sample.apk has no references.
@@ -381,11 +412,75 @@ TEST(CApiApk, ResolvesReferencesInTheManifest)
     ASSERT_EQ(dexpp_apk_manifest(sample, &m), 1);
     EXPECT_EQ(m.min_sdk_reference, 0u);
     EXPECT_EQ(m.debuggable_reference, 0u);
-    for (size_t i = 0; i < m.component_count; ++i)
+    EXPECT_EQ(m.version_name_reference, 0u);
+    EXPECT_EQ(m.debuggable_varies, 0);
+    EXPECT_EQ(m.allow_backup_varies, 0);
+    for (size_t i = 0; i < m.component_count; ++i) {
         EXPECT_EQ(m.components[i].exported_reference, 0u) << m.components[i].name;
+        EXPECT_EQ(m.components[i].permission_reference, 0u) << m.components[i].name;
+        EXPECT_EQ(m.components[i].exported_varies, 0) << m.components[i].name;
+    }
     dexpp_manifest_clear(&m);
     dexpp_apk_free(sample);
     dexpp_apk_free(apk);
+}
+
+TEST(CApiApk, ListsTheValuesOfEveryConfiguration)
+{
+    DexppApk *apk = open_apk("tests/data/refs.apk");
+    ASSERT_NE(apk, nullptr);
+    uint32_t differs = 0, greeting = 0, same_as_yes = 0, yes = 0;
+    ASSERT_EQ(dexpp_apk_resource_id(apk, "bool", "differs_on_v31", &differs), 1);
+    ASSERT_EQ(dexpp_apk_resource_id(apk, "string", "greeting", &greeting), 1);
+    ASSERT_EQ(dexpp_apk_resource_id(apk, "bool", "same_as_yes", &same_as_yes), 1);
+    ASSERT_EQ(dexpp_apk_resource_id(apk, "bool", "yes", &yes), 1);
+
+    size_t count = 99;
+    DexppResourceValue *values = dexpp_apk_resource_values(apk, differs, &count);
+    ASSERT_EQ(count, 2u);
+    EXPECT_STREQ(values[0].configuration, "");
+    EXPECT_EQ(values[0].type, 0x12);
+    EXPECT_EQ(values[0].data, 0u);
+    EXPECT_EQ(values[0].string.data, nullptr);
+    EXPECT_EQ(values[0].boolean, 0);
+    EXPECT_STREQ(values[1].configuration, "v31");
+    EXPECT_EQ(values[1].boolean, 1);
+    EXPECT_EQ(values[1].has_integer, 1);
+    EXPECT_EQ(values[1].integer, -1);
+    dexpp_resource_value_array_free(values, count);
+
+    values = dexpp_apk_resource_values(apk, greeting, &count);
+    ASSERT_EQ(count, 3u);
+    EXPECT_STREQ(values[1].configuration, "fr");
+    ASSERT_NE(values[1].string.data, nullptr);
+    EXPECT_EQ(std::string(values[1].string.data, values[1].string.length), "Bonjour");
+    EXPECT_STREQ(values[2].configuration, "b+sr+Latn-land-night-v8");
+    EXPECT_EQ(values[2].has_integer, 0);
+    EXPECT_EQ(values[2].boolean, 0); // "Zdravo" is not "true"
+    dexpp_resource_value_array_free(values, count);
+
+    // A reference is not followed.
+    values = dexpp_apk_resource_values(apk, same_as_yes, &count);
+    ASSERT_EQ(count, 1u);
+    EXPECT_EQ(values[0].type, 0x01);
+    EXPECT_EQ(values[0].data, yes);
+    EXPECT_EQ(values[0].boolean, -1);
+    EXPECT_EQ(values[0].has_integer, 0);
+    dexpp_resource_value_array_free(values, count);
+
+    count = 99;
+    EXPECT_EQ(dexpp_apk_resource_values(apk, 0x7f999999, &count), nullptr);
+    EXPECT_EQ(count, 0u);
+    dexpp_resource_value_array_free(nullptr, 0);
+    dexpp_apk_free(apk);
+
+    // No resource table at all.
+    DexppApk *bare = open_apk("tests/data/app.apk");
+    ASSERT_NE(bare, nullptr);
+    count = 99;
+    EXPECT_EQ(dexpp_apk_resource_values(bare, differs, &count), nullptr);
+    EXPECT_EQ(count, 0u);
+    dexpp_apk_free(bare);
 }
 
 TEST(CApiApk, ResolvesBooleanAndIntegerResources)

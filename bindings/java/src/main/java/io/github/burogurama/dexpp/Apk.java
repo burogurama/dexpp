@@ -232,7 +232,12 @@ public final class Apk implements AutoCloseable {
                                                                 b
                                                                         + Layouts.DeclaredPermission
                                                                                 .PROTECTION_LEVEL))
-                                                : OptionalInt.empty()));
+                                                : OptionalInt.empty(),
+                                        Mem.bool(
+                                                d,
+                                                b
+                                                        + Layouts.DeclaredPermission
+                                                                .PROTECTION_LEVEL_VARIES)));
         List<Component> components =
                 Mem.array(
                         Mem.pointer(m, Layouts.Manifest.COMPONENTS),
@@ -244,6 +249,7 @@ public final class Apk implements AutoCloseable {
                 optLong(m, Layouts.Manifest.HAS_VERSION_CODE, Layouts.Manifest.VERSION_CODE),
                 optReference(m, Layouts.Manifest.VERSION_CODE_REFERENCE),
                 Mem.optString(m, Layouts.Manifest.VERSION_NAME),
+                optReference(m, Layouts.Manifest.VERSION_NAME_REFERENCE),
                 optLong(m, Layouts.Manifest.HAS_MIN_SDK, Layouts.Manifest.MIN_SDK),
                 optReference(m, Layouts.Manifest.MIN_SDK_REFERENCE),
                 optLong(m, Layouts.Manifest.HAS_TARGET_SDK, Layouts.Manifest.TARGET_SDK),
@@ -256,8 +262,10 @@ public final class Apk implements AutoCloseable {
                 Mem.optString(m, Layouts.Manifest.LAUNCHER_ACTIVITY),
                 Mem.triState(m, Layouts.Manifest.DEBUGGABLE),
                 optReference(m, Layouts.Manifest.DEBUGGABLE_REFERENCE),
+                Mem.bool(m, Layouts.Manifest.DEBUGGABLE_VARIES),
                 Mem.triState(m, Layouts.Manifest.ALLOW_BACKUP),
-                optReference(m, Layouts.Manifest.ALLOW_BACKUP_REFERENCE));
+                optReference(m, Layouts.Manifest.ALLOW_BACKUP_REFERENCE),
+                Mem.bool(m, Layouts.Manifest.ALLOW_BACKUP_VARIES));
     }
 
     private static OptionalLong optLong(MemorySegment m, long has, long value) {
@@ -290,10 +298,13 @@ public final class Apk implements AutoCloseable {
                                         Mem.bool(f, at + Layouts.IntentFilter.IS_LAUNCHER)));
         return new Component(
                 Mem.string(c, b + Layouts.Component.NAME),
+                optReference(c, b + Layouts.Component.NAME_REFERENCE),
                 ComponentKind.of(Mem.i32(c, b + Layouts.Component.KIND)),
                 Mem.triState(c, b + Layouts.Component.EXPORTED),
                 optReference(c, b + Layouts.Component.EXPORTED_REFERENCE),
+                Mem.bool(c, b + Layouts.Component.EXPORTED_VARIES),
                 Mem.optString(c, b + Layouts.Component.PERMISSION),
+                optReference(c, b + Layouts.Component.PERMISSION_REFERENCE),
                 filters,
                 Mem.bool(c, b + Layouts.Component.GUARDED_BY_SIGNATURE_PERMISSION),
                 Mem.bool(c, b + Layouts.Component.IS_EXPORTED),
