@@ -379,12 +379,22 @@ final class Layouts {
         private static final Builder B = new Builder();
         static final long NAME = B.ptr("name");
         static final long NAME_REFERENCE = B.i32("name_reference");
+        static final long NAME_UNKNOWN = B.i32("name_unknown");
         static final long KIND = B.i32("kind");
         static final long EXPORTED = B.i32("exported");
         static final long EXPORTED_REFERENCE = B.i32("exported_reference");
+        static final long EXPORTED_UNKNOWN = B.i32("exported_unknown");
         static final long EXPORTED_VARIES = B.i32("exported_varies");
         static final long PERMISSION = B.ptr("permission");
         static final long PERMISSION_REFERENCE = B.i32("permission_reference");
+        static final long PERMISSION_UNKNOWN = B.i32("permission_unknown");
+        static final long PERMISSION_INHERITED = B.i32("permission_inherited");
+        static final long READ_PERMISSION = B.ptr("read_permission");
+        static final long READ_PERMISSION_REFERENCE = B.i32("read_permission_reference");
+        static final long READ_PERMISSION_UNKNOWN = B.i32("read_permission_unknown");
+        static final long WRITE_PERMISSION = B.ptr("write_permission");
+        static final long WRITE_PERMISSION_REFERENCE = B.i32("write_permission_reference");
+        static final long WRITE_PERMISSION_UNKNOWN = B.i32("write_permission_unknown");
         static final long INTENT_FILTERS = B.ptr("intent_filters");
         static final long INTENT_FILTER_COUNT = B.size("intent_filter_count");
         static final long GUARDED_BY_SIGNATURE_PERMISSION =
@@ -409,14 +419,18 @@ final class Layouts {
         static final long HAS_VERSION_CODE = B.i32("has_version_code");
         static final long VERSION_CODE = B.i64("version_code");
         static final long VERSION_CODE_REFERENCE = B.i32("version_code_reference");
+        static final long VERSION_CODE_UNKNOWN = B.i32("version_code_unknown");
         static final long VERSION_NAME = B.ptr("version_name");
         static final long VERSION_NAME_REFERENCE = B.i32("version_name_reference");
+        static final long VERSION_NAME_UNKNOWN = B.i32("version_name_unknown");
         static final long HAS_MIN_SDK = B.i32("has_min_sdk");
         static final long MIN_SDK = B.i64("min_sdk");
         static final long MIN_SDK_REFERENCE = B.i32("min_sdk_reference");
+        static final long MIN_SDK_UNKNOWN = B.i32("min_sdk_unknown");
         static final long HAS_TARGET_SDK = B.i32("has_target_sdk");
         static final long TARGET_SDK = B.i64("target_sdk");
         static final long TARGET_SDK_REFERENCE = B.i32("target_sdk_reference");
+        static final long TARGET_SDK_UNKNOWN = B.i32("target_sdk_unknown");
         static final long PERMISSIONS = B.ptr("permissions");
         static final long PERMISSION_COUNT = B.size("permission_count");
         static final long DECLARED_PERMISSIONS = B.ptr("declared_permissions");
@@ -426,10 +440,16 @@ final class Layouts {
         static final long LAUNCHER_ACTIVITY = B.ptr("launcher_activity");
         static final long DEBUGGABLE = B.i32("debuggable");
         static final long DEBUGGABLE_REFERENCE = B.i32("debuggable_reference");
+        static final long DEBUGGABLE_UNKNOWN = B.i32("debuggable_unknown");
         static final long DEBUGGABLE_VARIES = B.i32("debuggable_varies");
         static final long ALLOW_BACKUP = B.i32("allow_backup");
         static final long ALLOW_BACKUP_REFERENCE = B.i32("allow_backup_reference");
+        static final long ALLOW_BACKUP_UNKNOWN = B.i32("allow_backup_unknown");
         static final long ALLOW_BACKUP_VARIES = B.i32("allow_backup_varies");
+        static final long APPLICATION_PERMISSION = B.ptr("application_permission");
+        static final long APPLICATION_PERMISSION_REFERENCE =
+                B.i32("application_permission_reference");
+        static final long APPLICATION_PERMISSION_UNKNOWN = B.i32("application_permission_unknown");
         static final StructLayout LAYOUT = B.build("DexppManifest");
     }
 

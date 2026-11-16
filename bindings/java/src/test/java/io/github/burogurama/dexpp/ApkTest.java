@@ -113,16 +113,16 @@ class ApkTest {
             for (Component c : m.components()) {
                 byName.put(c.name().substring(c.name().lastIndexOf('.') + 1), c);
             }
-            // Exported and unguarded, or guarded by a normal, dangerous or
-            // undeclared permission: reachable.
+            // Guarded by its own normal, dangerous or undeclared permission:
+            // reachable, although the application requires a signature one.
             for (String name :
                     List.of(
-                            "OpenActivity",
                             "NormalActivity",
                             "DangerousActivity",
                             "PlatformPermActivity",
-                            "OpenReceiver")) {
+                            "NormalReceiver")) {
                 assertTrue(byName.get(name).isReachable(), name);
+                assertFalse(byName.get(name).permissionInherited(), name);
             }
             // Exported, but guarded by a signature permission the app declares.
             Component sig = byName.get("SigActivity");
@@ -149,7 +149,104 @@ class ApkTest {
                             .filter(Component::isReachable)
                             .count();
             assertEquals(5, exported);
-            assertEquals(4, reachable);
+            assertEquals(3, reachable);
+        }
+    }
+
+    /**
+     * reachable.apk's {@code <application>} requires its signature permission, and the components
+     * without a permission of their own take it.
+     */
+    @Test
+    void applicationPermission() throws IOException {
+        String signature = "com.dexpp.reach.P_SIGNATURE";
+        try (Apk apk = apk("reachable.apk")) {
+            Manifest m = apk.manifest().orElseThrow();
+            assertEquals(Optional.of(signature), m.applicationPermission());
+            assertEquals(OptionalInt.empty(), m.applicationPermissionReference());
+            assertFalse(m.applicationPermissionUnknown());
+            Map<String, Component> byName = new HashMap<>();
+            for (Component c : m.components()) {
+                byName.put(c.name().substring(c.name().lastIndexOf('.') + 1), c);
+            }
+            for (String name :
+                    List.of("InheritingActivity", "InheritingService", "InheritingReceiver")) {
+                Component c = byName.get(name);
+                assertEquals(Optional.of(signature), c.permission(), name);
+                assertTrue(c.permissionInherited(), name);
+                assertFalse(c.permissionUnknown(), name);
+                assertEquals(OptionalInt.empty(), c.permissionReference(), name);
+                assertTrue(c.isExported(), name);
+                assertFalse(c.isReachable(), name);
+                assertEquals(Optional.empty(), c.readPermission(), name);
+                assertEquals(Optional.empty(), c.writePermission(), name);
+            }
+            // A provider is guarded only when reading and writing both are.
+            Component inheriting = byName.get("InheritingProvider");
+            assertEquals(Optional.of(signature), inheriting.readPermission());
+            assertEquals(Optional.of(signature), inheriting.writePermission());
+            assertFalse(inheriting.readPermissionUnknown());
+            assertFalse(inheriting.writePermissionUnknown());
+            assertFalse(inheriting.isReachable());
+            Component readable = byName.get("ReadableProvider");
+            assertEquals(Optional.of("com.dexpp.reach.P_NORMAL"), readable.readPermission());
+            assertEquals(OptionalInt.empty(), readable.readPermissionReference());
+            assertTrue(readable.isReachable());
+            Component writable = byName.get("WritableProvider");
+            assertEquals(Optional.of("com.dexpp.reach.P_DANGEROUS"), writable.writePermission());
+            assertEquals(OptionalInt.empty(), writable.writePermissionReference());
+            assertFalse(writable.permissionInherited());
+            assertTrue(writable.isReachable());
+        }
+        try (Apk apk = apk("sample.apk")) {
+            assertEquals(Optional.empty(), apk.manifest().orElseThrow().applicationPermission());
+        }
+    }
+
+    /**
+     * refs.apk: {@code @bool/nothing} is {@code @null}, {@code @bool/same_as_nothing} refers to it,
+     * and {@code @string/no_permission} is {@code @null}. Android reads them as not written.
+     */
+    @Test
+    void manifestNullValues() throws IOException {
+        try (Apk apk = apk("refs.apk")) {
+            ResourceTable rt = apk.resources().orElseThrow();
+            Manifest m = apk.manifest().orElseThrow();
+            Map<String, Component> byName = new HashMap<>();
+            for (Component c : m.components()) {
+                byName.put(c.name().substring(c.name().lastIndexOf('.') + 1), c);
+            }
+            Component nullActivity = byName.get("NullActivity");
+            assertEquals(Optional.empty(), nullActivity.exported());
+            assertEquals(rt.idOf("bool", "nothing"), nullActivity.exportedReference());
+            assertFalse(nullActivity.exportedUnknown());
+            assertFalse(nullActivity.isExported());
+            assertTrue(byName.get("NullFilteredActivity").isExported());
+            assertEquals(
+                    OptionalInt.empty(), byName.get("LiteralNullActivity").exportedReference());
+
+            Component service = byName.get("NullPermissionService");
+            assertEquals(Optional.empty(), service.permission());
+            assertEquals(rt.idOf("string", "no_permission"), service.permissionReference());
+            assertFalse(service.permissionUnknown());
+            assertFalse(service.permissionInherited());
+            assertTrue(service.isReachable());
+
+            // A theme attribute is unknown, so possibly exported.
+            Component theme = byName.get("ThemeActivity");
+            assertEquals(Optional.empty(), theme.exported());
+            assertTrue(theme.exportedUnknown());
+            assertTrue(theme.isExported());
+            // A string that differs between Android versions depends on the device.
+            assertTrue(byName.get("PermissionOnV31Service").permissionUnknown());
+            assertFalse(byName.get("LocalizedPermissionService").permissionUnknown());
+            assertFalse(m.versionCodeUnknown());
+            assertFalse(m.versionNameUnknown());
+            assertFalse(m.minSdkUnknown());
+            assertFalse(m.targetSdkUnknown());
+            assertFalse(m.debuggableUnknown());
+            assertFalse(m.allowBackupUnknown());
+            assertFalse(byName.get("ExportedActivity").nameUnknown());
         }
     }
 

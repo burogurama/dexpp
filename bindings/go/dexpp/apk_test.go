@@ -119,12 +119,12 @@ func TestReachability(t *testing.T) {
 	for _, c := range m.Components {
 		byName[c.Name[strings.LastIndex(c.Name, ".")+1:]] = c
 	}
-	// Exported and unguarded, or guarded by a normal, dangerous or undeclared
-	// permission: reachable.
-	for _, name := range []string{"OpenActivity", "NormalActivity", "DangerousActivity",
-		"PlatformPermActivity", "OpenReceiver"} {
-		if !byName[name].IsReachable {
-			t.Errorf("%s is not reachable", name)
+	// Guarded by its own normal, dangerous or undeclared permission:
+	// reachable, although the application requires a signature permission.
+	for _, name := range []string{"NormalActivity", "DangerousActivity",
+		"PlatformPermActivity", "NormalReceiver"} {
+		if !byName[name].IsReachable || byName[name].PermissionInherited {
+			t.Errorf("%s = %+v", name, byName[name])
 		}
 	}
 	// Exported, but guarded by a signature permission the app declares.
@@ -153,8 +153,101 @@ func TestReachability(t *testing.T) {
 			reachable++
 		}
 	}
-	if exported != 5 || reachable != 4 {
-		t.Errorf("%d exported and %d reachable activities, want 5 and 4", exported, reachable)
+	if exported != 5 || reachable != 3 {
+		t.Errorf("%d exported and %d reachable activities, want 5 and 3", exported, reachable)
+	}
+}
+
+// reachable.apk's <application> requires its signature permission, and the
+// components without a permission of their own take it.
+func TestApplicationPermission(t *testing.T) {
+	m := mustManifest(t, mustAPK(t, "reachable.apk"))
+	const signature = "com.dexpp.reach.P_SIGNATURE"
+	if m.ApplicationPermission == nil || *m.ApplicationPermission != signature ||
+		m.ApplicationPermissionReference != nil || m.ApplicationPermissionUnknown {
+		t.Errorf("ApplicationPermission = %v, reference %v, unknown %v", m.ApplicationPermission,
+			m.ApplicationPermissionReference, m.ApplicationPermissionUnknown)
+	}
+	byName := map[string]Component{}
+	for _, c := range m.Components {
+		byName[c.Name[strings.LastIndex(c.Name, ".")+1:]] = c
+	}
+	for _, name := range []string{"InheritingActivity", "InheritingService", "InheritingReceiver"} {
+		c := byName[name]
+		if c.Permission == nil || *c.Permission != signature || !c.PermissionInherited ||
+			c.PermissionUnknown || c.PermissionReference != nil || !c.IsExported || c.IsReachable ||
+			c.ReadPermission != nil || c.WritePermission != nil {
+			t.Errorf("%s = %+v", name, c)
+		}
+	}
+	// A provider is guarded only when reading and writing both are.
+	inheriting := byName["InheritingProvider"]
+	if inheriting.ReadPermission == nil || *inheriting.ReadPermission != signature ||
+		inheriting.WritePermission == nil || *inheriting.WritePermission != signature ||
+		inheriting.ReadPermissionUnknown || inheriting.WritePermissionUnknown || inheriting.IsReachable {
+		t.Errorf("InheritingProvider = %+v", inheriting)
+	}
+	readable := byName["ReadableProvider"]
+	if readable.ReadPermission == nil || *readable.ReadPermission != "com.dexpp.reach.P_NORMAL" ||
+		readable.ReadPermissionReference != nil || !readable.IsReachable {
+		t.Errorf("ReadableProvider = %+v", readable)
+	}
+	writable := byName["WritableProvider"]
+	if writable.WritePermission == nil || *writable.WritePermission != "com.dexpp.reach.P_DANGEROUS" ||
+		writable.WritePermissionReference != nil || writable.PermissionInherited || !writable.IsReachable {
+		t.Errorf("WritableProvider = %+v", writable)
+	}
+
+	sample := mustManifest(t, mustAPK(t, "sample.apk"))
+	if sample.ApplicationPermission != nil {
+		t.Errorf("sample.apk ApplicationPermission = %v", *sample.ApplicationPermission)
+	}
+}
+
+// refs.apk: @bool/nothing is @null, @bool/same_as_nothing refers to it, and
+// @string/no_permission is @null. Android reads them as not written.
+func TestManifestNullValues(t *testing.T) {
+	apk := mustAPK(t, "refs.apk")
+	rt := apk.Resources()
+	if rt == nil {
+		t.Fatal("no resource table")
+	}
+	m := mustManifest(t, apk)
+	byName := map[string]Component{}
+	for _, c := range m.Components {
+		byName[c.Name[strings.LastIndex(c.Name, ".")+1:]] = c
+	}
+	nothing, _ := rt.IDOf("bool", "nothing")
+	null := byName["NullActivity"]
+	if null.Exported != nil || null.ExportedReference == nil || *null.ExportedReference != nothing ||
+		null.ExportedUnknown || null.IsExported {
+		t.Errorf("NullActivity = %+v", null)
+	}
+	if c := byName["NullFilteredActivity"]; c.Exported != nil || c.ExportedUnknown || !c.IsExported {
+		t.Errorf("NullFilteredActivity = %+v", c)
+	}
+	if c := byName["LiteralNullActivity"]; c.Exported != nil || c.ExportedReference != nil || !c.IsExported {
+		t.Errorf("LiteralNullActivity = %+v", c)
+	}
+	noPermission, _ := rt.IDOf("string", "no_permission")
+	service := byName["NullPermissionService"]
+	if service.Permission != nil || service.PermissionReference == nil ||
+		*service.PermissionReference != noPermission || service.PermissionUnknown ||
+		service.PermissionInherited || !service.IsReachable {
+		t.Errorf("NullPermissionService = %+v", service)
+	}
+	// A theme attribute is unknown, so possibly exported.
+	if theme := byName["ThemeActivity"]; theme.Exported != nil || !theme.ExportedUnknown || !theme.IsExported {
+		t.Errorf("ThemeActivity = %+v", theme)
+	}
+	// A string that differs between Android versions depends on the device.
+	if !byName["PermissionOnV31Service"].PermissionUnknown || byName["LocalizedPermissionService"].PermissionUnknown {
+		t.Errorf("PermissionOnV31Service = %+v, LocalizedPermissionService = %+v",
+			byName["PermissionOnV31Service"], byName["LocalizedPermissionService"])
+	}
+	if m.VersionCodeUnknown || m.VersionNameUnknown || m.MinSDKUnknown || m.TargetSDKUnknown ||
+		m.DebuggableUnknown || m.AllowBackupUnknown || byName["ExportedActivity"].NameUnknown {
+		t.Errorf("refs.apk has unknown values: %+v", m)
 	}
 }
 

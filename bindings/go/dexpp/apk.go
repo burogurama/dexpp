@@ -171,67 +171,117 @@ func (f IntentFilter) HasAction(name string) bool {
 
 // Component is an activity, a service, a broadcast receiver or a content
 // provider declared in the manifest.
+//
+// A ...Reference field holds the resource id when the attribute is written as
+// a reference, and is nil for a plain value or a missing attribute. When the
+// value is nil and the reference is set, the matching ...Unknown field tells
+// why: true when dexpp cannot tell the value (the reference cannot be
+// resolved), false when Android reads the attribute as not written (a null
+// value such as @null or @empty, or a string that changes with the
+// configuration).
 type Component struct {
 	// Name is the component's class name with its package, such as
 	// "com.example.MainActivity". A short name in the manifest, such as
 	// ".MainActivity", is completed with the app's package. It is empty when
 	// the attribute is missing, or when it is a reference that gives no
-	// single value (then NameReference is set).
+	// value (then NameReference is set).
 	Name string
 	// NameReference is the resource id when android:name is written as a
 	// reference, such as "@string/main_activity", whether it was resolved or
 	// not. It is nil for a plain value or a missing attribute.
 	NameReference *uint32
-	Kind          ComponentKind
+	// NameUnknown is true when android:name is a reference whose string
+	// dexpp cannot tell.
+	NameUnknown bool
+	Kind        ComponentKind
 	// Exported is the android:exported attribute: the value the manifest
 	// writes, or the value of the resource it refers to in the default
 	// configuration. Text reads as Android reads it: only "1", "true" and
-	// "TRUE" are true. It is nil when the attribute is missing, or when it
-	// is a reference that could not be resolved (then ExportedReference is
-	// set). IsExported gives the effective answer.
+	// "TRUE" are true. It is nil when the attribute is missing, when it is a
+	// null value (Android reads it as not written), or when its value is
+	// unknown (ExportedUnknown). IsExported gives the effective answer.
 	Exported *bool
 	// ExportedReference is the resource id when android:exported is written
 	// as a reference, such as "@bool/is_exported" (or a theme attribute,
 	// "?attr/name"), whether it was resolved or not. It is nil for a plain
-	// value or a missing attribute. Exported nil with ExportedReference set
-	// means the value is unknown.
+	// value or a missing attribute.
 	ExportedReference *uint32
-	// ExportedVaries is true when android:exported is a reference whose
-	// value is not the same in every resource configuration: for example
-	// false in res/values and true in res/values-v31, so the component is
-	// exported on Android 12 and newer. Exported holds the default
-	// configuration's value, and IsExported is true.
+	// ExportedUnknown is true when android:exported is a reference whose
+	// value in the default configuration dexpp cannot tell. Exported is then
+	// nil, and IsExported is true.
+	ExportedUnknown bool
+	// ExportedVaries is true when android:exported is a reference that makes
+	// the component exported in some resource configurations and not in
+	// others: for example false in res/values and true in res/values-v31,
+	// so the component is exported on Android 12 and newer. A configuration
+	// whose value is null uses the intent-filter rule. Exported holds the
+	// default configuration's value, and IsExported is true.
 	ExportedVaries bool
 	// Permission is the permission a caller must hold to use the component,
-	// or nil when there is none. It is also nil when android:permission is a
-	// reference that gives no single value (then PermissionReference is
-	// set): Android ignores a string that changes with the language, the
-	// screen or another configuration, and a string that changes only with
-	// the Android version depends on the device.
+	// as Android enforces it: the component's android:permission, or, when
+	// the component gives none, the android:permission of <application>
+	// (then PermissionInherited is true). The component gives none when the
+	// attribute is missing or Android reads it as not written: a null value,
+	// or a string that changes with the language, the screen or another
+	// configuration, which Android ignores. It is nil when neither gives
+	// one, or when it is unknown (PermissionUnknown). For a provider, it is
+	// the permission ReadPermission and WritePermission fall back to.
 	Permission *string
-	// PermissionReference is the resource id when android:permission is
-	// written as a reference, such as "@string/guard", whether it was
-	// resolved or not. It is nil for a plain value or a missing attribute.
+	// PermissionReference is the resource id when the component's own
+	// android:permission is written as a reference, such as
+	// "@string/guard", whether it was resolved or not. It is nil for a plain
+	// value or a missing attribute.
 	PermissionReference *uint32
-	IntentFilters       []IntentFilter
-	// GuardedBySignaturePermission is true when Permission is a permission
-	// this app declares with the signature or signatureOrSystem protection
-	// level. Only apps signed with the same key can hold such a permission.
+	// PermissionUnknown is true when dexpp cannot tell Permission: the
+	// component's own android:permission is a reference that cannot be
+	// resolved or a string that differs between Android versions, or the
+	// component gives none and the application's permission is unknown.
+	PermissionUnknown bool
+	// PermissionInherited is true when Permission comes from <application>:
+	// the component gives no permission of its own, and the application's
+	// gives one or is unknown.
+	PermissionInherited bool
+	// ReadPermission is, for a provider, the permission a caller needs to
+	// read from it: android:readPermission, or Permission when that gives
+	// none. It is nil for the other kinds, when no permission applies, or
+	// when it is unknown (ReadPermissionUnknown).
+	ReadPermission *string
+	// ReadPermissionReference is the resource id when the provider's
+	// android:readPermission is written as a reference.
+	ReadPermissionReference *uint32
+	// ReadPermissionUnknown is true when dexpp cannot tell ReadPermission.
+	ReadPermissionUnknown bool
+	// WritePermission is, for a provider, the permission a caller needs to
+	// write to it: android:writePermission, or Permission when that gives
+	// none. The same rules as ReadPermission.
+	WritePermission *string
+	// WritePermissionReference is the resource id when the provider's
+	// android:writePermission is written as a reference.
+	WritePermissionReference *uint32
+	// WritePermissionUnknown is true when dexpp cannot tell WritePermission.
+	WritePermissionUnknown bool
+	IntentFilters          []IntentFilter
+	// GuardedBySignaturePermission is true when the permission Android
+	// enforces is a permission this app declares with the signature or
+	// signatureOrSystem protection level. Only apps signed with the same key
+	// can hold such a permission. For a provider, both ReadPermission and
+	// WritePermission must be such a permission.
 	GuardedBySignaturePermission bool
 	// IsExported says whether other apps can address the component: the
 	// Exported attribute when the manifest sets it, otherwise true when the
-	// component has an intent filter. When the attribute is a reference whose
-	// value differs between configurations (ExportedVaries), IsExported is
-	// true. When the attribute is a reference that could not be resolved, its
-	// value is unknown and IsExported is true: the component may be
-	// exported.
+	// component has an intent filter. A null value counts as not set. When
+	// the attribute is a reference whose value differs between
+	// configurations (ExportedVaries), IsExported is true. When the
+	// attribute is a reference whose value is unknown (ExportedUnknown),
+	// IsExported is true: the component may be exported.
 	IsExported bool
 	// IsReachable says whether an app from another developer can reach the
 	// component: it is exported, and it is not guarded by a signature-level
 	// permission that this app declares. A component guarded by a normal or
 	// dangerous permission stays reachable, because any app can request
 	// those. So does a component guarded by a permission the manifest does
-	// not declare, because its protection level is not known.
+	// not declare, because its protection level is not known, and one whose
+	// permission is unknown.
 	IsReachable bool
 }
 
@@ -240,10 +290,11 @@ type DeclaredPermission struct {
 	Name string
 	// ProtectionLevel is the android:protectionLevel as the raw Android
 	// value, or nil when it is not known: the attribute is a resource
-	// reference that could not be resolved. The low four bits are the base
+	// reference whose value is unknown. The low four bits are the base
 	// level: 0 normal, 1 dangerous, 2 signature, 3 signatureOrSystem. Higher
-	// bits are flags. A declaration without the attribute counts as normal.
-	// For a reference, it is the default configuration's value.
+	// bits are flags. A declaration without the attribute, or with a null
+	// value, counts as normal. For a reference, it is the default
+	// configuration's value.
 	ProtectionLevel *int32
 	// ProtectionLevelVaries is true when the level is a reference whose
 	// value is not the same in every configuration. The permission then
@@ -258,10 +309,12 @@ type DeclaredPermission struct {
 // An attribute can be written as a resource reference, such as
 // android:debuggable="@bool/debug". Its field then holds the value the APK's
 // resource table gives, in the default configuration, and the matching
-// ...Reference field holds the reference id. When the reference cannot be
-// resolved, the value field is nil and the ...Reference field is still set:
-// the attribute is written, but its value is unknown. A ...Reference field is
-// nil for a plain value or a missing attribute.
+// ...Reference field holds the reference id. A ...Reference field is nil for
+// a plain value or a missing attribute. When the value field is nil and the
+// ...Reference field is set, the matching ...Unknown field tells why: true
+// when the reference cannot be resolved and the value is unknown, false when
+// Android reads the attribute as not written (a null value such as @null or
+// @empty, or a string that changes with the configuration).
 //
 // A boolean whose resource has another value in some configuration (a
 // language, a screen size, an Android version) has a matching ...Varies field
@@ -271,12 +324,16 @@ type Manifest struct {
 	Package              string  // the package attribute of <manifest>
 	VersionCode          *int64  // android:versionCode
 	VersionCodeReference *uint32 // the reference id of android:versionCode
+	VersionCodeUnknown   bool    // android:versionCode is a reference dexpp cannot tell
 	VersionName          *string // android:versionName
 	VersionNameReference *uint32 // the reference id of android:versionName
+	VersionNameUnknown   bool    // android:versionName is a reference dexpp cannot tell
 	MinSDK               *int64  // android:minSdkVersion of <uses-sdk>
 	MinSDKReference      *uint32 // the reference id of android:minSdkVersion
+	MinSDKUnknown        bool    // android:minSdkVersion is a reference dexpp cannot tell
 	TargetSDK            *int64  // android:targetSdkVersion of <uses-sdk>
 	TargetSDKReference   *uint32 // the reference id of android:targetSdkVersion
+	TargetSDKUnknown     bool    // android:targetSdkVersion is a reference dexpp cannot tell
 	// Permissions are the permissions the app asks for: the name of each
 	// <uses-permission>.
 	Permissions []string
@@ -287,19 +344,40 @@ type Manifest struct {
 	// manifest order.
 	Components []Component
 	// LauncherActivity is the name of the activity the launcher starts.
-	LauncherActivity    *string
-	Debuggable          *bool   // android:debuggable of <application>
+	LauncherActivity *string
+	// Debuggable is android:debuggable of <application>. A null value counts
+	// as not set: Android then uses false.
+	Debuggable          *bool
 	DebuggableReference *uint32 // the reference id of android:debuggable
+	DebuggableUnknown   bool    // android:debuggable is a reference dexpp cannot tell
 	// DebuggableVaries is true when android:debuggable is a reference whose
-	// value is not the same in every configuration. Debuggable holds the
-	// default configuration's value; for triage, treat a varying value as
-	// possibly true.
-	DebuggableVaries     bool
-	AllowBackup          *bool   // android:allowBackup of <application>
+	// value is not the same in every configuration (a null value counts as
+	// false). Debuggable holds the default configuration's value; for
+	// triage, treat a varying value as possibly true.
+	DebuggableVaries bool
+	// AllowBackup is android:allowBackup of <application>. A null value
+	// counts as not set: Android then uses true.
+	AllowBackup          *bool
 	AllowBackupReference *uint32 // the reference id of android:allowBackup
+	AllowBackupUnknown   bool    // android:allowBackup is a reference dexpp cannot tell
 	// AllowBackupVaries is true when android:allowBackup is a reference whose
-	// value is not the same in every configuration, like DebuggableVaries.
+	// value is not the same in every configuration (a null value counts as
+	// true), like DebuggableVaries.
 	AllowBackupVaries bool
+	// ApplicationPermission is android:permission of <application>: the
+	// permission that every activity, service, receiver and provider
+	// requires when it does not give one of its own (see
+	// Component.Permission). It is nil when the attribute is missing, when
+	// Android reads it as not written (a null value, or a string that
+	// changes with the configuration), or when it is unknown
+	// (ApplicationPermissionUnknown).
+	ApplicationPermission *string
+	// ApplicationPermissionReference is the resource id when the
+	// application's android:permission is written as a reference.
+	ApplicationPermissionReference *uint32
+	// ApplicationPermissionUnknown is true when the application's
+	// android:permission is a reference whose string dexpp cannot tell.
+	ApplicationPermissionUnknown bool
 }
 
 // ComponentsOf returns the components of one kind, in manifest order.
@@ -369,12 +447,22 @@ func goComponent(c *C.DexppComponent) Component {
 	out := Component{
 		Name:                         C.GoString(c.name),
 		NameReference:                optReference(c.name_reference),
+		NameUnknown:                  c.name_unknown != 0,
 		Kind:                         ComponentKind(c.kind),
 		Exported:                     optBool(c.exported),
 		ExportedReference:            optReference(c.exported_reference),
+		ExportedUnknown:              c.exported_unknown != 0,
 		ExportedVaries:               c.exported_varies != 0,
 		Permission:                   goOptString(c.permission),
 		PermissionReference:          optReference(c.permission_reference),
+		PermissionUnknown:            c.permission_unknown != 0,
+		PermissionInherited:          c.permission_inherited != 0,
+		ReadPermission:               goOptString(c.read_permission),
+		ReadPermissionReference:      optReference(c.read_permission_reference),
+		ReadPermissionUnknown:        c.read_permission_unknown != 0,
+		WritePermission:              goOptString(c.write_permission),
+		WritePermissionReference:     optReference(c.write_permission_reference),
+		WritePermissionUnknown:       c.write_permission_unknown != 0,
 		GuardedBySignaturePermission: c.guarded_by_signature_permission != 0,
 		IsExported:                   c.is_exported != 0,
 		IsReachable:                  c.is_reachable != 0,
@@ -404,23 +492,32 @@ func (a *Apk) Manifest() (Manifest, bool) {
 	}
 	defer C.dexpp_manifest_clear(&m)
 	out := Manifest{
-		Package:              C.GoString(m._package),
-		VersionCode:          optInt64(m.has_version_code, m.version_code),
-		VersionCodeReference: optReference(m.version_code_reference),
-		VersionName:          goOptString(m.version_name),
-		VersionNameReference: optReference(m.version_name_reference),
-		MinSDK:               optInt64(m.has_min_sdk, m.min_sdk),
-		MinSDKReference:      optReference(m.min_sdk_reference),
-		TargetSDK:            optInt64(m.has_target_sdk, m.target_sdk),
-		TargetSDKReference:   optReference(m.target_sdk_reference),
-		Permissions:          goStrings(m.permissions, m.permission_count),
-		LauncherActivity:     goOptString(m.launcher_activity),
-		Debuggable:           optBool(m.debuggable),
-		DebuggableReference:  optReference(m.debuggable_reference),
-		DebuggableVaries:     m.debuggable_varies != 0,
-		AllowBackup:          optBool(m.allow_backup),
-		AllowBackupReference: optReference(m.allow_backup_reference),
-		AllowBackupVaries:    m.allow_backup_varies != 0,
+		Package:                        C.GoString(m._package),
+		VersionCode:                    optInt64(m.has_version_code, m.version_code),
+		VersionCodeReference:           optReference(m.version_code_reference),
+		VersionCodeUnknown:             m.version_code_unknown != 0,
+		VersionName:                    goOptString(m.version_name),
+		VersionNameReference:           optReference(m.version_name_reference),
+		VersionNameUnknown:             m.version_name_unknown != 0,
+		MinSDK:                         optInt64(m.has_min_sdk, m.min_sdk),
+		MinSDKReference:                optReference(m.min_sdk_reference),
+		MinSDKUnknown:                  m.min_sdk_unknown != 0,
+		TargetSDK:                      optInt64(m.has_target_sdk, m.target_sdk),
+		TargetSDKReference:             optReference(m.target_sdk_reference),
+		TargetSDKUnknown:               m.target_sdk_unknown != 0,
+		Permissions:                    goStrings(m.permissions, m.permission_count),
+		LauncherActivity:               goOptString(m.launcher_activity),
+		Debuggable:                     optBool(m.debuggable),
+		DebuggableReference:            optReference(m.debuggable_reference),
+		DebuggableUnknown:              m.debuggable_unknown != 0,
+		DebuggableVaries:               m.debuggable_varies != 0,
+		AllowBackup:                    optBool(m.allow_backup),
+		AllowBackupReference:           optReference(m.allow_backup_reference),
+		AllowBackupUnknown:             m.allow_backup_unknown != 0,
+		AllowBackupVaries:              m.allow_backup_varies != 0,
+		ApplicationPermission:          goOptString(m.application_permission),
+		ApplicationPermissionReference: optReference(m.application_permission_reference),
+		ApplicationPermissionUnknown:   m.application_permission_unknown != 0,
 	}
 	if m.declared_permissions != nil && m.declared_permission_count > 0 {
 		declared := unsafe.Slice(m.declared_permissions, int(m.declared_permission_count))

@@ -36,12 +36,22 @@ DexppComponent component(const dex::apk::Component &c)
     DexppComponent out{};
     out.name = cstr(c.name);
     out.name_reference = c.name_reference.value_or(0);
+    out.name_unknown = c.name_unknown ? 1 : 0;
     out.kind = component_kind(c.kind);
     out.exported = tri_state(c.exported);
     out.exported_reference = c.exported_reference.value_or(0);
+    out.exported_unknown = c.exported_unknown ? 1 : 0;
     out.exported_varies = c.exported_varies ? 1 : 0;
     out.permission = c.permission ? cstr(*c.permission) : nullptr;
     out.permission_reference = c.permission_reference.value_or(0);
+    out.permission_unknown = c.permission_unknown ? 1 : 0;
+    out.permission_inherited = c.permission_inherited ? 1 : 0;
+    out.read_permission = c.read_permission ? cstr(*c.read_permission) : nullptr;
+    out.read_permission_reference = c.read_permission_reference.value_or(0);
+    out.read_permission_unknown = c.read_permission_unknown ? 1 : 0;
+    out.write_permission = c.write_permission ? cstr(*c.write_permission) : nullptr;
+    out.write_permission_reference = c.write_permission_reference.value_or(0);
+    out.write_permission_unknown = c.write_permission_unknown ? 1 : 0;
     out.guarded_by_signature_permission = c.guarded_by_signature_permission ? 1 : 0;
     out.is_exported = c.is_exported() ? 1 : 0;
     out.is_reachable = c.is_reachable() ? 1 : 0;
@@ -61,6 +71,8 @@ void clear(DexppComponent &c)
 {
     std::free(c.name);
     std::free(c.permission);
+    std::free(c.read_permission);
+    std::free(c.write_permission);
     for (std::size_t i = 0; c.intent_filters != nullptr && i < c.intent_filter_count; ++i) {
         dexpp_string_array_free(c.intent_filters[i].actions, c.intent_filters[i].action_count);
         dexpp_string_array_free(c.intent_filters[i].categories, c.intent_filters[i].category_count);
@@ -148,14 +160,18 @@ int dexpp_apk_manifest(const DexppApk *apk, DexppManifest *out)
     r.has_version_code = m->version_code().has_value() ? 1 : 0;
     r.version_code = m->version_code().value_or(0);
     r.version_code_reference = m->version_code_reference().value_or(0);
+    r.version_code_unknown = m->version_code_unknown() ? 1 : 0;
     r.version_name = optional_string(m->version_name());
     r.version_name_reference = m->version_name_reference().value_or(0);
+    r.version_name_unknown = m->version_name_unknown() ? 1 : 0;
     r.has_min_sdk = m->min_sdk().has_value() ? 1 : 0;
     r.min_sdk = m->min_sdk().value_or(0);
     r.min_sdk_reference = m->min_sdk_reference().value_or(0);
+    r.min_sdk_unknown = m->min_sdk_unknown() ? 1 : 0;
     r.has_target_sdk = m->target_sdk().has_value() ? 1 : 0;
     r.target_sdk = m->target_sdk().value_or(0);
     r.target_sdk_reference = m->target_sdk_reference().value_or(0);
+    r.target_sdk_unknown = m->target_sdk_unknown() ? 1 : 0;
     r.permissions = string_array(m->permissions(), &r.permission_count);
 
     const std::vector<std::string> &declared = m->declared_permissions();
@@ -177,10 +193,15 @@ int dexpp_apk_manifest(const DexppApk *apk, DexppManifest *out)
     r.launcher_activity = optional_string(m->launcher_activity());
     r.debuggable = tri_state(m->debuggable());
     r.debuggable_reference = m->debuggable_reference().value_or(0);
+    r.debuggable_unknown = m->debuggable_unknown() ? 1 : 0;
     r.debuggable_varies = m->debuggable_varies() ? 1 : 0;
     r.allow_backup = tri_state(m->allow_backup());
     r.allow_backup_reference = m->allow_backup_reference().value_or(0);
+    r.allow_backup_unknown = m->allow_backup_unknown() ? 1 : 0;
     r.allow_backup_varies = m->allow_backup_varies() ? 1 : 0;
+    r.application_permission = optional_string(m->application_permission());
+    r.application_permission_reference = m->application_permission_reference().value_or(0);
+    r.application_permission_unknown = m->application_permission_unknown() ? 1 : 0;
     *out = r;
     return 1;
 }
@@ -190,6 +211,7 @@ void dexpp_manifest_clear(DexppManifest *manifest)
     std::free(manifest->package);
     std::free(manifest->version_name);
     std::free(manifest->launcher_activity);
+    std::free(manifest->application_permission);
     dexpp_string_array_free(manifest->permissions, manifest->permission_count);
     for (std::size_t i = 0;
          manifest->declared_permissions != nullptr && i < manifest->declared_permission_count; ++i)

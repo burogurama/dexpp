@@ -246,11 +246,35 @@ TEST(CApiApk, SeparatesExportedFromReachable)
             EXPECT_EQ(c.is_reachable, 0);
             EXPECT_EQ(c.guarded_by_signature_permission, 1);
             EXPECT_STREQ(c.permission, "com.dexpp.reach.P_SIGNATURE");
+            EXPECT_EQ(c.permission_inherited, 0);
+        }
+        // No permission of its own: it takes the application's.
+        if (std::string(c.name) == "com.dexpp.reach.InheritingActivity") {
+            EXPECT_STREQ(c.permission, "com.dexpp.reach.P_SIGNATURE");
+            EXPECT_EQ(c.permission_inherited, 1);
+            EXPECT_EQ(c.permission_unknown, 0);
+            EXPECT_EQ(c.read_permission, nullptr);
+            EXPECT_EQ(c.is_reachable, 0);
+        }
+        // A provider: a normal read permission, the application's for writing.
+        if (std::string(c.name) == "com.dexpp.reach.ReadableProvider") {
+            EXPECT_STREQ(c.read_permission, "com.dexpp.reach.P_NORMAL");
+            EXPECT_STREQ(c.write_permission, "com.dexpp.reach.P_SIGNATURE");
+            EXPECT_EQ(c.read_permission_reference, 0u);
+            EXPECT_EQ(c.read_permission_unknown, 0);
+            EXPECT_EQ(c.write_permission_reference, 0u);
+            EXPECT_EQ(c.write_permission_unknown, 0);
+            EXPECT_EQ(c.is_reachable, 1);
         }
     }
     EXPECT_EQ(exported, 12u);
     EXPECT_EQ(reachable, 6u);
+    ASSERT_NE(m.application_permission, nullptr);
+    EXPECT_STREQ(m.application_permission, "com.dexpp.reach.P_SIGNATURE");
+    EXPECT_EQ(m.application_permission_reference, 0u);
+    EXPECT_EQ(m.application_permission_unknown, 0);
     dexpp_manifest_clear(&m);
+    EXPECT_EQ(m.application_permission, nullptr);
 
     // This APK has a manifest but no code.
     DexppError *err = nullptr;
@@ -403,7 +427,22 @@ TEST(CApiApk, ResolvesReferencesInTheManifest)
     ASSERT_NE(localized, nullptr);
     EXPECT_EQ(localized->permission, nullptr);
     EXPECT_NE(localized->permission_reference, 0u);
+    EXPECT_EQ(localized->permission_unknown, 0);
     EXPECT_EQ(localized->is_reachable, 1);
+    // A string that differs between Android versions: unknown.
+    EXPECT_EQ(by_name["com.dexpp.refs.PermissionOnV31Service"]->permission_unknown, 1);
+    // A theme attribute: unknown, so possibly exported.
+    const DexppComponent *theme = by_name["com.dexpp.refs.ThemeActivity"];
+    ASSERT_NE(theme, nullptr);
+    EXPECT_EQ(theme->exported, -1);
+    EXPECT_EQ(theme->exported_unknown, 1);
+    EXPECT_EQ(theme->is_exported, 1);
+    EXPECT_EQ(m.version_code_unknown, 0);
+    EXPECT_EQ(m.version_name_unknown, 0);
+    EXPECT_EQ(m.min_sdk_unknown, 0);
+    EXPECT_EQ(m.target_sdk_unknown, 0);
+    EXPECT_EQ(m.debuggable_unknown, 0);
+    EXPECT_EQ(m.allow_backup_unknown, 0);
     dexpp_manifest_clear(&m);
 
     // The plain-value manifest of sample.apk has no references.
@@ -415,13 +454,53 @@ TEST(CApiApk, ResolvesReferencesInTheManifest)
     EXPECT_EQ(m.version_name_reference, 0u);
     EXPECT_EQ(m.debuggable_varies, 0);
     EXPECT_EQ(m.allow_backup_varies, 0);
+    EXPECT_EQ(m.application_permission, nullptr);
     for (size_t i = 0; i < m.component_count; ++i) {
         EXPECT_EQ(m.components[i].exported_reference, 0u) << m.components[i].name;
         EXPECT_EQ(m.components[i].permission_reference, 0u) << m.components[i].name;
         EXPECT_EQ(m.components[i].exported_varies, 0) << m.components[i].name;
+        EXPECT_EQ(m.components[i].exported_unknown, 0) << m.components[i].name;
+        EXPECT_EQ(m.components[i].name_unknown, 0) << m.components[i].name;
+        EXPECT_EQ(m.components[i].permission_inherited, 0) << m.components[i].name;
     }
     dexpp_manifest_clear(&m);
     dexpp_apk_free(sample);
+    dexpp_apk_free(apk);
+}
+
+TEST(CApiApk, NullValuesReadAsNotWritten)
+{
+    // refs.apk: @bool/nothing is @null, @bool/same_as_nothing refers to it,
+    // and @string/no_permission is @null.
+    DexppApk *apk = open_apk("tests/data/refs.apk");
+    ASSERT_NE(apk, nullptr);
+    uint32_t nothing = 0, no_permission = 0;
+    ASSERT_EQ(dexpp_apk_resource_id(apk, "bool", "nothing", &nothing), 1);
+    ASSERT_EQ(dexpp_apk_resource_id(apk, "string", "no_permission", &no_permission), 1);
+
+    DexppManifest m{};
+    ASSERT_EQ(dexpp_apk_manifest(apk, &m), 1);
+    std::map<std::string, const DexppComponent *> by_name;
+    for (size_t i = 0; i < m.component_count; ++i)
+        by_name[m.components[i].name] = &m.components[i];
+
+    const DexppComponent *null = by_name["com.dexpp.refs.NullActivity"];
+    ASSERT_NE(null, nullptr);
+    EXPECT_EQ(null->exported, -1);
+    EXPECT_EQ(null->exported_reference, nothing);
+    EXPECT_EQ(null->exported_unknown, 0);
+    EXPECT_EQ(null->is_exported, 0); // no intent filter
+    EXPECT_EQ(by_name["com.dexpp.refs.NullFilteredActivity"]->is_exported, 1);
+    EXPECT_EQ(by_name["com.dexpp.refs.LiteralNullActivity"]->exported_reference, 0u);
+
+    const DexppComponent *service = by_name["com.dexpp.refs.NullPermissionService"];
+    ASSERT_NE(service, nullptr);
+    EXPECT_EQ(service->permission, nullptr);
+    EXPECT_EQ(service->permission_reference, no_permission);
+    EXPECT_EQ(service->permission_unknown, 0);
+    EXPECT_EQ(service->permission_inherited, 0);
+    EXPECT_EQ(service->is_reachable, 1);
+    dexpp_manifest_clear(&m);
     dexpp_apk_free(apk);
 }
 
