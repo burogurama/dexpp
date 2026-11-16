@@ -29,9 +29,42 @@ func OpenAPK(path string) (*Apk, error) {
 	if p == nil {
 		return nil, goError(cerr)
 	}
+	return newApk(p), nil
+}
+
+// OpenAPKBytes opens an APK from its bytes in memory, for example bytes
+// downloaded from the network. The bytes get the same checks as a file given
+// to OpenAPK, and the Apk then works the same. The Apk keeps its own copy, so
+// data may be changed or reused as soon as OpenAPKBytes returns.
+//
+// label names the bytes at the start of error messages, where OpenAPK puts the
+// path, for example the name of the file they came from; Analysis uses it too.
+// An empty label gives "<apk>". It fails with CodeInvalidAPK (the bytes are not
+// a ZIP archive).
+func OpenAPKBytes(data []byte, label string) (*Apk, error) {
+	var ptr *C.uint8_t
+	if len(data) > 0 {
+		// cgo lets C read Go memory that holds no Go pointers during the call.
+		ptr = (*C.uint8_t)(unsafe.Pointer(&data[0]))
+	}
+	var clabel *C.char
+	if label != "" {
+		clabel = C.CString(label)
+		defer C.free(unsafe.Pointer(clabel))
+	}
+	var cerr *C.DexppError
+	p := C.dexpp_apk_open_buffer(ptr, C.size_t(len(data)), clabel, &cerr)
+	runtime.KeepAlive(data)
+	if p == nil {
+		return nil, goError(cerr)
+	}
+	return newApk(p), nil
+}
+
+func newApk(p *C.DexppApk) *Apk {
 	a := &Apk{ptr: p}
 	runtime.SetFinalizer(a, (*Apk).Close)
-	return a, nil
+	return a
 }
 
 // Close frees the APK handle at once. A Context that came from Analysis stays
@@ -92,11 +125,22 @@ func (a *Apk) Package() (string, bool) {
 
 // Analysis returns the code of the APK: a Context over every classes*.dex
 // entry, in multidex order. It reuses the archive bytes the Apk already holds.
-// It fails with CodeInvalidAPK (the APK has no classes.dex) or CodeInvalidDex.
-func (a *Apk) Analysis() (*Context, error) {
+// The options are those of FromAPK: WithThreads(1) keeps all work, the call
+// graph included, on the calling thread.
+//
+// The analysis is built on the first call and kept, one for each thread count:
+// a later call with the same count returns a new Context for the same
+// analysis, so its call graph and other structures are built once. A call with
+// another count builds a second analysis, which holds its own copy of the DEX
+// files. So use one count in a program.
+//
+// It fails with CodeInvalidAPK (the APK has no classes.dex, or an entry is
+// damaged) or CodeInvalidDex.
+func (a *Apk) Analysis(opts ...LoadOption) (*Context, error) {
 	defer runtime.KeepAlive(a)
+	o := applyLoadOptions(opts)
 	var cerr *C.DexppError
-	p := C.dexpp_apk_analysis(a.p(), &cerr)
+	p := C.dexpp_apk_analysis(a.p(), C.uint32_t(o.threads), &cerr)
 	if p == nil {
 		return nil, goError(cerr)
 	}

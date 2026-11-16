@@ -305,6 +305,67 @@ class ApkTest {
     }
 
     @Test
+    void fromBytesMatchesOpen() throws IOException {
+        byte[] data = Files.readAllBytes(data("signed.apk"));
+        try (Apk fromFile = apk("signed.apk");
+                Apk apk = Apk.fromBytes(data, "signed.apk")) {
+            // The APK keeps its own copy: overwriting the array changes nothing.
+            Arrays.fill(data, (byte) 0);
+            assertEquals(fromFile.entries(), apk.entries());
+            assertArrayEquals(
+                    fromFile.read("classes.dex").orElseThrow(), apk.read("classes.dex").orElseThrow());
+            assertEquals(Optional.of("com.example.dexpp"), apk.packageName());
+            assertEquals(
+                    Optional.of("Dexpp Sample"),
+                    apk.resources().orElseThrow().resolveString(0x7f010000));
+            assertEquals(
+                    fromFile.signing().certificates().get(0).sha256Hex(),
+                    apk.signing().certificates().get(0).sha256Hex());
+            try (AnalysisContext ctx = apk.analysis(1)) {
+                assertTrue(ctx.findClass("LTestDex;").isPresent());
+            }
+        }
+    }
+
+    @Test
+    void fromBytesErrors() throws IOException {
+        byte[] notAnApk = "not an apk".getBytes(StandardCharsets.US_ASCII);
+        InvalidApkException plain =
+                assertThrows(InvalidApkException.class, () -> Apk.fromBytes(notAnApk));
+        assertTrue(plain.getMessage().startsWith("<apk>: "), plain.getMessage());
+        InvalidApkException named =
+                assertThrows(InvalidApkException.class, () -> Apk.fromBytes(notAnApk, "upload.apk"));
+        assertTrue(named.getMessage().startsWith("upload.apk: "), named.getMessage());
+        assertThrows(InvalidApkException.class, () -> Apk.fromBytes(new byte[0]));
+
+        // The label also starts the errors of analysis().
+        try (Apk noDex = Apk.fromBytes(Files.readAllBytes(data("nodex.apk")), "nodex-upload.apk")) {
+            InvalidApkException e = assertThrows(InvalidApkException.class, noDex::analysis);
+            assertTrue(e.getMessage().startsWith("nodex-upload.apk: "), e.getMessage());
+        }
+    }
+
+    @Test
+    void analysisWithAnyThreadCount() throws IOException {
+        // multidex.apk has four deflated DEX entries, enough for the parallel path.
+        try (Apk apk = apk("multidex.apk")) {
+            List<String> expected = descriptors(apk.analysis(1));
+            assertEquals("LTestDex;", expected.get(0));
+            for (int threads : new int[] {0, 4, -3, 1}) {
+                assertEquals(expected, descriptors(apk.analysis(threads)), "threads " + threads);
+            }
+            assertEquals(expected, descriptors(apk.analysis()));
+        }
+    }
+
+    /** The descriptor of every class of a context, which this closes. */
+    private static List<String> descriptors(AnalysisContext ctx) {
+        try (ctx) {
+            return ctx.classes().stream().map(DexClass::descriptor).toList();
+        }
+    }
+
+    @Test
     void readsAnEmptyEntry(@TempDir Path dir) throws IOException {
         // A one-entry ZIP whose entry is empty: read gives an empty array, not
         // an empty Optional.

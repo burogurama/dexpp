@@ -1651,6 +1651,18 @@ final class Native {
         }
     }
 
+    private static final MethodHandle dexpp_apk_open_buffer =
+            downcall("dexpp_apk_open_buffer", ADDRESS, ADDRESS, JAVA_LONG, ADDRESS, ADDRESS);
+
+    static MemorySegment dexpp_apk_open_buffer(
+            MemorySegment bytes, long len, MemorySegment label, MemorySegment err) {
+        try {
+            return (MemorySegment) dexpp_apk_open_buffer.invokeExact(bytes, len, label, err);
+        } catch (Throwable t) {
+            throw failure(t);
+        }
+    }
+
     private static final MethodHandle dexpp_apk_free = downcallVoid("dexpp_apk_free", ADDRESS);
 
     static void dexpp_apk_free(MemorySegment apk) {
@@ -1829,11 +1841,11 @@ final class Native {
     }
 
     private static final MethodHandle dexpp_apk_analysis =
-            downcall("dexpp_apk_analysis", ADDRESS, ADDRESS, ADDRESS);
+            downcall("dexpp_apk_analysis", ADDRESS, ADDRESS, JAVA_INT, ADDRESS);
 
-    static MemorySegment dexpp_apk_analysis(MemorySegment apk, MemorySegment err) {
+    static MemorySegment dexpp_apk_analysis(MemorySegment apk, int threads, MemorySegment err) {
         try {
-            return (MemorySegment) dexpp_apk_analysis.invokeExact(apk, err);
+            return (MemorySegment) dexpp_apk_analysis.invokeExact(apk, threads, err);
         } catch (Throwable t) {
             throw failure(t);
         }

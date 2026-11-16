@@ -369,6 +369,111 @@ func TestApkAnalysis(t *testing.T) {
 	}
 }
 
+func TestOpenAPKBytesMatchesOpenAPK(t *testing.T) {
+	raw, err := os.ReadFile(data("signed.apk"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	fromFile := mustAPK(t, "signed.apk")
+	apk, err := OpenAPKBytes(raw, "signed.apk")
+	if err != nil {
+		t.Fatalf("OpenAPKBytes: %v", err)
+	}
+	defer apk.Close()
+	// The Apk holds its own copy: overwriting the slice changes nothing.
+	clear(raw)
+
+	if got, want := apk.Entries(), fromFile.Entries(); !slices.Equal(got, want) {
+		t.Errorf("Entries = %v, want %v", got, want)
+	}
+	dex, ok := apk.Read("classes.dex")
+	want, _ := fromFile.Read("classes.dex")
+	if !ok || !bytes.Equal(dex, want) {
+		t.Errorf("Read(classes.dex) = %d bytes, %v; want %d bytes", len(dex), ok, len(want))
+	}
+	if pkg, ok := apk.Package(); !ok || pkg != "com.example.dexpp" {
+		t.Errorf("Package = %q, %v", pkg, ok)
+	}
+	if name, ok := apk.Resources().ResolveString(0x7f010000); !ok || name != "Dexpp Sample" {
+		t.Errorf("ResolveString = %q, %v", name, ok)
+	}
+	s := apk.Signing()
+	if !s.IsSigned() || len(s.Certificates) != 1 ||
+		s.Certificates[0].SHA256Hex != fromFile.Signing().Certificates[0].SHA256Hex {
+		t.Errorf("Signing = %+v", s)
+	}
+	ctx, err := apk.Analysis(WithThreads(1))
+	if err != nil {
+		t.Fatalf("Analysis: %v", err)
+	}
+	defer ctx.Close()
+	if ctx.FindClass("LTestDex;") == nil {
+		t.Error("no LTestDex; in the bytes of signed.apk")
+	}
+}
+
+func TestOpenAPKBytesErrors(t *testing.T) {
+	for _, c := range []struct {
+		data   []byte
+		label  string
+		prefix string
+	}{
+		{[]byte("not an apk"), "", "<apk>: "},
+		{[]byte("not an apk"), "upload.apk", "upload.apk: "},
+		{nil, "", "<apk>: "},
+		{[]byte{}, "empty.apk", "empty.apk: "},
+	} {
+		apk, err := OpenAPKBytes(c.data, c.label)
+		if apk != nil || !errors.Is(err, ErrInvalidAPK) {
+			t.Errorf("OpenAPKBytes(%q, %q) = %v, %v", c.data, c.label, apk, err)
+			continue
+		}
+		var e *Error
+		if !errors.As(err, &e) || !strings.HasPrefix(e.Message, c.prefix) {
+			t.Errorf("OpenAPKBytes(%q, %q): message %q, want prefix %q", c.data, c.label, err, c.prefix)
+		}
+	}
+
+	// The label also starts the errors of Analysis.
+	raw, err := os.ReadFile(data("nodex.apk"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	apk, err := OpenAPKBytes(raw, "nodex-upload.apk")
+	if err != nil {
+		t.Fatalf("OpenAPKBytes: %v", err)
+	}
+	defer apk.Close()
+	_, err = apk.Analysis()
+	var e *Error
+	if !errors.Is(err, ErrInvalidAPK) || !errors.As(err, &e) ||
+		!strings.HasPrefix(e.Message, "nodex-upload.apk: ") {
+		t.Errorf("Analysis of nodex.apk bytes: %v", err)
+	}
+}
+
+func TestApkAnalysisWithAnyThreadCount(t *testing.T) {
+	// multidex.apk has four deflated DEX entries, enough for the parallel path.
+	apk := mustAPK(t, "multidex.apk")
+	load := func(opts ...LoadOption) []string {
+		ctx, err := apk.Analysis(opts...)
+		if err != nil {
+			t.Fatalf("Analysis: %v", err)
+		}
+		defer ctx.Close()
+		return classDescriptors(ctx)
+	}
+	serial := load(WithThreads(1))
+	if len(serial) == 0 || serial[0] != "LTestDex;" {
+		t.Fatalf("serial classes = %v, want LTestDex; first", serial)
+	}
+	for _, opts := range [][]LoadOption{{WithThreads(4)}, nil, {WithThreads(-3)}, {nil}, {WithThreads(1)}} {
+		if got := load(opts...); !slices.Equal(got, serial) {
+			t.Errorf("classes with %d options = %v, want %v", len(opts), got, serial)
+		}
+	}
+}
+
 func TestApkReadsAnEmptyEntry(t *testing.T) {
 	// A one-entry ZIP whose entry is empty: Read gives an empty slice and
 	// true, not nil and false.

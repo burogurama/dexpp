@@ -61,7 +61,8 @@ runs them and checks what they print. `docs/java.md`
 (<https://burogurama.github.io/dexpp/java/>) covers setup, errors and memory.
 
 - `AnalysisContext.fromDex`, `fromDexFiles` and `fromApk` load code;
-  `Apk.open` opens an APK for its manifest, resources and signatures;
+  `Apk.open` (a file) and `Apk.fromBytes` (bytes in memory) open an APK for
+  its manifest, resources, signatures and code;
   `Model.readFile` reads a DEX file into the editable model.
 - Handles (`AnalysisContext`, `DexClass`, `DexMethod`, `Model`, ...) are
   `AutoCloseable`; a `Cleaner` frees the ones that are never closed.

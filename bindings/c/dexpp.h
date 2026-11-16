@@ -1278,6 +1278,20 @@ typedef struct DexppSigningInfo
 /** Open an APK file. Errors: FILE_NOT_FOUND, CANNOT_READ, INVALID_APK. */
 DEXPP_C_API DexppApk *dexpp_apk_open(const char *path, DexppError **err);
 
+/** Open an APK from its bytes in memory, for example bytes received over the
+ *  network. The @p len bytes at @p bytes are copied, so the caller may free
+ *  them as soon as this returns. They get the same checks as a file given to
+ *  dexpp_apk_open(), and the APK handle then works the same.
+ *
+ *  @p label names the bytes at the start of error messages, where
+ *  dexpp_apk_open() puts the path, and is also used by the errors of
+ *  dexpp_apk_analysis(); NULL gives `"<apk>"`. @p bytes may be NULL when
+ *  @p len is 0 (no bytes are not an APK, so this fails with INVALID_APK);
+ *  NULL with a nonzero @p len also fails with INVALID_APK.
+ *  Errors: INVALID_APK. */
+DEXPP_C_API DexppApk *dexpp_apk_open_buffer(const uint8_t *bytes, size_t len, const char *label,
+                                            DexppError **err);
+
 /** Free an APK handle. Accepts NULL. */
 DEXPP_C_API void dexpp_apk_free(DexppApk *apk);
 
@@ -1347,8 +1361,18 @@ DEXPP_C_API void dexpp_apk_signing(const DexppApk *apk, DexppSigningInfo *out);
 DEXPP_C_API void dexpp_signing_info_clear(DexppSigningInfo *info);
 
 /** A code-analysis context over every classes*.dex of the APK, in multidex
- *  order. Errors: INVALID_APK, INVALID_DEX. */
-DEXPP_C_API DexppContext *dexpp_apk_analysis(const DexppApk *apk, DexppError **err);
+ *  order, loaded from the bytes the APK handle already holds. `threads` is as
+ *  for dexpp_context_from_apk(): 0 lets the library choose, 1 keeps all work,
+ *  the call graph included, on the calling thread.
+ *
+ *  The analysis is built on the first call and kept, one for each value of
+ *  `threads`: a later call with the same value gives a new handle to the same
+ *  analysis, so its call graph and other structures are built once. A call
+ *  with another value builds a second analysis, which holds its own copy of
+ *  the DEX files. So use one value in a program. Free the handle with
+ *  dexpp_context_free(). Errors: INVALID_APK, INVALID_DEX. */
+DEXPP_C_API DexppContext *dexpp_apk_analysis(const DexppApk *apk, uint32_t threads,
+                                             DexppError **err);
 
 /** @} */
 

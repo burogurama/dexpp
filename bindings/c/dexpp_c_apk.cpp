@@ -3,7 +3,9 @@
 
 #include "dexpp.h"
 
+#include <cstdint>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -73,6 +75,28 @@ DexppApk *dexpp_apk_open(const char *path, DexppError **err)
     reset(err);
     return guarded<DexppApk *>(err, nullptr, [&]() -> DexppApk * {
         auto r = dex::apk::Apk::open(path);
+        if (!r) {
+            set_error(err, r.error());
+            return nullptr;
+        }
+        return new DexppApk{std::move(*r)};
+    });
+}
+
+DexppApk *dexpp_apk_open_buffer(const uint8_t *bytes, size_t len, const char *label,
+                                DexppError **err)
+{
+    reset(err);
+    return guarded<DexppApk *>(err, nullptr, [&]() -> DexppApk * {
+        const std::string name = label != nullptr ? label : "<apk>";
+        if (bytes == nullptr && len != 0) {
+            set_error(err, DEXPP_ERROR_INVALID_APK,
+                      name + ": no data (a NULL pointer with " + std::to_string(len) + " bytes)");
+            return nullptr;
+        }
+        // The span overload copies, so the caller keeps ownership of bytes.
+        // A NULL pointer with a length of 0 is a valid empty span.
+        auto r = dex::apk::Apk::from_buffer(std::span<const uint8_t>(bytes, len), name);
         if (!r) {
             set_error(err, r.error());
             return nullptr;
@@ -288,11 +312,13 @@ void dexpp_signing_info_clear(DexppSigningInfo *info)
     *info = DexppSigningInfo{};
 }
 
-DexppContext *dexpp_apk_analysis(const DexppApk *apk, DexppError **err)
+DexppContext *dexpp_apk_analysis(const DexppApk *apk, uint32_t threads, DexppError **err)
 {
     reset(err);
     return guarded<DexppContext *>(err, nullptr, [&]() -> DexppContext * {
-        auto r = apk->apk.analysis();
+        dex::ApkLoadOptions options;
+        options.threads = threads;
+        auto r = apk->apk.analysis(options);
         if (!r) {
             set_error(err, r.error());
             return nullptr;

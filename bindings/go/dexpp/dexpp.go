@@ -12,7 +12,8 @@
 //   - the calls, field accesses, string loads and type uses of a method, and
 //     its parameter registers;
 //   - the call graph, the class hierarchy and the cross-reference index;
-//   - the APK: archive entries, the manifest, resources and signing (OpenAPK);
+//   - the APK, from a file or from bytes in memory: archive entries, the
+//     manifest, resources and signing (OpenAPK, OpenAPKBytes);
 //   - the editable DEX model, a whole class at a time (ReadModel, NewModel).
 //
 // # Building
@@ -733,15 +734,28 @@ func FromDEXFiles(paths []string) (*Context, error) {
 	return newContext(p), nil
 }
 
-// LoadOption changes how FromAPK loads an APK.
+// LoadOption changes how FromAPK and Apk.Analysis load an APK.
 type LoadOption func(*loadOptions)
 
 type loadOptions struct{ threads uint32 }
 
-// WithThreads sets how many threads FromAPK uses to decompress the DEX files
-// and, later, to build the call graph. 1 keeps all work on the calling
-// thread; use it when the program already analyses several APKs in parallel.
-// 0, the default, lets the library choose. A negative number counts as 0.
+// applyLoadOptions returns the options with every LoadOption applied; a nil
+// LoadOption is skipped.
+func applyLoadOptions(opts []LoadOption) loadOptions {
+	var o loadOptions
+	for _, opt := range opts {
+		if opt != nil {
+			opt(&o)
+		}
+	}
+	return o
+}
+
+// WithThreads sets how many threads FromAPK or Apk.Analysis uses to
+// decompress the DEX files and, later, to build the call graph. 1 keeps all
+// work on the calling thread; use it when the program already analyses several
+// APKs in parallel. 0, the default, lets the library choose. A negative number
+// counts as 0.
 func WithThreads(n int) LoadOption {
 	return func(o *loadOptions) {
 		if n < 0 {
@@ -755,12 +769,7 @@ func WithThreads(n int) LoadOption {
 // order: classes.dex, classes2.dex, classes3.dex and so on. It fails with
 // CodeFileNotFound, CodeCannotRead, CodeInvalidAPK or CodeInvalidDex.
 func FromAPK(path string, opts ...LoadOption) (*Context, error) {
-	var o loadOptions
-	for _, opt := range opts {
-		if opt != nil {
-			opt(&o)
-		}
-	}
+	o := applyLoadOptions(opts)
 	cpath := C.CString(path)
 	defer C.free(unsafe.Pointer(cpath))
 	var cerr *C.DexppError

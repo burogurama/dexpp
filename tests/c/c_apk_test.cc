@@ -4,13 +4,18 @@
 #include <gtest/gtest.h>
 
 #include <cstddef>
+#include <cstdint>
+#include <cstdlib>
+#include <cstring>
 #include <map>
 #include <string>
 #include <vector>
 
+#include "../raw/test_utils.hpp"
 #include "c_test_util.hpp"
 #include "dexpp.h"
 
+using c_test::list;
 using c_test::message;
 using c_test::str;
 using c_test::take;
@@ -28,7 +33,143 @@ DexppApk *open_apk(const char *path)
     return apk;
 }
 
+/** The descriptor of every class of @p ctx, in order. */
+std::vector<std::string> class_descriptors(const DexppContext *ctx)
+{
+    size_t count = 0;
+    DexppClass **classes = dexpp_context_classes(ctx, &count);
+    std::vector<std::string> out;
+    for (size_t i = 0; i < count; ++i)
+        out.push_back(c_test::take(dexpp_class_descriptor(classes[i])));
+    dexpp_class_array_free(classes, count);
+    return out;
+}
+
+/** The bytes of entry @p name of @p apk, or an empty vector. */
+std::vector<uint8_t> entry_bytes(const DexppApk *apk, const char *name)
+{
+    uint8_t *data = nullptr;
+    size_t length = 0;
+    if (dexpp_apk_read(apk, name, &data, &length) == 0)
+        return {};
+    std::vector<uint8_t> out(data, data + length);
+    dexpp_buffer_free(data);
+    return out;
+}
+
 } // namespace
+
+TEST(CApiApk, OpenBufferMatchesOpen)
+{
+    // The bytes live in a malloc'd block that is freed right after the call:
+    // the APK handle must have its own copy (ASan reports a use after free
+    // otherwise).
+    const std::vector<uint8_t> file = load_buf("tests/data/signed.apk");
+    auto *bytes = static_cast<uint8_t *>(std::malloc(file.size()));
+    ASSERT_NE(bytes, nullptr);
+    std::memcpy(bytes, file.data(), file.size());
+    DexppError *err = nullptr;
+    DexppApk *apk = dexpp_apk_open_buffer(bytes, file.size(), "signed.apk", &err);
+    std::free(bytes);
+    ASSERT_NE(apk, nullptr) << message(err);
+    EXPECT_EQ(err, nullptr);
+
+    DexppApk *from_file = open_apk("tests/data/signed.apk");
+    ASSERT_NE(from_file, nullptr);
+    EXPECT_EQ(list([&](size_t *n) { return dexpp_apk_entries(apk, n); }),
+              list([&](size_t *n) { return dexpp_apk_entries(from_file, n); }));
+    EXPECT_EQ(entry_bytes(apk, "classes.dex"), entry_bytes(from_file, "classes.dex"));
+    EXPECT_FALSE(entry_bytes(apk, "classes.dex").empty());
+    EXPECT_EQ(c_test::take(dexpp_apk_package(apk)), "com.example.dexpp");
+    DexppText text{};
+    ASSERT_EQ(dexpp_apk_resolve_string(apk, 0x7f010000, &text), 1);
+    EXPECT_EQ(str(text), "Dexpp Sample");
+    dexpp_text_clear(&text);
+
+    DexppSigningInfo signing{};
+    DexppSigningInfo signing_from_file{};
+    dexpp_apk_signing(apk, &signing);
+    dexpp_apk_signing(from_file, &signing_from_file);
+    EXPECT_EQ(signing.v1, 1);
+    EXPECT_EQ(signing.v2, 1);
+    EXPECT_EQ(signing.v3, 1);
+    ASSERT_EQ(signing.certificate_count, 1u);
+    ASSERT_EQ(signing_from_file.certificate_count, 1u);
+    EXPECT_STREQ(signing.certificates[0].sha256_hex, signing_from_file.certificates[0].sha256_hex);
+    dexpp_signing_info_clear(&signing);
+    dexpp_signing_info_clear(&signing_from_file);
+
+    DexppContext *ctx = dexpp_apk_analysis(apk, 1, &err);
+    ASSERT_NE(ctx, nullptr) << message(err);
+    DexppClass *cls = dexpp_context_find_class(ctx, "LTestDex;");
+    EXPECT_NE(cls, nullptr);
+    dexpp_class_free(cls);
+    dexpp_context_free(ctx);
+    dexpp_apk_free(from_file);
+    dexpp_apk_free(apk);
+}
+
+TEST(CApiApk, OpenBufferErrors)
+{
+    const char not_an_apk[] = "not an apk";
+    const auto *text = reinterpret_cast<const uint8_t *>(not_an_apk);
+    struct Case
+    {
+        const uint8_t *bytes;
+        size_t len;
+        const char *label;
+        const char *prefix;
+    };
+    for (const Case &c : {Case{text, sizeof not_an_apk - 1, nullptr, "<apk>: "},
+                          Case{text, sizeof not_an_apk - 1, "upload.apk", "upload.apk: "},
+                          Case{text, 0, nullptr, "<apk>: "}, Case{nullptr, 0, nullptr, "<apk>: "},
+                          Case{nullptr, 5, "null.apk", "null.apk: "}}) {
+        SCOPED_TRACE(std::string(c.prefix) + std::to_string(c.len));
+        DexppError *err = nullptr;
+        EXPECT_EQ(dexpp_apk_open_buffer(c.bytes, c.len, c.label, &err), nullptr);
+        ASSERT_NE(err, nullptr);
+        EXPECT_EQ(dexpp_error_code(err), DEXPP_ERROR_INVALID_APK);
+        EXPECT_EQ(message(err).rfind(c.prefix, 0), 0u) << message(err);
+        dexpp_error_free(err);
+        EXPECT_EQ(dexpp_apk_open_buffer(c.bytes, c.len, c.label, nullptr), nullptr);
+    }
+
+    // The label also starts the errors of the analysis.
+    const std::vector<uint8_t> nodex = load_buf("tests/data/nodex.apk");
+    DexppError *err = nullptr;
+    DexppApk *apk = dexpp_apk_open_buffer(nodex.data(), nodex.size(), "nodex-upload.apk", &err);
+    ASSERT_NE(apk, nullptr) << message(err);
+    EXPECT_EQ(dexpp_apk_analysis(apk, 1, &err), nullptr);
+    ASSERT_NE(err, nullptr);
+    EXPECT_EQ(dexpp_error_code(err), DEXPP_ERROR_INVALID_APK);
+    EXPECT_EQ(message(err).rfind("nodex-upload.apk: ", 0), 0u) << message(err);
+    dexpp_error_free(err);
+    dexpp_apk_free(apk);
+}
+
+TEST(CApiApk, AnalysisWithAnyThreadCount)
+{
+    // multidex.apk has four deflated DEX entries, enough for the parallel path.
+    DexppApk *apk = open_apk("tests/data/multidex.apk");
+    ASSERT_NE(apk, nullptr);
+    std::vector<std::string> expected;
+    for (uint32_t threads : {1u, 0u, 4u, 1u, 0u}) {
+        SCOPED_TRACE(threads);
+        DexppError *err = nullptr;
+        DexppContext *ctx = dexpp_apk_analysis(apk, threads, &err);
+        ASSERT_NE(ctx, nullptr) << message(err);
+        EXPECT_EQ(err, nullptr);
+        std::vector<std::string> classes = class_descriptors(ctx);
+        dexpp_context_free(ctx);
+        if (expected.empty()) {
+            expected = classes;
+            ASSERT_FALSE(expected.empty());
+            EXPECT_EQ(expected.front(), "LTestDex;");
+        }
+        EXPECT_EQ(classes, expected);
+    }
+    dexpp_apk_free(apk);
+}
 
 TEST(CApiApk, ReadsTheWholeManifest)
 {
@@ -113,11 +254,11 @@ TEST(CApiApk, SeparatesExportedFromReachable)
 
     // This APK has a manifest but no code.
     DexppError *err = nullptr;
-    EXPECT_EQ(dexpp_apk_analysis(apk, &err), nullptr);
+    EXPECT_EQ(dexpp_apk_analysis(apk, 0, &err), nullptr);
     ASSERT_NE(err, nullptr);
     EXPECT_EQ(dexpp_error_code(err), DEXPP_ERROR_INVALID_APK);
     dexpp_error_free(err);
-    EXPECT_EQ(dexpp_apk_analysis(apk, nullptr), nullptr);
+    EXPECT_EQ(dexpp_apk_analysis(apk, 0, nullptr), nullptr);
     dexpp_apk_free(apk);
 }
 
@@ -138,7 +279,7 @@ TEST(CApiApk, AnApkWithoutAManifestOrResources)
     DexppResourceName name{};
     EXPECT_EQ(dexpp_apk_resource_name(apk, 0x7f010000, &name), 0);
 
-    DexppContext *ctx = dexpp_apk_analysis(apk, nullptr);
+    DexppContext *ctx = dexpp_apk_analysis(apk, 0, nullptr);
     ASSERT_NE(ctx, nullptr);
     dexpp_apk_free(apk); // the context does not need the APK handle
     DexppClass *cls = dexpp_context_find_class(ctx, "LFibonacci;");

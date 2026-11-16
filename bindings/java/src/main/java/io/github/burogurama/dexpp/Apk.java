@@ -54,6 +54,44 @@ public final class Apk implements AutoCloseable {
     }
 
     /**
+     * Opens an APK from its bytes in memory, for example bytes downloaded from the network. The
+     * bytes get the same checks as a file given to {@link #open(Path)}, and the APK then works the
+     * same. The APK keeps its own copy, so the array may be changed as soon as this returns. Error
+     * messages start with {@code "<apk>"}.
+     *
+     * @param data the content of an APK file
+     * @return the APK
+     * @throws InvalidApkException if the bytes are not a ZIP archive
+     */
+    public static Apk fromBytes(byte[] data) {
+        return fromBytes(data, null);
+    }
+
+    /**
+     * Opens an APK from its bytes in memory, with a name for error messages.
+     *
+     * @param data the content of an APK file
+     * @param label a name for the bytes, used at the start of error messages where {@link
+     *     #open(Path)} puts the path, for example the name of the file they came from; {@link
+     *     #analysis()} uses it too. null gives {@code "<apk>"}.
+     * @return the APK
+     * @throws InvalidApkException if the bytes are not a ZIP archive
+     */
+    public static Apk fromBytes(byte[] data, String label) {
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment bytes = arena.allocate(Math.max(1, data.length));
+            MemorySegment.copy(data, 0, bytes, JAVA_BYTE, 0, data.length);
+            MemorySegment name = label == null ? MemorySegment.NULL : Mem.cString(arena, label);
+            MemorySegment err = Errors.slot(arena);
+            MemorySegment p = Native.dexpp_apk_open_buffer(bytes, data.length, name, err);
+            if (Mem.isNull(p)) {
+                throw Errors.unchecked(err);
+            }
+            return new Apk(p);
+        }
+    }
+
+    /**
      * Frees the APK handle at once. An {@link AnalysisContext} that came from {@link #analysis()}
      * stays valid. A second call does nothing.
      */
@@ -112,17 +150,37 @@ public final class Apk implements AutoCloseable {
 
     /**
      * The code of the APK: an {@link AnalysisContext} over every {@code classes*.dex} entry, in
-     * multidex order. It reuses the archive bytes the APK already holds.
+     * multidex order. It reuses the archive bytes the APK already holds, and lets the library
+     * choose the number of threads. The same as {@code analysis(0)}.
      *
      * @return the analysis of the code
-     * @throws InvalidApkException if the APK has no {@code classes.dex}
+     * @throws InvalidApkException if the APK has no {@code classes.dex}, or an entry is damaged
      * @throws InvalidDexException if a DEX entry is not a valid DEX file
      */
     public AnalysisContext analysis() {
+        return analysis(0);
+    }
+
+    /**
+     * The code of the APK, with a given number of threads.
+     *
+     * <p>The analysis is built on the first call and kept, one for each thread count: a later call
+     * with the same count returns a new {@link AnalysisContext} for the same analysis, so its call
+     * graph and other structures are built once. A call with another count builds a second
+     * analysis, which holds its own copy of the DEX files. So use one count in a program.
+     *
+     * @param threads how many threads decompress the DEX entries and, later, build the call graph,
+     *     as for {@link AnalysisContext#fromApk(Path, int)}. 1 keeps all work on the calling
+     *     thread. 0 lets the library choose. A negative number counts as 0.
+     * @return the analysis of the code
+     * @throws InvalidApkException if the APK has no {@code classes.dex}, or an entry is damaged
+     * @throws InvalidDexException if a DEX entry is not a valid DEX file
+     */
+    public AnalysisContext analysis(int threads) {
         return handle.call(a -> {
             try (Arena arena = Arena.ofConfined()) {
                 MemorySegment err = Errors.slot(arena);
-                MemorySegment p = Native.dexpp_apk_analysis(a, err);
+                MemorySegment p = Native.dexpp_apk_analysis(a, Math.max(0, threads), err);
                 if (Mem.isNull(p)) {
                     throw Errors.unchecked(err);
                 }
