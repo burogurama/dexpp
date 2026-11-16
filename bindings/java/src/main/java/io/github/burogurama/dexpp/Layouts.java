@@ -195,6 +195,13 @@ final class Layouts {
         static final StructLayout LAYOUT = B.build("DexppStringLoad");
     }
 
+    static final class DisassemblyLine {
+        private static final Builder B = new Builder();
+        static final long OFFSET = B.i32("offset");
+        static final long TEXT = B.ptr("text");
+        static final StructLayout LAYOUT = B.build("DexppDisassemblyLine");
+    }
+
     static final class TypeUse {
         private static final Builder B = new Builder();
         static final long CODE_OFFSET = B.i32("code_offset");
@@ -525,6 +532,7 @@ final class Layouts {
             MethodCall.LAYOUT,
             FieldAccess.LAYOUT,
             StringLoad.LAYOUT,
+            DisassemblyLine.LAYOUT,
             TypeUse.LAYOUT,
             CatchHandler.LAYOUT,
             TryBlock.LAYOUT,

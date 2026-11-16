@@ -157,6 +157,48 @@ func TestToStringOfEveryInstruction(t *testing.T) {
 	}
 }
 
+func TestDisassemble(t *testing.T) {
+	ctx := mustDEX(t, "classes.dex")
+	main := mustMethod(t, mustClass(t, ctx, "LTestDex;"), "main")
+	want := []DisassemblyLine{
+		{0, "sget-object v1, Ljava/lang/System;->out:Ljava/io/PrintStream;"},
+		{2, "invoke-static {}, LTestDex;->helloDex()Ljava/lang/String;"},
+		{5, "move-result-object v0"},
+		{6, "invoke-virtual {v1, v0}, Ljava/io/PrintStream;->println(Ljava/lang/String;)V"},
+		{9, "return-void"},
+	}
+	if got := main.Disassemble(); !slices.Equal(got, want) {
+		t.Errorf("Disassemble() = %q, want %q", got, want)
+	}
+	insns := main.Instructions()
+	for i, line := range main.Disassemble() {
+		if line.Offset != insns[i].Base().Offset {
+			t.Errorf("line %d is at %d, its instruction at %d", i, line.Offset, insns[i].Base().Offset)
+		}
+	}
+
+	shapes := mustDEX(t, "shapes.dex")
+	if lines := mustMethod(t, mustClass(t, shapes, "LShape;"), "area").Disassemble(); lines != nil {
+		t.Errorf("an abstract method has lines: %q", lines)
+	}
+
+	handles := mustDEX(t, "handles.dex")
+	run := mustMethod(t, mustClass(t, handles, "LHandles;"), "run").Disassemble()
+	if len(run) != 7 || run[3].Text != "const-method-handle v2, invoke-static@LHandles;->target(I)I" ||
+		!strings.HasPrefix(run[5].Text, `invoke-custom {v1}, call_site@0("apply", (I)V)@`) {
+		t.Errorf("handles.dex run() = %q", run)
+	}
+	strs := mustDEX(t, "multistring.dex")
+	clinit := mustMethod(t, mustClass(t, strs, "LMultiStringTest;"), "<clinit>")
+	escaped := false
+	for _, line := range clinit.Disassemble() {
+		escaped = escaped || strings.HasSuffix(line.Text, `"test\u0000embedded"`)
+	}
+	if !escaped {
+		t.Errorf("the NUL in a string is not escaped: %q", clinit.Disassemble())
+	}
+}
+
 // otherInstruction is an Instruction type from outside the package.
 type otherInstruction struct{ InstructionBase }
 

@@ -43,11 +43,9 @@ int main(int argc, char **argv)
     for (const dex::Class &cls : ctx->classes()) {
         std::cout << cls.descriptor() << '\n';
         for (const dex::Method &method : cls.methods()) {
-            std::cout << "  " << method.name() << '\n';
-            for (const dex::Instruction &insn : method.instructions()) {
-                const uint32_t offset = dex::base_of(insn).offset;
-                std::cout << "    " << offset << ": " << dex::to_string(insn) << '\n';
-            }
+            std::cout << "  " << method.name() << method.proto() << '\n';
+            for (const dex::DisassemblyLine &line : method.disassemble())
+                std::cout << "    " << line.offset << ": " << line.text << '\n';
         }
     }
     // --8<-- [end:code]

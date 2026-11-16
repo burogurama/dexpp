@@ -985,6 +985,28 @@ final class Native {
         }
     }
 
+    private static final MethodHandle dexpp_method_disassemble =
+            downcall("dexpp_method_disassemble", ADDRESS, ADDRESS, ADDRESS);
+
+    static MemorySegment dexpp_method_disassemble(MemorySegment m, MemorySegment count) {
+        try {
+            return (MemorySegment) dexpp_method_disassemble.invokeExact(m, count);
+        } catch (Throwable t) {
+            throw failure(t);
+        }
+    }
+
+    private static final MethodHandle dexpp_disassembly_line_array_free =
+            downcallVoid("dexpp_disassembly_line_array_free", ADDRESS, JAVA_LONG);
+
+    static void dexpp_disassembly_line_array_free(MemorySegment lines, long count) {
+        try {
+            dexpp_disassembly_line_array_free.invokeExact(lines, count);
+        } catch (Throwable t) {
+            throw failure(t);
+        }
+    }
+
     private static final MethodHandle dexpp_method_cfg =
             downcall("dexpp_method_cfg", ADDRESS, ADDRESS, ADDRESS);
 

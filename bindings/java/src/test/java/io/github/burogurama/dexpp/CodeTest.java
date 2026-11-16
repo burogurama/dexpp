@@ -24,6 +24,54 @@ import java.util.Set;
 /** Decoded instructions, control-flow graphs, try blocks, registers and references. */
 class CodeTest {
     @Test
+    void disassemble() {
+        try (AnalysisContext ctx = dex("classes.dex")) {
+            DexMethod main = method(cls(ctx, "LTestDex;"), "main");
+            assertEquals(
+                    List.of(
+                            new DisassemblyLine(
+                                    0,
+                                    "sget-object v1,"
+                                            + " Ljava/lang/System;->out:Ljava/io/PrintStream;"),
+                            new DisassemblyLine(
+                                    2, "invoke-static {}, LTestDex;->helloDex()Ljava/lang/String;"),
+                            new DisassemblyLine(5, "move-result-object v0"),
+                            new DisassemblyLine(
+                                    6,
+                                    "invoke-virtual {v1, v0},"
+                                            + " Ljava/io/PrintStream;->println(Ljava/lang/String;)V"),
+                            new DisassemblyLine(9, "return-void")),
+                    main.disassemble());
+            List<Instruction> insns = main.instructions();
+            List<DisassemblyLine> lines = main.disassemble();
+            for (int i = 0; i < insns.size(); i++) {
+                assertEquals(insns.get(i).offset(), lines.get(i).offset());
+            }
+        }
+        try (AnalysisContext shapes = dex("shapes.dex")) {
+            assertEquals(List.of(), method(cls(shapes, "LShape;"), "area").disassemble());
+        }
+        try (AnalysisContext handles = dex("handles.dex")) {
+            List<DisassemblyLine> run = method(cls(handles, "LHandles;"), "run").disassemble();
+            assertEquals(7, run.size());
+            assertEquals(
+                    "const-method-handle v2, invoke-static@LHandles;->target(I)I",
+                    run.get(3).text());
+            assertTrue(
+                    run.get(5).text().startsWith("invoke-custom {v1}, call_site@0(\"apply\", (I)V)@"),
+                    run.get(5).text());
+        }
+        try (AnalysisContext multi = dex("multistring.dex")) {
+            boolean escaped = false;
+            for (DisassemblyLine line :
+                    method(cls(multi, "LMultiStringTest;"), "<clinit>").disassemble()) {
+                escaped |= line.text().endsWith("\"test\\u0000embedded\"");
+            }
+            assertTrue(escaped, "the NUL in a string is escaped");
+        }
+    }
+
+    @Test
     void instructions() {
         try (AnalysisContext ctx = dex("classes.dex")) {
             DexClass cls = cls(ctx, "LTestDex;");

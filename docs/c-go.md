@@ -17,6 +17,7 @@ for.
 | Load a DEX file, several DEX files, or an APK | `dexpp_context_from_dex`, `dexpp_context_from_dex_files`, `dexpp_context_from_apk` | `FromDEX`, `FromDEXFiles`, `FromAPK` |
 | Classes, class references, methods, fields | `dexpp_class_*`, `dexpp_class_ref_*`, `dexpp_method_*`, `dexpp_field_*` | `Class`, `ClassRef`, `Method`, `Field` |
 | Decoded bytecode | `dexpp_method_instructions`, `dexpp_opcode_name`, `dexpp_instruction_to_string` | `Method.Instructions`, `OpcodeName`, `ToString` |
+| The code as text, with names | `dexpp_method_disassemble` | `Method.Disassemble` |
 | Control-flow graph, try blocks | `dexpp_method_cfg`, `dexpp_method_try_blocks` | `Method.Cfg`, `Method.TryBlocks` |
 | Calls, field accesses, string loads, type uses, parameter registers | `dexpp_method_calls` and the functions after it | `Method.Calls` and the methods after it |
 | Annotations, initial values of static fields | `dexpp_class_annotations`, `dexpp_field_initial_value`, ... | `Class.Annotations`, `Field.InitialValue`, ... |

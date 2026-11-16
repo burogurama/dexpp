@@ -142,9 +142,18 @@ program.
 --8<-- "cpp/analysis.cpp:code"
 ```
 
+`Method::disassemble()` gives the method's code as text, one
+`dex::DisassemblyLine` (an offset and a text) per instruction, with every
+reference named: `invoke-virtual {v1, v0},
+Ljava/io/PrintStream;->println(Ljava/lang/String;)V`. The
+[code guide](guide/code.md#the-code-as-text) describes the format.
+
+`Method::instructions()` gives the decoded instructions themselves.
 `dex::Instruction` is a `std::variant` over 28 instruction structs. Use
 `std::visit` or `std::get_if` to reach the fields of one kind, and
 `dex::base_of` for the fields they all share: `offset`, `opcode` and `size`.
+`dex::to_string` writes one instruction as text with raw pool indices
+(`string@12`), since an instruction alone cannot name them.
 
 ## Ask the call graph
 

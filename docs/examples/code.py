@@ -48,6 +48,19 @@ for instruction in instructions:
     print(f"{instruction.base.offset:04x}  {dexpp.to_string(instruction)}")
 # --8<-- [end:instructions]
 
+# --8<-- [start:disassemble]
+test_ctx: dexpp.AnalysisContext = dexpp.AnalysisContext.from_dex("tests/data/classes.dex")
+test_class: dexpp.Class | None = test_ctx.find_class("LTestDex;")
+assert test_class is not None
+
+for method in test_class.methods:
+    if method.name in ("helloDex", "main"):
+        print(method.name + method.proto)
+        lines: list[dexpp.DisassemblyLine] = method.disassemble()
+        for line in lines:
+            print(f"{line.offset:04x}  {line.text}")
+# --8<-- [end:disassemble]
+
 # --8<-- [start:typed]
 for instruction in instructions:
     if isinstance(instruction, dexpp.FieldInstruction):

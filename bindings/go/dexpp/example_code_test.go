@@ -170,6 +170,41 @@ func ExampleMethod_Instructions() {
 	// 000b  return-wide v2
 }
 
+// Write a method's code as text, with every reference named.
+func ExampleMethod_Disassemble() {
+	// --8<-- [start:disassemble]
+	testCtx, err := dexpp.FromDEX("../../../tests/data/classes.dex")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer testCtx.Close()
+	testClass := testCtx.FindClass("LTestDex;")
+	if testClass == nil {
+		log.Fatal("no TestDex class")
+	}
+
+	for _, method := range testClass.Methods() {
+		if method.Name() == "helloDex" || method.Name() == "main" {
+			fmt.Println(method.Name() + method.Proto())
+			for _, line := range method.Disassemble() {
+				fmt.Printf("%04x  %s\n", line.Offset, line.Text)
+			}
+		}
+	}
+	// --8<-- [end:disassemble]
+
+	// Output:
+	// helloDex()Ljava/lang/String;
+	// 0000  const-string v0, "Hello Dex++!!"
+	// 0002  return-object v0
+	// main([Ljava/lang/String;)V
+	// 0000  sget-object v1, Ljava/lang/System;->out:Ljava/io/PrintStream;
+	// 0002  invoke-static {}, LTestDex;->helloDex()Ljava/lang/String;
+	// 0005  move-result-object v0
+	// 0006  invoke-virtual {v1, v0}, Ljava/io/PrintStream;->println(Ljava/lang/String;)V
+	// 0009  return-void
+}
+
 // Tell instruction kinds apart, and list what a method calls and accesses.
 func ExampleMethod_Calls() {
 	ctx, circle := loadClass("../../../tests/data/shapes.dex", "LCircle;")

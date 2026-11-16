@@ -425,7 +425,8 @@ PYBIND11_MODULE(dexpp, m)
     m.def("opcode_name", &opcode_name, py::arg("opcode"),
           "Mnemonic for a raw Dalvik opcode byte (e.g. 0x6e -> 'invoke-virtual').");
     m.def("to_string", &to_string, py::arg("instruction"),
-          "Render a decoded instruction as '<mnemonic> <operands>' with raw pool indices.");
+          "Render a decoded instruction as '<mnemonic> <operands>' with raw pool indices; "
+          "Method.disassemble() names them.");
 
     // ===== identities =====
 
@@ -814,6 +815,10 @@ PYBIND11_MODULE(dexpp, m)
         .def_readonly("handlers", &owned::TryBlock::handlers)
         .def_readonly("catch_all_offset", &owned::TryBlock::catch_all_offset);
 
+    py::class_<DisassemblyLine>(m, "DisassemblyLine")
+        .def_readonly("offset", &DisassemblyLine::offset)
+        .def_readonly("text", &DisassemblyLine::text);
+
     py::class_<owned::ParameterRegister>(m, "ParameterRegister")
         .def_readonly("reg", &owned::ParameterRegister::reg)
         .def_readonly("type", &owned::ParameterRegister::type)
@@ -860,6 +865,7 @@ PYBIND11_MODULE(dexpp, m)
         .def("field_accesses", &Method::field_accesses)
         .def("string_loads", [](const Method &m_) { return owned::from_all(m_.string_loads()); })
         .def("type_uses", [](const Method &m_) { return owned::from_all(m_.type_uses()); })
+        .def("disassemble", &Method::disassemble)
         .def_property_readonly("try_blocks",
                                [](const Method &m_) { return owned::from_all(m_.try_blocks()); })
         .def_property_readonly("annotations", &Method::annotations)

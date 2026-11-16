@@ -513,6 +513,25 @@ char *dexpp_instruction_to_string(const DexppInstruction *insn)
     return cstr(dex::to_string(*rebuilt));
 }
 
+DexppDisassemblyLine *dexpp_method_disassemble(const DexppMethod *m, size_t *count)
+{
+    std::vector<dex::DisassemblyLine> lines = m->method.disassemble();
+    *count = lines.size();
+    DexppDisassemblyLine *out = alloc_array<DexppDisassemblyLine>(lines.size());
+    for (size_t i = 0; i < lines.size(); ++i)
+        out[i] = DexppDisassemblyLine{lines[i].offset, cstr(lines[i].text)};
+    return out;
+}
+
+void dexpp_disassembly_line_array_free(DexppDisassemblyLine *lines, size_t count)
+{
+    if (lines == nullptr)
+        return;
+    for (size_t i = 0; i < count; ++i)
+        std::free(lines[i].text);
+    std::free(lines);
+}
+
 /* ---- Control-flow graph ------------------------------------------------- */
 
 DexppBasicBlock *dexpp_method_cfg(const DexppMethod *m, size_t *count)

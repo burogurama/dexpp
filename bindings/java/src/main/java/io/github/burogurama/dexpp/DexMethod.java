@@ -308,6 +308,38 @@ public final class DexMethod implements AutoCloseable {
     }
 
     /**
+     * The method's code as readable text: one line per instruction, in the order of {@link
+     * #instructions()}, each with the instruction's offset.
+     *
+     * <p>The text is the opcode name, then the operands, with every reference named instead of
+     * numbered: a method is {@code Lclass;->name(Params)Return}, a field {@code
+     * Lclass;->name:Type}, a type its descriptor, a prototype {@code (Params)Return}, and a method
+     * handle its kind and member ({@code invoke-static@LA;->f()V}). A string is in double quotes,
+     * with quotes, backslashes, control characters and invisible characters escaped. A call site
+     * is {@code call_site@N} followed by its name, method type and extra arguments in parentheses,
+     * then {@code @} and the bootstrap method. Literals are hexadecimal as in smali ({@code 0x1f},
+     * {@code -0x1}, {@code 0x10L} for a wide constant). Branch targets are code offsets in
+     * hexadecimal, the same numbers as the offsets of the lines ({@code if-eqz v0, 0012}). Switch
+     * and array tables are written out in the instruction that uses them: {@code packed-switch
+     * v0, {0x1 -> 0012}} and {@code fill-array-data v0, [0x1, 0x2]}. A reference whose index is
+     * outside its table is the raw index followed by a question mark ({@code string@4?}), and so
+     * is a branch target outside the code or a damaged table.
+     *
+     * @return the lines; empty for a method without code
+     */
+    public List<DisassemblyLine> disassemble() {
+        return handle.call(p ->
+                Mem.take(
+                        (arena, count) -> Native.dexpp_method_disassemble(p, count),
+                        Layouts.DisassemblyLine.LAYOUT,
+                        (m, b) ->
+                                new DisassemblyLine(
+                                        Mem.i32(m, b + Layouts.DisassemblyLine.OFFSET),
+                                        Mem.string(m, b + Layouts.DisassemblyLine.TEXT)),
+                        Native::dexpp_disassembly_line_array_free));
+    }
+
+    /**
      * Every instruction in the method's code that names a type, in order.
      *
      * @return the type uses

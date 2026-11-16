@@ -1,12 +1,7 @@
-#include <cstdio>
+#include <format>
 #include <iostream>
 
 #include "dex.hpp"
-
-static void print_instruction(const dex::Instruction &insn)
-{
-    std::printf("    [%04x] %s\n", dex::base_of(insn).offset, dex::to_string(insn).c_str());
-}
 
 int main(int argc, const char *argv[])
 {
@@ -25,18 +20,19 @@ int main(int argc, const char *argv[])
         std::cout << "Class: " << cls.descriptor() << '\n';
 
         for (const auto &method : cls.methods()) {
-            std::printf("  %s\n", method.name().data());
+            std::cout << "  " << method.name() << method.proto() << '\n';
 
-            auto insns = method.instructions();
-            if (insns.empty()) {
-                std::puts("    (abstract / native)");
+            if (!method.has_code()) {
+                std::cout << "    (abstract / native)\n";
                 continue;
             }
 
-            for (const auto &insn : insns)
-                print_instruction(insn);
+            // Each instruction with its references named; dex::to_string()
+            // prints the same instructions with raw pool indices.
+            for (const auto &line : method.disassemble())
+                std::cout << std::format("    [{:04x}] {}\n", line.offset, line.text);
         }
 
-        std::putchar('\n');
+        std::cout << '\n';
     }
 }

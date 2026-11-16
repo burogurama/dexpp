@@ -104,6 +104,35 @@
   DEX files besides the biggest held less than 1 MiB always stayed on the
   calling thread. The automatic count (0) keeps that rule.
 
+### Readable bytecode
+
+- A method's code can now be read as text with every reference named, in the
+  style of smali and dexdump: one line per instruction, with its offset, such
+  as `invoke-virtual {v0, v1},
+  Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;`,
+  `const-string v1, "hello"` or `iget v0, v1, Lcom/example/Foo;->count:I`.
+    - Strings are quoted, with quotes, backslashes, control characters and
+      invisible characters (such as U+200B or a right-to-left override)
+      escaped.
+    - A method handle shows its kind and member (`invoke-static@LA;->f()V`),
+      a prototype its descriptor, and a call site its method name, method
+      type, extra arguments and bootstrap method.
+    - Branch targets are code offsets, the same numbers as the offsets of the
+      lines; switch and array tables are written out in the instruction that
+      uses them.
+    - A reference outside its table, in a damaged file, shows as the raw
+      index with a question mark (`string@4?`).
+    - C++: `Method::disassemble()` and `dex::DisassemblyLine`. Python:
+      `Method.disassemble()` and `DisassemblyLine`. C:
+      `dexpp_method_disassemble()`, `DexppDisassemblyLine` and
+      `dexpp_disassembly_line_array_free()`. Go: `Method.Disassemble()` and
+      `DisassemblyLine`. Java: `DexMethod.disassemble()` and the
+      `DisassemblyLine` record.
+- `to_string` (Go `ToString`, Java `Dexpp.toString`) still writes one
+  instruction with raw pool indices, as it has no file to name them from.
+- The demo disassembler (`main_test`) now prints the named form, and each
+  method's prototype.
+
 ## 0.3.1
 
 ### APK from memory

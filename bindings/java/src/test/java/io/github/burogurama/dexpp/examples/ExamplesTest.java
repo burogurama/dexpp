@@ -88,6 +88,8 @@ class ExamplesTest {
                     new Example("code", "methods", CodeExamples.class, CodeExamples::methods),
                     new Example("code", "instructions", CodeExamples.class,
                             CodeExamples::instructions),
+                    new Example("code", "disassemble", CodeExamples.class,
+                            CodeExamples::disassemble),
                     new Example("code", "typed", CodeExamples.class, CodeExamples::typed),
                     new Example("code", "registers", CodeExamples.class, CodeExamples::registers),
                     new Example("code", "cfg", CodeExamples.class, CodeExamples::cfg),

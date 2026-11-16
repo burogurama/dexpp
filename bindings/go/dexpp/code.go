@@ -587,7 +587,8 @@ func OpcodeName(opcode uint8) string {
 // ToString writes one instruction as text: the opcode name, then its
 // operands, such as "const-string v0, string@12". Operands that point into a
 // table of the DEX file are shown as raw indices (string@12, method@4); an
-// instruction alone cannot turn them into names.
+// instruction alone cannot turn them into names. Method.Disassemble gives the
+// same instructions with every reference named.
 func ToString(insn Instruction) string {
 	c := cInstruction(insn)
 	defer func() {
@@ -595,6 +596,51 @@ func ToString(insn Instruction) string {
 		C.free(unsafe.Pointer(c.arg_regs))
 	}()
 	return takeString(C.dexpp_instruction_to_string(&c))
+}
+
+// DisassemblyLine is one instruction of a method as readable text.
+type DisassemblyLine struct {
+	// Offset is the offset of the instruction in the method's code, in code
+	// units: the same number as the instruction's Base().Offset.
+	Offset uint32
+	// Text is the instruction with every reference named, in the style of
+	// smali and dexdump.
+	Text string
+}
+
+// Disassemble returns the method's code as readable text: one line per
+// instruction, in the order of Instructions, each with the instruction's
+// offset. It returns nil for a method without code.
+//
+// The text is the opcode name, then the operands, with every reference named
+// instead of numbered: a method is "Lclass;->name(Params)Return", a field
+// "Lclass;->name:Type", a type its descriptor, a prototype "(Params)Return",
+// and a method handle its kind and member ("invoke-static@LA;->f()V"). A
+// string is in double quotes, with quotes, backslashes, control characters
+// and invisible characters escaped. A call site is "call_site@N" followed by
+// its name, method type and extra arguments in parentheses, then "@" and the
+// bootstrap method. Literals are hexadecimal as in smali ("0x1f", "-0x1",
+// "0x10L" for a wide constant). Branch targets are code offsets in
+// hexadecimal, the same numbers as the Offset of the lines
+// ("if-eqz v0, 0012"). Switch and array tables are written out in the
+// instruction that uses them: "packed-switch v0, {0x1 -> 0012}" and
+// "fill-array-data v0, [0x1, 0x2]". A reference whose index is outside its
+// table is the raw index followed by a question mark ("string@4?"), and so is
+// a branch target outside the code or a damaged table.
+func (m *Method) Disassemble() []DisassemblyLine {
+	defer runtime.KeepAlive(m)
+	var n C.size_t
+	arr := C.dexpp_method_disassemble(m.p(), &n)
+	defer C.dexpp_disassembly_line_array_free(arr, n)
+	if arr == nil || n == 0 {
+		return nil
+	}
+	raw := unsafe.Slice(arr, int(n))
+	out := make([]DisassemblyLine, len(raw))
+	for i, l := range raw {
+		out[i] = DisassemblyLine{uint32(l.offset), C.GoString(l.text)}
+	}
+	return out
 }
 
 // ---- Control-flow graph -------------------------------------------------- //

@@ -13,6 +13,7 @@ import io.github.burogurama.dexpp.DexClass;
 import io.github.burogurama.dexpp.DexField;
 import io.github.burogurama.dexpp.DexMethod;
 import io.github.burogurama.dexpp.Dexpp;
+import io.github.burogurama.dexpp.DisassemblyLine;
 import io.github.burogurama.dexpp.FieldAccess;
 import io.github.burogurama.dexpp.FieldInstruction;
 import io.github.burogurama.dexpp.Instruction;
@@ -118,6 +119,25 @@ final class CodeExamples {
             }
             // --8<-- [end:instructions]
         }
+    }
+
+    static void disassemble() throws IOException {
+        // --8<-- [start:disassemble]
+        Path testPath = Path.of("../../tests/data/classes.dex");
+        try (AnalysisContext testCtx = AnalysisContext.fromDex(testPath)) {
+            DexClass testClass = testCtx.findClass("LTestDex;").orElseThrow();
+
+            for (DexMethod method : testClass.methods()) {
+                if (method.name().equals("helloDex") || method.name().equals("main")) {
+                    System.out.println(method.name() + method.proto());
+                    List<DisassemblyLine> lines = method.disassemble();
+                    for (DisassemblyLine line : lines) {
+                        System.out.printf("%04x  %s%n", line.offset(), line.text());
+                    }
+                }
+            }
+        }
+        // --8<-- [end:disassemble]
     }
 
     static void typed() throws IOException {

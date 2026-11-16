@@ -20,8 +20,7 @@ def to_string(instruction: Instruction) -> str:
 
     Operands that point into a table of the DEX file are shown as raw indices, such
     as `string@12` or `method@4`. An instruction alone cannot turn them into names.
-    For names, use `Method.calls()`, `Method.field_accesses()`, `Method.string_loads()`
-    and `Method.type_uses()`.
+    `Method.disassemble()` gives the same instructions with every reference named.
     """
 
 # ===== errors =====
@@ -1050,6 +1049,21 @@ class StringLoad:
     def value(self) -> str:
         """The string that is loaded."""
 
+class DisassemblyLine:
+    """One instruction of a method as readable text. `Method.disassemble()` returns
+    them."""
+
+    @property
+    def offset(self) -> int:
+        """Offset of the instruction in the method's code, in code units: the same
+        number as the instruction's `offset`.
+        """
+    @property
+    def text(self) -> str:
+        """The instruction in the style of smali and dexdump, with every reference
+        named, such as `invoke-virtual {v0}, Ljava/lang/Object;->hashCode()I`.
+        """
+
 class TypeUse:
     """One instruction in a method's code that names a type: `const-class`,
     `check-cast`, `instance-of`, `new-instance`, `new-array` or `filled-new-array`.
@@ -1293,6 +1307,35 @@ class Method:
 
         Each call goes through the method's bytecode again and makes a new list, so
         keep the result when you need it more than once.
+        """
+    def disassemble(self) -> list[DisassemblyLine]:
+        """The method's code as readable text: one line per instruction, in the order
+        of `instructions`, each with the instruction's offset. Empty for a method
+        without code.
+
+        The text is in the style of smali and dexdump: the opcode name, then the
+        operands, with every reference named instead of numbered. A method is
+        `Lclass;->name(Params)Return`, a field `Lclass;->name:Type`, a type its
+        descriptor and a prototype `(Params)Return`. A string is in double quotes,
+        with quotes, backslashes, control characters and invisible characters (such
+        as U+200B or the bidirectional overrides) escaped. A method handle is its
+        kind and member, such as `invoke-static@LA;->f()V`, and a call site is
+        `call_site@N` followed by its name, method type and extra arguments in
+        parentheses, then `@` and the bootstrap method.
+
+        Literals are hexadecimal, as smali writes them (`0x1f`, `-0x1`, `0x10L` for a
+        wide constant). Branch targets are code offsets in hexadecimal, the same
+        numbers as the `offset` of the lines: `if-eqz v0, 0012`. Switch and array
+        tables are written out in the instruction that uses them:
+        `packed-switch v0, {0x1 -> 0012, 0x2 -> 0016}` and
+        `fill-array-data v0, [0x1, 0x2]`.
+
+        A reference whose index is outside its table (a damaged file) is the raw
+        index followed by a question mark, such as `string@4?`. So is a branch
+        target outside the code, and a missing or damaged table.
+
+        Each call builds the text again, so keep the result when you need it more
+        than once.
         """
     @property
     def try_blocks(self) -> list[TryBlock]:
