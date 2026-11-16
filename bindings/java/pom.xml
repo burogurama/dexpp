@@ -16,7 +16,7 @@
     <groupId>io.github.burogurama</groupId>
     <artifactId>dexpp</artifactId>
     <!-- The same version as src/version.hpp; a test checks it. -->
-    <version>0.2.0</version>
+    <version>0.3.0</version>
     <packaging>jar</packaging>
 
     <name>dex++ for Java</name>

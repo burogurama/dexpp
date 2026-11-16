@@ -10,7 +10,7 @@ public final class Dexpp {
      * The version of dex++ this package is built from, such as {@code "0.2.0"}. It is the version
      * in {@code src/version.hpp}; a test checks that they match.
      */
-    public static final String VERSION = "0.2.0";
+    public static final String VERSION = "0.3.0";
 
     /**
      * The name of a Dalvik opcode byte, such as {@code "invoke-virtual"} for {@code 0x6e}.
