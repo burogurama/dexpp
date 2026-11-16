@@ -777,6 +777,95 @@ def test_apk_analysis_bridge():
     assert ctx.find_class("LTestDex;") is not None
 
 
+def test_apk_from_bytes_matches_open():
+    path = "tests/data/signed.apk"
+    with open(path, "rb") as f:
+        data = f.read()
+    from_file = dexpp.Apk.open(path)
+    # Every object that gives its bytes through the buffer protocol works.
+    for source in (data, bytearray(data), memoryview(data)):
+        apk = dexpp.Apk.from_bytes(source)
+        assert apk.entries() == from_file.entries()
+        assert apk.read("classes.dex") == from_file.read("classes.dex")
+        assert apk.read("missing") is None
+        assert apk.manifest.package == from_file.manifest.package
+        app_name = apk.resources.id_of("string", "app_name")
+        assert apk.resolve_string(app_name) == "Dexpp Sample"
+        assert apk.signing.is_signed
+        assert [c.sha256_hex for c in apk.signing.certificates] == [
+            c.sha256_hex for c in from_file.signing.certificates
+        ]
+        assert apk.analysis().find_class("LTestDex;") is not None
+
+
+def test_apk_from_bytes_reads_a_strided_view_in_order():
+    with open("tests/data/sample.apk", "rb") as f:
+        data = f.read()
+    # Every byte of the APK appears twice in `doubled`, and the view takes
+    # every other one: its bytes are not next to each other in memory.
+    doubled = bytes(byte for byte in data for _ in range(2))
+    strided = memoryview(doubled)[::2]
+    assert strided.c_contiguous is False
+    apk = dexpp.Apk.from_bytes(strided)
+    assert apk.read("classes.dex") == dexpp.Apk.open("tests/data/sample.apk").read("classes.dex")
+
+    # A reversed view is not a ZIP archive: it is refused, and nothing is
+    # read past the end of the buffer.
+    error = _error_from(lambda: dexpp.Apk.from_bytes(memoryview(data)[::-1]))
+    assert type(error) is dexpp.InvalidApkError
+
+
+def test_apk_from_bytes_keeps_its_own_copy():
+    with open("tests/data/sample.apk", "rb") as f:
+        buffer = bytearray(f.read())
+    apk = dexpp.Apk.from_bytes(buffer)
+    buffer[:] = bytes(len(buffer))
+    del buffer
+    gc.collect()
+    assert apk.manifest.package == "com.example.dexpp"
+    assert apk.read("classes.dex") is not None
+
+
+def test_apk_from_bytes_errors():
+    for data in (b"not an apk", b"", bytearray(100)):
+        error = _error_from(lambda: dexpp.Apk.from_bytes(data))
+        assert type(error) is dexpp.InvalidApkError
+        assert str(error).startswith("<apk>: "), str(error)
+
+    # The label starts the message, where open() puts the path.
+    error = _error_from(lambda: dexpp.Apk.from_bytes(b"not an apk", label="upload.apk"))
+    assert str(error).startswith("upload.apk: "), str(error)
+
+    # The label is also used by the errors of analysis().
+    with open("tests/data/nodex.apk", "rb") as f:
+        nodex = dexpp.Apk.from_bytes(f.read(), "nodex-upload.apk")
+    error = _error_from(nodex.analysis)
+    assert type(error) is dexpp.InvalidApkError
+    assert str(error).startswith("nodex-upload.apk: "), str(error)
+    error = _error_from(dexpp.Apk.open("tests/data/nodex.apk").analysis)
+    assert str(error).startswith("tests/data/nodex.apk: "), str(error)
+
+    # Not a bytes-like object at all.
+    assert _raises_type_error(lambda: dexpp.Apk.from_bytes("tests/data/sample.apk"))
+
+
+def test_apk_analysis_threads():
+    # multidex.apk has four deflated DEX entries, enough for the parallel path.
+    apk = dexpp.Apk.open("tests/data/multidex.apk")
+    automatic = apk.analysis()
+    first = automatic.classes()[0]
+    # The context is kept per threads value: the same value gives the same
+    # context, so its classes compare equal.
+    assert apk.analysis().classes()[0] == first
+    assert apk.analysis(threads=0).classes()[0] == first
+    # Another value builds a separate context, with the same content.
+    serial = apk.analysis(threads=1)
+    assert serial.classes()[0] != first
+    assert apk.analysis(threads=1).classes()[0] == serial.classes()[0]
+    assert [c.descriptor for c in serial.classes()] == [c.descriptor for c in automatic.classes()]
+    assert len(serial.call_graph.nodes) == len(automatic.call_graph.nodes)
+
+
 def test_apk_open_errors():
     try:
         dexpp.Apk.open("tests/data/missing.apk")
@@ -1302,6 +1391,7 @@ def test_invalid_apk_error():
         lambda: dexpp.AnalysisContext.from_apk("tests/data/classes.dex"),  # not a ZIP
         lambda: dexpp.Apk.open("tests/data/classes.dex"),
         lambda: dexpp.Apk.open("tests/data/nodex.apk").analysis(),
+        lambda: dexpp.Apk.from_bytes(b"not an apk"),
     ):
         assert type(_error_from(action)) is dexpp.InvalidApkError
 
@@ -1761,6 +1851,9 @@ def test_keyword_arguments_work():
     assert len(declared) > 0
 
     apk = dexpp.Apk.open(path="tests/data/sample.apk")
+    with open("tests/data/sample.apk", "rb") as f:
+        assert dexpp.Apk.from_bytes(data=f.read(), label="sample.apk").entries() == apk.entries()
+    assert apk.analysis(threads=1).find_class(descriptor="LTestDex;") is not None
     app_name = apk.resources.id_of(type="string", entry="app_name")
     assert apk.resolve_string(reference_id=app_name) == "Dexpp Sample"
     assert len(apk.manifest.components_of(kind=dexpp.ComponentKind.ACTIVITY)) == 1

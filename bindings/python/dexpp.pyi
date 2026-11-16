@@ -2102,6 +2102,26 @@ class Apk:
             OSError: The path exists but cannot be read, for example a directory.
             InvalidApkError: The file is not a ZIP archive.
         """
+    @staticmethod
+    def from_bytes(data: ReadableBuffer, label: str = "<apk>") -> Apk:
+        """Open an APK from its bytes in memory, for example bytes downloaded from
+        the network. The bytes get the same checks as a file given to `open`, and
+        everything else works the same.
+
+        The APK keeps its own copy of the bytes, so `data` may change or be freed
+        afterwards.
+
+        Args:
+            data: The content of an APK file: `bytes`, `bytearray`, `memoryview`,
+                or any other object that gives its bytes through the buffer
+                protocol.
+            label: A name for the bytes, used at the start of error messages
+                where `open` puts the path, for example the name of the file the
+                bytes came from. It is also used by the errors of `analysis`.
+
+        Raises:
+            InvalidApkError: The bytes are not a ZIP archive.
+        """
     def entries(self) -> list[str]:
         """The name of every entry in the archive, in the order of the archive's table
         of contents (the ZIP central directory).
@@ -2132,12 +2152,23 @@ class Apk:
         """The signature schemes and certificates. An unsigned APK gives an object with
         `is_signed` false.
         """
-    def analysis(self) -> AnalysisContext:
-        """The code of the APK: an `AnalysisContext` over every `classes*.dex` entry. It
-        is built on the first call and kept.
+    def analysis(self, threads: int = 0) -> AnalysisContext:
+        """The code of the APK: an `AnalysisContext` over every `classes*.dex` entry,
+        loaded from the bytes the APK already holds.
+
+        The context is built on the first call and kept, one for each value of
+        `threads`. A later call with the same value returns the same context, so
+        its call graph and other structures are built once. A call with another
+        value builds a second context, which holds its own copy of the DEX files
+        and gives the same answers. So use one value in a program.
+
+        Args:
+            threads: How many threads to use, as for `AnalysisContext.from_apk`.
+                0 lets the library choose. 1 keeps all work, the call graph
+                included, on the calling thread.
 
         Raises:
-            InvalidApkError: The APK has no `classes.dex`.
+            InvalidApkError: The APK has no `classes.dex`, or an entry is damaged.
             InvalidDexError: One of its DEX files is not valid.
         """
 

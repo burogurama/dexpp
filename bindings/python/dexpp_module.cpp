@@ -43,6 +43,7 @@
 
 #include "dex.hpp"
 #include "dexpp_access_flags.hpp"
+#include "dexpp_bytes.hpp"
 #include "dexpp_enums.hpp"
 #include "dexpp_errors.hpp"
 
@@ -1350,6 +1351,19 @@ PYBIND11_MODULE(dexpp, m)
                 return std::move(result.value());
             },
             py::arg("path"), "Open an APK (ZIP) from disk.")
+        .def_static(
+            "from_bytes",
+            [](py::buffer data, const std::string &label) {
+                // The Apk keeps its own copy, so the Python object may change
+                // or go away afterwards.
+                dexpp_py::ContiguousBytes bytes(data);
+                auto result = Apk::from_buffer(bytes.bytes(), label);
+                if (!result.has_value())
+                    dexpp_py::raise(result.error());
+                return std::move(result.value());
+            },
+            py::arg("data"), py::arg("label") = "<apk>",
+            "Open an APK (ZIP) from its bytes in memory.  label names the bytes in error messages.")
         .def("entries", &Apk::entries)
         .def(
             "read",
@@ -1368,13 +1382,17 @@ PYBIND11_MODULE(dexpp, m)
                                    return py::cast(m_, py::return_value_policy::reference_internal,
                                                    py::cast(apk));
                                })
-        .def("analysis",
-             [](const Apk &apk) {
-                 auto result = apk.analysis();
-                 if (!result.has_value())
-                     dexpp_py::raise(result.error());
-                 return std::move(result.value());
-             })
+        .def(
+            "analysis",
+            [](const Apk &apk, unsigned threads) {
+                auto result = apk.analysis({.threads = threads});
+                if (!result.has_value())
+                    dexpp_py::raise(result.error());
+                return std::move(result.value());
+            },
+            py::arg("threads") = 0,
+            "The code of the APK.  threads as for AnalysisContext.from_apk; the result is kept "
+            "per threads value.")
         .def_property_readonly("resources",
                                [](const Apk &apk) -> py::object {
                                    const ResourceTable *rt = apk.resources();
