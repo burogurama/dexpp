@@ -213,4 +213,6 @@ already analyses several APKs in parallel:
 | Go | `dexpp.FromAPK(path, dexpp.WithThreads(1))` |
 | Java | `AnalysisContext.fromApk(path, 1)` |
 
-A thread count of 0 is the default: the library chooses.
+A thread count of 0 is the default: the library chooses. The `analysis()`
+method of an opened APK takes the same count (see
+[The threads of the analysis](apk.md#the-threads-of-the-analysis)).

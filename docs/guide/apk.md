@@ -9,6 +9,7 @@ The examples come in Python, Go and Java. Pick your language in the tabs.
 | Open an APK | Python | Go | Java |
 | ----------- | ------ | -- | ---- |
 | open the archive | `dexpp.Apk.open(path)` | `dexpp.OpenAPK(path)` | `Apk.open(path)` |
+| open bytes in memory | `dexpp.Apk.from_bytes(data)` | `dexpp.OpenAPKBytes(data, label)` | `Apk.fromBytes(data)` |
 | get its code | `apk.analysis()` | `apk.Analysis()` | `apk.analysis()` |
 
 Opening fails when the path does not exist, when it exists but cannot be read
@@ -26,6 +27,47 @@ cannot be parsed.
 In Go, compare an error with these values through `errors.Is`. See
 [Errors in Go](../c-go.md#errors-in-go) and [Errors](../java.md#errors) on the
 Java page.
+
+## Opening an APK from memory
+
+Sometimes a program has the bytes of an APK, not a file: a server that
+receives an upload, or a tool that downloads APKs. It can open the bytes
+directly, without writing them to a file first.
+
+<!-- example: apk_metadata.memory -->
+
+- The APK keeps its own copy of the bytes. Your copy can be changed or freed
+  as soon as the call returns.
+- The bytes get the same checks as a file given to `open`. Bytes that are not
+  a ZIP archive fail with the same invalid APK error.
+- The label is a name for the bytes, such as the name of an uploaded file.
+  Error messages start with it, where `open` puts the path. The errors of the
+  APK's `analysis()` use it too. Without a label, the messages start with
+  `<apk>`. In Go the label is a required argument, and an empty label gives
+  `<apk>`.
+
+### The threads of the analysis
+
+The APK's `analysis()` method takes a thread count, like loading an APK with
+the analysis context (see [Threads](concepts.md#threads)):
+
+| Language | Get the code on the calling thread only |
+| -------- | --------------------------------------- |
+| Python | `apk.analysis(threads=1)` |
+| Go | `apk.Analysis(dexpp.WithThreads(1))` |
+| Java | `apk.analysis(1)` |
+
+A count of 1 keeps all the work on the calling thread: decompressing the DEX
+files now, and building the call graph later. Use it when your program
+already analyses several APKs in parallel, or when it must not start threads.
+A count of 0, the default, lets the library choose.
+
+The APK keeps the analysis it builds. The first call builds it, and a later
+call with the same thread count returns the same analysis, so its call graph
+and other structures are built only once. A call with a different thread
+count builds a second, separate analysis, which holds its own copy of the DEX
+files. Both give the same answers. So choose one thread count and use it
+everywhere in a program.
 
 ## The manifest
 

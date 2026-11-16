@@ -40,9 +40,9 @@ class Apk
     static std::expected<Apk, Error> open(const std::string &path);
 
     /** Open an APK (ZIP) whose bytes are already in memory, for example bytes
-     *  received over the network, or a file a browser handed to WebAssembly
-     *  code.  The bytes go through the same checks as open() reads from a
-     *  file, and every accessor then works the same.
+     *  received over the network or uploaded by a user.  The bytes go through
+     *  the same checks as the bytes open() reads from a file, and every
+     *  accessor then works the same.
      *
      *  The Apk owns its bytes.  This overload takes the vector by value, so a
      *  caller that passes it with std::move gives its memory to the Apk and

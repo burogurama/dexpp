@@ -1,5 +1,38 @@
 # Changelog
 
+## Unreleased
+
+### APK from memory
+
+- An APK can be opened from its bytes in memory, not only from a file. The
+  bytes get the same checks as a file, and everything an opened APK offers
+  works the same: archive entries, the manifest, resources, signing and the
+  code. The APK keeps its own copy of the bytes. An optional label names the
+  bytes at the start of error messages, where a file gives its path.
+    - C++: `dex::apk::Apk::from_buffer(bytes, label)`. One overload takes a
+      `std::vector<uint8_t>` by value, so a vector passed with `std::move` is
+      not copied; the other takes a `std::span<const uint8_t>` and copies it.
+    - Python: `dexpp.Apk.from_bytes(data, label="<apk>")`, for any bytes-like
+      object, including a non-contiguous `memoryview`.
+    - C: `dexpp_apk_open_buffer(bytes, len, label, err)`.
+    - Go: `dexpp.OpenAPKBytes(data, label)`.
+    - Java: `Apk.fromBytes(data)` and `Apk.fromBytes(data, label)`.
+- The APK's `analysis()` now takes a thread count, like loading an APK with
+  the analysis context: 1 keeps all the work, the call graph included, on the
+  calling thread. The analysis is kept for each thread count: a second call
+  with the same count returns the same analysis, and a call with another count
+  builds a separate one.
+    - C++: `Apk::analysis(const ApkLoadOptions & = {})`. `ApkLoadOptions` now
+      has `operator==`.
+    - Python: `Apk.analysis(threads=0)`.
+    - Go: `Apk.Analysis(opts ...LoadOption)`, with `WithThreads`.
+    - Java: `Apk.analysis(int threads)`, next to `analysis()`.
+- The errors of the APK's `analysis()` now start with the APK's path (or the
+  label), not with `<apk>`.
+- Breaking, C: `dexpp_apk_analysis` takes a `uint32_t threads` argument
+  before the error argument, as `dexpp_context_from_apk` does. Pass 0 for the
+  old behaviour.
+
 ## 0.3.0
 
 ### Platforms

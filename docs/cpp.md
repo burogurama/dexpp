@@ -111,6 +111,31 @@ pointer or an empty list.
 The examples write every type in full, so you can see what each call returns.
 In your own code `auto` works as well.
 
+## Open an APK from memory
+
+When the APK's bytes are already in memory, `dex::apk::Apk::from_buffer` opens
+them without a file:
+
+```cpp
+--8<-- "cpp/analysis.cpp:memory"
+```
+
+- There are two overloads. One takes a `std::vector<uint8_t>` by value: pass
+  it with `std::move` and the `Apk` takes its memory, so nothing is copied. The
+  other takes a `std::span<const uint8_t>` and copies the bytes, so the caller
+  may free them as soon as it returns.
+- The bytes get the same checks as a file given to `open`. Bytes that are not a
+  ZIP archive give an error with code `InvalidApk`.
+- The second argument, the label, starts the error messages where `open` puts
+  the path. It is `"<apk>"` when left out.
+
+`Apk::analysis` takes the same `dex::ApkLoadOptions` as
+`AnalysisContext::from_apk`. The result is kept for each options value: a
+second call with equal options returns the same context, so its call graph and
+other structures are built once. A call with other options builds a second
+context, which holds its own copy of the DEX files. So use one setting in a
+program.
+
 ## Walk the code
 
 ```cpp

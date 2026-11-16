@@ -5,8 +5,10 @@ package dexpp_test
 // the variables that the earlier sections of the guide made.
 
 import (
+	"errors"
 	"fmt"
 	"log"
+	"os"
 
 	"github.com/burogurama/dexpp/bindings/go/dexpp"
 )
@@ -199,4 +201,47 @@ func ExampleApk_Entries() {
 	// Output:
 	// [AndroidManifest.xml resources.arsc classes.dex]
 	// 980 bytes of classes.dex
+}
+
+// Open an APK from its bytes in memory, and load its code on one thread.
+func ExampleOpenAPKBytes() {
+	// --8<-- [start:memory]
+	// The bytes can come from anywhere: a download, an upload, a database.
+	data, err := os.ReadFile("../../../tests/data/sample.apk")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	inMemory, err := dexpp.OpenAPKBytes(data, "sample.apk")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer inMemory.Close()
+	if pkg, ok := inMemory.Package(); ok {
+		fmt.Println(pkg)
+	}
+
+	// WithThreads(1) keeps all the work on the calling thread.
+	code, err := inMemory.Analysis(dexpp.WithThreads(1))
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer code.Close()
+	var descriptors []string
+	for _, class := range code.Classes() {
+		descriptors = append(descriptors, class.Descriptor())
+	}
+	fmt.Println("classes:", descriptors)
+
+	// The label starts the error messages, where OpenAPK puts the path.
+	_, err = dexpp.OpenAPKBytes([]byte("not an apk"), "upload.apk")
+	if errors.Is(err, dexpp.ErrInvalidAPK) {
+		fmt.Println("ErrInvalidAPK:", err)
+	}
+	// --8<-- [end:memory]
+
+	// Output:
+	// com.example.dexpp
+	// classes: [LTestDex;]
+	// ErrInvalidAPK: upload.apk: buffer too small to be a ZIP archive
 }

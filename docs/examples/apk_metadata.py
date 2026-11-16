@@ -75,3 +75,24 @@ classes_dex: bytes | None = apk.read("classes.dex")
 assert classes_dex is not None
 print(len(classes_dex), "bytes of classes.dex")
 # --8<-- [end:entries]
+
+# --8<-- [start:memory]
+# The bytes can come from anywhere: a download, an upload, a database.
+with open("tests/data/sample.apk", "rb") as file:
+    data: bytes = file.read()
+
+in_memory: dexpp.Apk = dexpp.Apk.from_bytes(data, label="sample.apk")
+in_memory_manifest: dexpp.Manifest | None = in_memory.manifest
+assert in_memory_manifest is not None
+print(in_memory_manifest.package)
+
+# threads=1 keeps all the work on the calling thread.
+code: dexpp.AnalysisContext = in_memory.analysis(threads=1)
+print("classes:", [cls.descriptor for cls in code.classes()])
+
+# The label starts the error messages, where Apk.open puts the path.
+try:
+    dexpp.Apk.from_bytes(b"not an apk", label="upload.apk")
+except dexpp.InvalidApkError as error:
+    print("InvalidApkError:", error)
+# --8<-- [end:memory]

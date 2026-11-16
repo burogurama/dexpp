@@ -32,7 +32,7 @@ struct ApkLoadOptions
      *  entries are deflate-compressed; with fewer, starting them costs more
      *  than it saves.  Set this to 1 when the caller already analyses several
      *  APKs in parallel, so the machine is not oversubscribed, or when the
-     *  program cannot start threads at all (WebAssembly in a browser). */
+     *  program must not start threads at all. */
     unsigned threads = 0;
 
     /** Two option sets are equal when every member is equal. */

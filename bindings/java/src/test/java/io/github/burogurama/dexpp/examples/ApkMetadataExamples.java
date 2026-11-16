@@ -1,17 +1,23 @@
 package io.github.burogurama.dexpp.examples;
 
+import io.github.burogurama.dexpp.AnalysisContext;
 import io.github.burogurama.dexpp.Apk;
 import io.github.burogurama.dexpp.Certificate;
 import io.github.burogurama.dexpp.Component;
 import io.github.burogurama.dexpp.ComponentKind;
 import io.github.burogurama.dexpp.DeclaredPermission;
+import io.github.burogurama.dexpp.DexClass;
+import io.github.burogurama.dexpp.InvalidApkException;
 import io.github.burogurama.dexpp.Manifest;
 import io.github.burogurama.dexpp.ResourceName;
 import io.github.burogurama.dexpp.ResourceTable;
 import io.github.burogurama.dexpp.SigningInfo;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.OptionalInt;
 
@@ -130,5 +136,33 @@ final class ApkMetadataExamples {
             System.out.println(classesDex.length + " bytes of classes.dex");
             // --8<-- [end:entries]
         }
+    }
+
+    static void memory() throws IOException {
+        // --8<-- [start:memory]
+        // The bytes can come from anywhere: a download, an upload, a database.
+        byte[] data = Files.readAllBytes(Path.of("../../tests/data/sample.apk"));
+
+        try (Apk inMemory = Apk.fromBytes(data, "sample.apk")) {
+            System.out.println(inMemory.packageName().orElseThrow());
+
+            // analysis(1) keeps all the work on the calling thread.
+            try (AnalysisContext code = inMemory.analysis(1)) {
+                List<String> descriptors = new ArrayList<>();
+                for (DexClass cls : code.classes()) {
+                    descriptors.add(cls.descriptor());
+                }
+                System.out.println("classes: " + descriptors);
+            }
+        }
+
+        // The label starts the error messages, where Apk.open puts the path.
+        byte[] notAnApk = "not an apk".getBytes(StandardCharsets.US_ASCII);
+        try (Apk broken = Apk.fromBytes(notAnApk, "upload.apk")) {
+            System.out.println(broken.entries());
+        } catch (InvalidApkException e) {
+            System.out.println("InvalidApkException: " + e.getMessage());
+        }
+        // --8<-- [end:memory]
     }
 }

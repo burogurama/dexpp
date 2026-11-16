@@ -1,11 +1,15 @@
 // Open an APK, read its manifest, list its classes and bytecode, and ask the
-// call graph what a method may call.
+// call graph what a method may call.  Then open the same APK from bytes in
+// memory.
 //
 //   example_analysis [file.apk]
 
 #include <cstdint>
 #include <expected>
+#include <fstream>
 #include <iostream>
+#include <utility>
+#include <vector>
 
 #include "dex.hpp"
 
@@ -58,5 +62,30 @@ int main(int argc, char **argv)
         }
     }
     // --8<-- [end:graph]
+
+    // --8<-- [start:memory]
+    // The bytes can come from anywhere: a download, an upload, a database.
+    std::ifstream file(path, std::ios::binary);
+    std::vector<uint8_t> bytes;
+    for (char c; file.get(c);)
+        bytes.push_back(static_cast<uint8_t>(c));
+
+    // Moving the vector in gives its memory to the Apk: nothing is copied.
+    std::expected<dex::apk::Apk, dex::Error> in_memory =
+        dex::apk::Apk::from_buffer(std::move(bytes), "upload.apk");
+    if (!in_memory) {
+        std::cerr << in_memory.error().message << '\n';
+        return 1;
+    }
+
+    // {.threads = 1} keeps all the work, the call graph included, on this thread.
+    std::expected<dex::AnalysisContext, dex::Error> code = in_memory->analysis({.threads = 1});
+    if (!code) {
+        std::cerr << code.error().message << '\n';
+        return 1;
+    }
+    for (const dex::Class &cls : code->classes())
+        std::cout << "in upload.apk: " << cls.descriptor() << '\n';
+    // --8<-- [end:memory]
     return 0;
 }

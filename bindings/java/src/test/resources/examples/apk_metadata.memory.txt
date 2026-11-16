@@ -1,0 +1,3 @@
+com.example.dexpp
+classes: [LTestDex;]
+InvalidApkException: upload.apk: buffer too small to be a ZIP archive

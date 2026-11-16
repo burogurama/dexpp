@@ -77,6 +77,8 @@ class ExamplesTest {
                             ApkMetadataExamples::signing),
                     new Example("apk_metadata", "entries", ApkMetadataExamples.class,
                             ApkMetadataExamples::entries),
+                    new Example("apk_metadata", "memory", ApkMetadataExamples.class,
+                            ApkMetadataExamples::memory),
                     new Example("code", "load", CodeExamples.class, CodeExamples::load),
                     new Example("code", "classes", CodeExamples.class, CodeExamples::classes),
                     new Example("code", "methods", CodeExamples.class, CodeExamples::methods),
