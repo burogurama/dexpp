@@ -646,12 +646,13 @@ def test_reachability():
     assert m.declared_permission_protection_level("android.permission.DUMP") is None
 
     by_name = {c.name.split(".")[-1]: c for c in m.components}
-    # Exported + unguarded / normal / dangerous / undeclared-platform perm -> reachable.
-    assert by_name["OpenActivity"].is_reachable
+    # Exported and guarded by its own normal / dangerous / undeclared-platform
+    # permission -> reachable, although the application requires a signature one.
     assert by_name["NormalActivity"].is_reachable
+    assert not by_name["NormalActivity"].permission_inherited
     assert by_name["DangerousActivity"].is_reachable
     assert by_name["PlatformPermActivity"].is_reachable
-    assert by_name["OpenReceiver"].is_reachable
+    assert by_name["NormalReceiver"].is_reachable
     # Exported but guarded by an app-declared signature permission -> not reachable.
     assert by_name["SigActivity"].is_exported
     assert by_name["SigActivity"].guarded_by_signature_permission
@@ -663,7 +664,92 @@ def test_reachability():
 
     activities = m.components_of(dexpp.ComponentKind.ACTIVITY)
     assert sum(c.is_exported for c in activities) == 5
-    assert sum(c.is_reachable for c in activities) == 4
+    assert sum(c.is_reachable for c in activities) == 3
+
+
+def test_application_permission():
+    # reachable.apk's <application> requires its signature permission, and the
+    # components without a permission of their own take it.
+    m = dexpp.Apk.open("tests/data/reachable.apk").manifest
+    assert m is not None
+    assert m.application_permission == "com.dexpp.reach.P_SIGNATURE"
+    assert m.application_permission_reference is None
+    assert not m.application_permission_unknown
+
+    by_name = {c.name.split(".")[-1]: c for c in m.components}
+    for name in ["InheritingActivity", "InheritingService", "InheritingReceiver"]:
+        c = by_name[name]
+        assert c.permission == "com.dexpp.reach.P_SIGNATURE", name
+        assert c.permission_inherited and not c.permission_unknown, name
+        assert c.permission_reference is None, name
+        assert c.is_exported and not c.is_reachable, name
+        assert c.read_permission is None and c.write_permission is None, name
+
+    # A provider is guarded only when reading and writing both are.
+    inheriting = by_name["InheritingProvider"]
+    assert inheriting.read_permission == "com.dexpp.reach.P_SIGNATURE"
+    assert inheriting.write_permission == "com.dexpp.reach.P_SIGNATURE"
+    assert inheriting.read_permission_reference is None
+    assert not inheriting.read_permission_unknown and not inheriting.write_permission_unknown
+    assert not inheriting.is_reachable
+    readable = by_name["ReadableProvider"]
+    assert readable.read_permission == "com.dexpp.reach.P_NORMAL"
+    assert readable.write_permission == "com.dexpp.reach.P_SIGNATURE"
+    assert readable.is_reachable
+    writable = by_name["WritableProvider"]
+    assert writable.permission == "com.dexpp.reach.P_SIGNATURE"
+    assert not writable.permission_inherited
+    assert writable.write_permission == "com.dexpp.reach.P_DANGEROUS"
+    assert writable.write_permission_reference is None
+    assert writable.is_reachable
+
+    sample = dexpp.Apk.open("tests/data/sample.apk").manifest
+    assert sample is not None
+    assert sample.application_permission is None
+    assert not any(c.permission_inherited for c in sample.components)
+
+
+def test_manifest_null_values():
+    # refs.apk: @bool/nothing is @null, @bool/same_as_nothing refers to it,
+    # @bool/empty_bool is @empty and @string/no_permission is @null.  Android
+    # reads them as not written.
+    apk = dexpp.Apk.open("tests/data/refs.apk")
+    rt = apk.resources
+    m = apk.manifest
+    assert rt is not None and m is not None
+    by_name = {c.name.split(".")[-1]: c for c in m.components}
+
+    null = by_name["NullActivity"]
+    assert null.exported is None
+    assert null.exported_reference == rt.id_of("bool", "nothing")
+    assert not null.exported_unknown
+    assert not null.is_exported  # no intent filter
+    chained = by_name["NullFilteredActivity"]
+    assert chained.exported is None and not chained.exported_unknown
+    assert chained.is_exported  # an intent filter
+    assert not by_name["EmptyActivity"].is_exported
+    # android:exported="@null" written directly: no reference.
+    literal = by_name["LiteralNullActivity"]
+    assert literal.exported is None and literal.exported_reference is None
+    assert literal.is_exported
+
+    service = by_name["NullPermissionService"]
+    assert service.permission is None
+    assert service.permission_reference == rt.id_of("string", "no_permission")
+    assert not service.permission_unknown and not service.permission_inherited
+    assert service.is_reachable
+
+    # ?android:attr/windowFullscreen: a theme attribute, unknown.
+    theme = by_name["ThemeActivity"]
+    assert theme.exported is None and theme.exported_unknown and theme.is_exported
+    # A string that differs between Android versions depends on the device.
+    assert by_name["PermissionOnV31Service"].permission_unknown
+    assert not by_name["LocalizedPermissionService"].permission_unknown
+
+    assert not m.debuggable_unknown and not m.allow_backup_unknown
+    assert not m.min_sdk_unknown and not m.target_sdk_unknown
+    assert not m.version_code_unknown and not m.version_name_unknown
+    assert not by_name["ExportedActivity"].name_unknown
 
 
 def test_resources():

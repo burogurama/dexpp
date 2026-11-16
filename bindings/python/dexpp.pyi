@@ -1842,13 +1842,18 @@ class Component:
         `.MainActivity`, is completed with the app's package.
 
         It is empty when the attribute is missing, or when it is a resource reference
-        that gives no single value; then `name_reference` is set.
+        that gives no value; then `name_reference` is set.
         """
     @property
     def name_reference(self) -> Optional[int]:
         """The resource id when `android:name` is written as a reference, such as
         `@string/main_activity`, whether it was resolved or not. `None` for a plain
         value or a missing attribute.
+        """
+    @property
+    def name_unknown(self) -> bool:
+        """True when `android:name` is a reference whose string dexpp cannot tell:
+        it cannot be resolved, or the string differs between Android versions.
         """
     @property
     def exported(self) -> Optional[bool]:
@@ -1858,72 +1863,135 @@ class Component:
         A value written as text, such as the string `"true"`, is read as Android reads
         it: only `"1"`, `"true"` and `"TRUE"` are true.
 
-        It is `None` when the attribute is missing, or when it is a resource reference
-        that could not be resolved; then `exported_reference` is set. `is_exported`
-        gives the effective answer.
+        It is `None` when the attribute is missing, when it is a null value (`@null`,
+        `@empty`, or a reference to a resource that is one), which Android reads as
+        not written, or when its value is unknown (`exported_unknown`).
+        `is_exported` gives the effective answer.
         """
     @property
     def exported_reference(self) -> Optional[int]:
         """The resource id when `android:exported` is written as a reference, such as
         `@bool/is_exported` (or a theme attribute, `?attr/name`), whether it was
         resolved or not. `None` for a plain value or a missing attribute.
-
-        `exported is None` with `exported_reference` set means the value is unknown.
+        """
+    @property
+    def exported_unknown(self) -> bool:
+        """True when `android:exported` is a reference whose value in the default
+        configuration dexpp cannot tell: the reference cannot be resolved, or it is a
+        theme attribute. `exported` is then `None`, and `is_exported` is true.
         """
     @property
     def exported_varies(self) -> bool:
-        """True when `android:exported` is a reference whose value is not the same in
-        every resource configuration: for example false in `res/values` and true in
-        `res/values-v31`, so the component is exported on Android 12 and newer.
+        """True when `android:exported` is a reference that makes the component
+        exported in some resource configurations and not in others: for example false
+        in `res/values` and true in `res/values-v31`, so the component is exported on
+        Android 12 and newer.
 
-        `exported` holds the default configuration's value, and `is_exported` is true.
+        A configuration whose value is null uses the intent-filter rule, as Android
+        does when the attribute is not written. `exported` holds the default
+        configuration's value, and `is_exported` is true.
         """
     @property
     def permission(self) -> Optional[str]:
-        """The permission a caller must hold to use the component, or `None`.
+        """The permission a caller must hold to use the component, as Android
+        enforces it, or `None`.
 
-        It is also `None` when the attribute is a resource reference that gives no
-        single value; then `permission_reference` is set. Android ignores a string
-        resource that changes with the language, the screen or another configuration,
-        so such a reference guards nothing. A string that changes only with the
-        Android version depends on the device, and is `None` too.
+        It is the component's own `android:permission`, or, when the component gives
+        none, the `android:permission` of `<application>` (then
+        `permission_inherited` is true). The component gives none when the attribute
+        is missing, or when Android reads it as not written: a null value, or a
+        string resource that changes with the language, the screen or another
+        configuration, which Android ignores.
+
+        It is also `None` when the permission is unknown (`permission_unknown`).
+
+        A provider has a read and a write permission instead (`read_permission`,
+        `write_permission`); for a provider this is the permission they fall back
+        to.
         """
     @property
     def permission_reference(self) -> Optional[int]:
-        """The resource id when `android:permission` is written as a reference, such as
-        `@string/guard`, whether it was resolved or not. `None` for a plain value or a
-        missing attribute.
+        """The resource id when the component's own `android:permission` is written as
+        a reference, such as `@string/guard`, whether it was resolved or not. `None`
+        for a plain value or a missing attribute.
         """
+    @property
+    def permission_unknown(self) -> bool:
+        """True when dexpp cannot tell `permission`: the component's own
+        `android:permission` is a reference that cannot be resolved, or a string that
+        differs between Android versions (so it depends on the device), or the
+        component gives none and the application's permission is unknown.
+        """
+    @property
+    def permission_inherited(self) -> bool:
+        """True when `permission` comes from `<application>`: the component gives no
+        permission of its own, and the application's `android:permission` gives one
+        or is unknown.
+        """
+    @property
+    def read_permission(self) -> Optional[str]:
+        """For a provider, the permission a caller needs to read from it, as Android
+        enforces it: `android:readPermission`, or `permission` when that gives none
+        (so it can come from the application too). `None` for the other kinds of
+        component, when no permission applies, or when it is unknown
+        (`read_permission_unknown`).
+        """
+    @property
+    def read_permission_reference(self) -> Optional[int]:
+        """The resource id when the provider's `android:readPermission` is written as a
+        reference, or `None`.
+        """
+    @property
+    def read_permission_unknown(self) -> bool:
+        """True when dexpp cannot tell `read_permission`."""
+    @property
+    def write_permission(self) -> Optional[str]:
+        """For a provider, the permission a caller needs to write to it:
+        `android:writePermission`, or `permission` when that gives none. The same
+        rules as `read_permission`.
+        """
+    @property
+    def write_permission_reference(self) -> Optional[int]:
+        """The resource id when the provider's `android:writePermission` is written as
+        a reference, or `None`.
+        """
+    @property
+    def write_permission_unknown(self) -> bool:
+        """True when dexpp cannot tell `write_permission`."""
     @property
     def intent_filters(self) -> list[IntentFilter]:
         """The component's intent filters."""
     @property
     def guarded_by_signature_permission(self) -> bool:
-        """True when `permission` is a permission this app declares with the `signature`
-        or `signatureOrSystem` protection level. Only apps signed with the same key
-        can hold such a permission.
+        """True when the permission Android enforces is a permission this app declares
+        with the `signature` or `signatureOrSystem` protection level. Only apps signed
+        with the same key can hold such a permission.
+
+        For a provider, both `read_permission` and `write_permission` must be such a
+        permission, because an app that can read or write reaches the provider.
         """
     @property
     def is_exported(self) -> bool:
         """Whether other apps can address the component: the `exported` attribute when
         the manifest sets it, otherwise true when the component has an intent filter.
+        A null value counts as not set.
 
         When the attribute is a reference whose value differs between configurations
         (`exported_varies`), this is true: the component is exported on the devices
         that match a configuration that says so. When the attribute is a reference
-        that could not be resolved, its value is unknown and this is true: the
-        component may be exported.
+        whose value is unknown (`exported_unknown`), this is true: the component may
+        be exported.
         """
     @property
     def is_reachable(self) -> bool:
         """Whether an app from another developer can reach the component: it is
         exported, and it is not guarded by a signature-level permission that this app
-        declares.
+        declares (`guarded_by_signature_permission`).
 
         A component guarded by a normal or dangerous permission stays reachable,
         because any app can request those. So does a component guarded by a
         permission the manifest does not declare, because its protection level is not
-        known.
+        known, and one whose permission is unknown.
         """
 
 class Manifest:
@@ -1934,10 +2002,14 @@ class Manifest:
     An attribute can be written as a resource reference, such as
     `android:debuggable="@bool/debug"`. Its property then holds the value the APK's
     resource table gives, in the default configuration, and the matching
-    `..._reference` property holds the reference id. When the reference cannot be
-    resolved, the value is `None` and the `..._reference` property is still set: the
-    attribute is written, but its value is unknown. A `..._reference` property is
+    `..._reference` property holds the reference id. A `..._reference` property is
     `None` for a plain value or a missing attribute.
+
+    When the value is `None` but the reference is set, the matching `..._unknown`
+    property tells the two possible reasons apart. When it is true, dexpp cannot
+    tell the value: the reference cannot be resolved. When it is false, Android
+    reads the attribute as not written: the resource is a null value (`@null` or
+    `@empty`), or, for text, a string that changes with the configuration.
 
     A boolean whose resource has another value in some configuration (a language,
     a screen size, an Android version) has a matching `..._varies` property that is
@@ -1955,6 +2027,11 @@ class Manifest:
     def version_code_reference(self) -> Optional[int]:
         """The resource id when `android:versionCode` is a reference, or `None`."""
     @property
+    def version_code_unknown(self) -> bool:
+        """True when `android:versionCode` is a reference whose value dexpp cannot
+        tell.
+        """
+    @property
     def version_name(self) -> Optional[str]:
         """`android:versionName`, or `None`.
 
@@ -1965,17 +2042,32 @@ class Manifest:
     def version_name_reference(self) -> Optional[int]:
         """The resource id when `android:versionName` is a reference, or `None`."""
     @property
+    def version_name_unknown(self) -> bool:
+        """True when `android:versionName` is a reference whose string dexpp cannot
+        tell: it cannot be resolved, or it differs between Android versions.
+        """
+    @property
     def min_sdk(self) -> Optional[int]:
         """`android:minSdkVersion` of `<uses-sdk>`, or `None`."""
     @property
     def min_sdk_reference(self) -> Optional[int]:
         """The resource id when `android:minSdkVersion` is a reference, or `None`."""
     @property
+    def min_sdk_unknown(self) -> bool:
+        """True when `android:minSdkVersion` is a reference whose value dexpp cannot
+        tell.
+        """
+    @property
     def target_sdk(self) -> Optional[int]:
         """`android:targetSdkVersion` of `<uses-sdk>`, or `None`."""
     @property
     def target_sdk_reference(self) -> Optional[int]:
         """The resource id when `android:targetSdkVersion` is a reference, or `None`.
+        """
+    @property
+    def target_sdk_unknown(self) -> bool:
+        """True when `android:targetSdkVersion` is a reference whose value dexpp
+        cannot tell.
         """
     @property
     def permissions(self) -> list[str]:
@@ -1987,10 +2079,10 @@ class Manifest:
         """The `android:protectionLevel` of a permission the app declares, as the raw
         Android value, or `None` when the app does not declare this permission.
 
-        It is also `None` when the level is a resource reference that could not be
-        resolved. Such a permission does not count as a guard for
-        `guarded_by_signature_permission`. A declaration without the attribute is
-        normal (0).
+        It is also `None` when the level is a resource reference whose value is
+        unknown. Such a permission does not count as a guard for
+        `guarded_by_signature_permission`. A declaration without the attribute, or
+        with a null value, is normal (0), as Android reads it.
 
         The low four bits are the base level: 0 normal, 1 dangerous, 2 signature, 3
         signatureOrSystem. Higher bits are flags.
@@ -2017,29 +2109,64 @@ class Manifest:
         """
     @property
     def debuggable(self) -> Optional[bool]:
-        """`android:debuggable` of `<application>`, or `None` when it is not set."""
+        """`android:debuggable` of `<application>`, or `None` when it is not set.
+
+        A null value counts as not set: Android then uses false.
+        """
     @property
     def debuggable_reference(self) -> Optional[int]:
         """The resource id when `android:debuggable` is a reference, or `None`."""
     @property
+    def debuggable_unknown(self) -> bool:
+        """True when `android:debuggable` is a reference whose value dexpp cannot tell.
+        """
+    @property
     def debuggable_varies(self) -> bool:
         """True when `android:debuggable` is a reference whose value is not the same in
-        every configuration. `debuggable` holds the default configuration's value; a
-        device that matches another configuration uses that one. For triage, treat a
-        varying value as possibly true.
+        every configuration (a null value counts as false). `debuggable` holds the
+        default configuration's value; a device that matches another configuration
+        uses that one. For triage, treat a varying value as possibly true.
         """
     @property
     def allow_backup(self) -> Optional[bool]:
-        """`android:allowBackup` of `<application>`, or `None` when it is not set."""
+        """`android:allowBackup` of `<application>`, or `None` when it is not set.
+
+        A null value counts as not set: Android then uses true.
+        """
     @property
     def allow_backup_reference(self) -> Optional[int]:
         """The resource id when `android:allowBackup` is a reference, or `None`."""
     @property
+    def allow_backup_unknown(self) -> bool:
+        """True when `android:allowBackup` is a reference whose value dexpp cannot
+        tell.
+        """
+    @property
     def allow_backup_varies(self) -> bool:
         """True when `android:allowBackup` is a reference whose value is not the same in
-        every configuration. `allow_backup` holds the default configuration's value; a
-        device that matches another configuration uses that one. For triage, treat a
-        varying value as possibly true.
+        every configuration (a null value counts as true). `allow_backup` holds the
+        default configuration's value; a device that matches another configuration
+        uses that one. For triage, treat a varying value as possibly true.
+        """
+    @property
+    def application_permission(self) -> Optional[str]:
+        """`android:permission` of `<application>`: the permission that every
+        activity, service, receiver and provider requires when it does not give one
+        of its own (see `Component.permission`).
+
+        `None` when the attribute is missing, when Android reads it as not written (a
+        null value, or a string that changes with the configuration), or when it is
+        unknown (`application_permission_unknown`).
+        """
+    @property
+    def application_permission_reference(self) -> Optional[int]:
+        """The resource id when the application's `android:permission` is a reference,
+        or `None`.
+        """
+    @property
+    def application_permission_unknown(self) -> bool:
+        """True when the application's `android:permission` is a reference whose
+        string dexpp cannot tell.
         """
 
 class ResourceName:

@@ -1231,11 +1231,21 @@ PYBIND11_MODULE(dexpp, m)
         .def_readonly("kind", &Component::kind)
         .def_readonly("name", &Component::name)
         .def_readonly("name_reference", &Component::name_reference)
+        .def_readonly("name_unknown", &Component::name_unknown)
         .def_readonly("exported", &Component::exported)
         .def_readonly("exported_reference", &Component::exported_reference)
+        .def_readonly("exported_unknown", &Component::exported_unknown)
         .def_readonly("exported_varies", &Component::exported_varies)
         .def_readonly("permission", &Component::permission)
         .def_readonly("permission_reference", &Component::permission_reference)
+        .def_readonly("permission_unknown", &Component::permission_unknown)
+        .def_readonly("permission_inherited", &Component::permission_inherited)
+        .def_readonly("read_permission", &Component::read_permission)
+        .def_readonly("read_permission_reference", &Component::read_permission_reference)
+        .def_readonly("read_permission_unknown", &Component::read_permission_unknown)
+        .def_readonly("write_permission", &Component::write_permission)
+        .def_readonly("write_permission_reference", &Component::write_permission_reference)
+        .def_readonly("write_permission_unknown", &Component::write_permission_unknown)
         .def_readonly("intent_filters", &Component::intent_filters)
         .def_readonly("guarded_by_signature_permission",
                       &Component::guarded_by_signature_permission)
@@ -1248,6 +1258,7 @@ PYBIND11_MODULE(dexpp, m)
                                [](const Manifest &m_) { return std::string(m_.package()); })
         .def_property_readonly("version_code", &Manifest::version_code)
         .def_property_readonly("version_code_reference", &Manifest::version_code_reference)
+        .def_property_readonly("version_code_unknown", &Manifest::version_code_unknown)
         .def_property_readonly("version_name",
                                [](const Manifest &m_) -> py::object {
                                    auto v = m_.version_name();
@@ -1256,10 +1267,13 @@ PYBIND11_MODULE(dexpp, m)
                                    return py::cast(std::string(*v));
                                })
         .def_property_readonly("version_name_reference", &Manifest::version_name_reference)
+        .def_property_readonly("version_name_unknown", &Manifest::version_name_unknown)
         .def_property_readonly("min_sdk", &Manifest::min_sdk)
         .def_property_readonly("min_sdk_reference", &Manifest::min_sdk_reference)
+        .def_property_readonly("min_sdk_unknown", &Manifest::min_sdk_unknown)
         .def_property_readonly("target_sdk", &Manifest::target_sdk)
         .def_property_readonly("target_sdk_reference", &Manifest::target_sdk_reference)
+        .def_property_readonly("target_sdk_unknown", &Manifest::target_sdk_unknown)
         .def_property_readonly("permissions", &Manifest::permissions)
         .def_property_readonly("declared_permissions", &Manifest::declared_permissions)
         .def("declared_permission_protection_level",
@@ -1285,10 +1299,23 @@ PYBIND11_MODULE(dexpp, m)
                                })
         .def_property_readonly("debuggable", &Manifest::debuggable)
         .def_property_readonly("debuggable_reference", &Manifest::debuggable_reference)
+        .def_property_readonly("debuggable_unknown", &Manifest::debuggable_unknown)
         .def_property_readonly("debuggable_varies", &Manifest::debuggable_varies)
         .def_property_readonly("allow_backup", &Manifest::allow_backup)
         .def_property_readonly("allow_backup_reference", &Manifest::allow_backup_reference)
-        .def_property_readonly("allow_backup_varies", &Manifest::allow_backup_varies);
+        .def_property_readonly("allow_backup_unknown", &Manifest::allow_backup_unknown)
+        .def_property_readonly("allow_backup_varies", &Manifest::allow_backup_varies)
+        .def_property_readonly("application_permission",
+                               [](const Manifest &m_) -> py::object {
+                                   auto v = m_.application_permission();
+                                   if (!v)
+                                       return py::none();
+                                   return py::str(std::string(*v));
+                               })
+        .def_property_readonly("application_permission_reference",
+                               &Manifest::application_permission_reference)
+        .def_property_readonly("application_permission_unknown",
+                               &Manifest::application_permission_unknown);
 
     py::class_<ResourceName>(m, "ResourceName")
         .def_readonly("package", &ResourceName::package)
