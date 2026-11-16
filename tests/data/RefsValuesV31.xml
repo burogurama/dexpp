@@ -2,4 +2,8 @@
 <!-- Resources for refs.apk (res/values-v31/values.xml); see RefsManifest.xml. -->
 <resources>
     <bool name="differs_on_v31">true</bool>
+    <bool name="debug">false</bool>
+    <bool name="allow_backup">true</bool>
+    <integer name="level_on_v31">0</integer>
+    <string name="permission_on_v31">com.dexpp.refs.P_TEXT</string>
 </resources>

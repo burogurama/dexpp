@@ -48,8 +48,17 @@ struct XmlAttribute
 {
     std::string namespace_uri; ///< e.g. "http://schemas.android.com/apk/res/android"; may be empty.
     std::string name;          ///< e.g. "exported".
-    std::string raw_value;     ///< Resolved string value when the value is a string; else empty.
+    /** The text the attribute's raw-value index names, or, when there is
+     *  none, the text of a string-typed value; else empty.  Android's
+     *  XmlPullParser.getAttributeValue() reads this one. */
+    std::string raw_value;
     TypedValue typed;
+    /** When `typed` is a string (TYPE_STRING): the text its data indexes;
+     *  else empty.  Android's TypedArray, which the package parser uses for
+     *  android:name, android:exported and every other framework attribute,
+     *  reads this one and ignores the raw value.  aapt and aapt2 put the same
+     *  index in both, but a hand-made file may not. */
+    std::string typed_string;
     /** The attribute's resource id, from the document's resource map: for
      *  example 0x01010010 for android:exported.  0 when the attribute has none
      *  (the attribute is not a framework attribute, or the document has no

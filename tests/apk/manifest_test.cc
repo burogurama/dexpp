@@ -13,6 +13,7 @@
 #include <vector>
 
 #include "../raw/test_utils.hpp"
+#include "arsc_builder.hpp"
 #include "dex.hpp"
 #include "raw/zip.hpp"
 
@@ -281,6 +282,8 @@ struct TestAttr
     std::optional<bool> boolean = std::nullopt;
     /** Any other typed value, such as a reference; used when `text` is unset. */
     std::optional<axml::TypedValue> typed = std::nullopt;
+    /** The raw value's text, when it should differ from `text`. */
+    std::optional<std::string> raw = std::nullopt;
 };
 
 struct TestElement
@@ -358,6 +361,8 @@ class AxmlWriter
                 intern(a.name);
             if (a.text.has_value())
                 intern(*a.text);
+            if (a.raw.has_value())
+                intern(*a.raw);
         }
         for (const TestElement &child : element.children)
             collect_strings(child);
@@ -426,7 +431,10 @@ class AxmlWriter
         for (const TestAttr &a : element.attrs) {
             put32(out, a.ns.empty() ? no_entry : plain_.at(a.ns));
             put32(out, name_index(a));
-            put32(out, a.text.has_value() ? plain_.at(*a.text) : no_entry);
+            if (a.raw.has_value())
+                put32(out, plain_.at(*a.raw));
+            else
+                put32(out, a.text.has_value() ? plain_.at(*a.text) : no_entry);
             put16(out, 8); // Res_value size
             out.push_back(0);
             if (a.text.has_value()) {
@@ -571,19 +579,27 @@ TEST(ManifestAttributes, AResourceMapAfterTheFirstElementIsIgnored)
 
 // ===== attribute values given by resource references =====
 //
-// tests/data/refs.apk sets its boolean and integer attributes through
-// resource references, such as android:exported="@bool/yes".  Its sources are
-// RefsManifest.xml, RefsValues.xml (res/values/values.xml) and
-// RefsValuesV31.xml (res/values-v31/values.xml).  It was built with the
-// Android SDK's aapt2 against platforms/android-34/android.jar:
+// tests/data/refs.apk sets its attributes through resource references, such
+// as android:exported="@bool/yes".  Its sources are RefsManifest.xml,
+// RefsValues.xml (res/values/values.xml), RefsValuesV31.xml
+// (res/values-v31/values.xml), RefsValuesFr.xml (res/values-fr/values.xml)
+// and RefsValuesSrLatnLandNight.xml
+// (res/values-b+sr+Latn-land-night/values.xml).  It was built with the
+// Android SDK's aapt2 (build-tools 36.0.0) against
+// platforms/android-34/android.jar:
 //
 //   aapt2 compile --dir res -o compiled.zip
 //   aapt2 link -o refs.apk -I android.jar --manifest RefsManifest.xml compiled.zip
-//   zip -X -j refs.apk classes.dex          # tests/data/classes.dex
+//   touch -t 198001010000 classes.dex       # tests/data/classes.dex
+//   TZ=UTC zip -X -j refs.apk classes.dex
 
 namespace {
 
 constexpr uint32_t kVersionCodeId = 0x0101021b;
+constexpr uint32_t kVersionNameId = 0x0101021c;
+constexpr uint32_t kPermissionId = 0x01010006;
+constexpr uint32_t kDebuggableId = 0x0101000f;
+constexpr uint32_t kAllowBackupId = 0x01010280;
 constexpr uint8_t kTypeReference = 0x01;
 constexpr uint8_t kTypeIntDec = 0x10;
 
@@ -637,14 +653,23 @@ TEST(ManifestReferences, BooleansAndIntegersAreResolved)
     EXPECT_EQ(m->min_sdk_reference(), resource_id(apk, "integer", "min_sdk"));
     EXPECT_EQ(m->target_sdk(), 34);
     EXPECT_EQ(m->target_sdk_reference(), resource_id(apk, "integer", "target_sdk"));
+    // debug is true by default and false in values-v31; allow_backup is
+    // false by default and true in values-v31.  The value is the default
+    // configuration's, and the other one is reported as a variant.
     EXPECT_EQ(m->debuggable(), std::optional<bool>(true));
     EXPECT_EQ(m->debuggable_reference(), resource_id(apk, "bool", "debug"));
+    EXPECT_TRUE(m->debuggable_varies());
     EXPECT_EQ(m->allow_backup(), std::optional<bool>(false));
     EXPECT_EQ(m->allow_backup_reference(), resource_id(apk, "bool", "allow_backup"));
+    EXPECT_TRUE(m->allow_backup_varies());
 
     // A plain value has no reference.
     EXPECT_EQ(m->version_code(), 42);
     EXPECT_EQ(m->version_code_reference(), std::nullopt);
+
+    // A text attribute: @string/version_name.
+    EXPECT_EQ(m->version_name(), std::optional<std::string_view>("1.0"));
+    EXPECT_EQ(m->version_name_reference(), resource_id(apk, "string", "version_name"));
 }
 
 TEST(ManifestReferences, ExportedIsResolved)
@@ -679,11 +704,61 @@ TEST(ManifestReferences, ExportedIsResolved)
     ASSERT_NE(c, nullptr);
     EXPECT_EQ(c->exported, std::optional<bool>(true));
 
-    // false in the default configuration, true in values-v31: the default
-    // configuration's value is used.
-    c = find_component(*m, "com.dexpp.refs.VariantActivity");
-    ASSERT_NE(c, nullptr);
-    EXPECT_EQ(c->exported, std::optional<bool>(false));
+    // None of these has a value that changes with the configuration.
+    for (const char *name :
+         {"ExportedActivity", "HiddenActivity", "ChainedActivity", "IntegerActivity"}) {
+        c = find_component(*m, std::string("com.dexpp.refs.") + name);
+        ASSERT_NE(c, nullptr) << name;
+        EXPECT_FALSE(c->exported_varies) << name;
+    }
+}
+
+TEST(ManifestReferences, AnExportedThatVariesCountsAsExported)
+{
+    Apk apk = open_refs();
+    const Manifest *m = apk.manifest();
+    ASSERT_NE(m, nullptr);
+
+    // false in the default configuration, true in values-v31: exported on
+    // Android 12 and newer.  The value is the default configuration's, and
+    // the effective answer is the unsafe one.
+    for (const char *name : {"VariantActivity", "ChainedVariantActivity"}) {
+        const Component *c = find_component(*m, std::string("com.dexpp.refs.") + name);
+        ASSERT_NE(c, nullptr) << name;
+        EXPECT_EQ(c->exported, std::optional<bool>(false)) << name;
+        EXPECT_TRUE(c->exported_varies) << name;
+        EXPECT_TRUE(c->is_exported()) << name;
+        EXPECT_TRUE(c->is_reachable()) << name;
+    }
+    EXPECT_EQ(find_component(*m, "com.dexpp.refs.VariantActivity")->exported_reference,
+              resource_id(apk, "bool", "differs_on_v31"));
+}
+
+TEST(ManifestReferences, StringResourcesAreReadAsBooleansLikeAndroid)
+{
+    // TypedArray.getBoolean reads a string with XmlUtils.convertValueToBoolean:
+    // exactly "1", "true" and "TRUE" are true, other text is false, and
+    // empty text gives the default, false for android:exported.
+    Apk apk = open_refs();
+    const Manifest *m = apk.manifest();
+    ASSERT_NE(m, nullptr);
+    const std::vector<std::pair<std::string, bool>> cases = {
+        {"TextActivity", true},         // "true"
+        {"UpperTextActivity", true},    // "TRUE"
+        {"OneTextActivity", true},      // "1"
+        {"CapitalTextActivity", false}, // "True", with an intent filter
+        {"YesTextActivity", false},     // "yes"
+        {"EmptyTextActivity", false},   // "", with an intent filter
+    };
+    for (const auto &[name, expected] : cases) {
+        const Component *c = find_component(*m, "com.dexpp.refs." + name);
+        ASSERT_NE(c, nullptr) << name;
+        EXPECT_EQ(c->exported, std::optional<bool>(expected)) << name;
+        EXPECT_EQ(c->is_exported(), expected) << name;
+        EXPECT_FALSE(c->exported_varies) << name;
+    }
+    EXPECT_EQ(find_component(*m, "com.dexpp.refs.TextActivity")->exported_reference,
+              resource_id(apk, "string", "not_a_bool"));
 }
 
 TEST(ManifestReferences, AnUnresolvedExportedCountsAsExported)
@@ -692,21 +767,15 @@ TEST(ManifestReferences, AnUnresolvedExportedCountsAsExported)
     const Manifest *m = apk.manifest();
     ASSERT_NE(m, nullptr);
 
-    // @string/not_a_bool: a reference to a value of the wrong type.
-    const Component *c = find_component(*m, "com.dexpp.refs.TextActivity");
-    ASSERT_NE(c, nullptr);
-    EXPECT_EQ(c->exported, std::nullopt);
-    EXPECT_EQ(c->exported_reference, resource_id(apk, "string", "not_a_bool"));
-    EXPECT_TRUE(c->is_exported());
-    EXPECT_TRUE(c->is_reachable());
-
     // ?android:attr/windowFullscreen: a theme attribute, unknown without the
     // theme.
-    c = find_component(*m, "com.dexpp.refs.ThemeActivity");
+    const Component *c = find_component(*m, "com.dexpp.refs.ThemeActivity");
     ASSERT_NE(c, nullptr);
     EXPECT_EQ(c->exported, std::nullopt);
     EXPECT_EQ(c->exported_reference, 0x0101020du);
+    EXPECT_FALSE(c->exported_varies);
     EXPECT_TRUE(c->is_exported());
+    EXPECT_TRUE(c->is_reachable());
 }
 
 TEST(ManifestReferences, ProtectionLevelsAreResolved)
@@ -714,10 +783,14 @@ TEST(ManifestReferences, ProtectionLevelsAreResolved)
     Apk apk = open_refs();
     const Manifest *m = apk.manifest();
     ASSERT_NE(m, nullptr);
-    EXPECT_EQ(m->declared_permissions().size(), 2u);
+    EXPECT_EQ(
+        m->declared_permissions(),
+        (std::vector<std::string>{"com.dexpp.refs.P_SIGNATURE", "com.dexpp.refs.P_TEXT",
+                                  "com.dexpp.refs.P_VARYING", "com.dexpp.refs.P_BY_REFERENCE"}));
 
     // @integer/signature_level is 2, signature: the service is guarded.
     EXPECT_EQ(m->declared_permission_protection_level("com.dexpp.refs.P_SIGNATURE"), 2);
+    EXPECT_FALSE(m->declared_permission_protection_level_varies("com.dexpp.refs.P_SIGNATURE"));
     const Component *c = find_component(*m, "com.dexpp.refs.GuardedService");
     ASSERT_NE(c, nullptr);
     EXPECT_TRUE(c->guarded_by_signature_permission);
@@ -729,6 +802,62 @@ TEST(ManifestReferences, ProtectionLevelsAreResolved)
     ASSERT_NE(c, nullptr);
     EXPECT_FALSE(c->guarded_by_signature_permission);
     EXPECT_TRUE(c->is_reachable());
+
+    // @integer/level_on_v31 is 2 (signature) by default and 0 (normal) in
+    // values-v31.  On Android 12 and newer any app can hold the permission,
+    // so it does not guard.
+    EXPECT_EQ(m->declared_permission_protection_level("com.dexpp.refs.P_VARYING"), 2);
+    EXPECT_TRUE(m->declared_permission_protection_level_varies("com.dexpp.refs.P_VARYING"));
+    c = find_component(*m, "com.dexpp.refs.VaryingLevelService");
+    ASSERT_NE(c, nullptr);
+    EXPECT_FALSE(c->guarded_by_signature_permission);
+    EXPECT_TRUE(c->is_reachable());
+
+    EXPECT_FALSE(m->declared_permission_protection_level_varies("android.permission.DUMP"));
+}
+
+TEST(ManifestReferences, PermissionsGivenByReference)
+{
+    Apk apk = open_refs();
+    const Manifest *m = apk.manifest();
+    ASSERT_NE(m, nullptr);
+
+    // android:permission="@string/signature_permission", one value: resolved,
+    // and it names a signature permission the app declares.
+    const Component *c = find_component(*m, "com.dexpp.refs.PermissionByReferenceService");
+    ASSERT_NE(c, nullptr);
+    EXPECT_EQ(c->permission, std::optional<std::string>("com.dexpp.refs.P_SIGNATURE"));
+    EXPECT_EQ(c->permission_reference, resource_id(apk, "string", "signature_permission"));
+    EXPECT_TRUE(c->guarded_by_signature_permission);
+    EXPECT_FALSE(c->is_reachable());
+
+    // The string has a res/values-fr variant (with the same text).  Android
+    // reads android:permission with getNonConfigurationString(attr, 0), which
+    // returns null for a value that changes with the locale: no permission.
+    c = find_component(*m, "com.dexpp.refs.LocalizedPermissionService");
+    ASSERT_NE(c, nullptr);
+    EXPECT_EQ(c->permission, std::nullopt);
+    EXPECT_EQ(c->permission_reference, resource_id(apk, "string", "localized_permission"));
+    EXPECT_FALSE(c->guarded_by_signature_permission);
+    EXPECT_TRUE(c->is_reachable());
+
+    // P_SIGNATURE by default, P_TEXT in values-v31: Android reads it, with
+    // the value of the device's version, so there is no single value.
+    c = find_component(*m, "com.dexpp.refs.PermissionOnV31Service");
+    ASSERT_NE(c, nullptr);
+    EXPECT_EQ(c->permission, std::nullopt);
+    EXPECT_EQ(c->permission_reference, resource_id(apk, "string", "permission_on_v31"));
+    EXPECT_TRUE(c->is_reachable());
+
+    // <permission android:name="@string/declared_name"
+    // android:protectionLevel="signature">: the declared name is resolved,
+    // so the literal android:permission matches it.
+    EXPECT_EQ(m->declared_permission_protection_level("com.dexpp.refs.P_BY_REFERENCE"), 2);
+    c = find_component(*m, "com.dexpp.refs.DeclaredByReferenceService");
+    ASSERT_NE(c, nullptr);
+    EXPECT_EQ(c->permission_reference, std::nullopt);
+    EXPECT_TRUE(c->guarded_by_signature_permission);
+    EXPECT_FALSE(c->is_reachable());
 }
 
 TEST(ManifestReferences, WithoutTheResourceTableOnlyTheReferenceIsKnown)
@@ -744,7 +873,12 @@ TEST(ManifestReferences, WithoutTheResourceTableOnlyTheReferenceIsKnown)
     EXPECT_EQ(m.min_sdk_reference(), resource_id(apk, "integer", "min_sdk"));
     EXPECT_EQ(m.debuggable(), std::nullopt);
     EXPECT_EQ(m.debuggable_reference(), resource_id(apk, "bool", "debug"));
+    EXPECT_FALSE(m.debuggable_varies());
     EXPECT_EQ(m.version_code(), 42);
+    EXPECT_EQ(m.version_name(), std::nullopt);
+    EXPECT_EQ(m.version_name_reference(), resource_id(apk, "string", "version_name"));
+    // The permission declared by reference has no name: it is left out.
+    EXPECT_EQ(m.declared_permissions().size(), 3u);
 
     const Component *hidden = find_component(m, "com.dexpp.refs.HiddenActivity");
     ASSERT_NE(hidden, nullptr);
@@ -758,6 +892,14 @@ TEST(ManifestReferences, WithoutTheResourceTableOnlyTheReferenceIsKnown)
     ASSERT_NE(guarded, nullptr);
     EXPECT_FALSE(guarded->guarded_by_signature_permission);
     EXPECT_TRUE(guarded->is_reachable());
+
+    const Component *by_reference =
+        find_component(m, "com.dexpp.refs.PermissionByReferenceService");
+    ASSERT_NE(by_reference, nullptr);
+    EXPECT_EQ(by_reference->permission, std::nullopt);
+    EXPECT_EQ(by_reference->permission_reference,
+              resource_id(apk, "string", "signature_permission"));
+    EXPECT_TRUE(by_reference->is_reachable());
 }
 
 TEST(ManifestReferences, AMissingIdIsNotResolved)
@@ -806,6 +948,278 @@ TEST(ManifestReferences, PlainValuesHaveNoReference)
     EXPECT_EQ(m->min_sdk_reference(), std::nullopt);
     EXPECT_EQ(m->target_sdk_reference(), std::nullopt);
     EXPECT_EQ(m->version_code_reference(), std::nullopt);
-    for (const Component &c : m->components())
+    EXPECT_EQ(m->version_name_reference(), std::nullopt);
+    EXPECT_FALSE(m->debuggable_varies());
+    EXPECT_FALSE(m->allow_backup_varies());
+    for (const Component &c : m->components()) {
         EXPECT_EQ(c.exported_reference, std::nullopt) << c.name;
+        EXPECT_EQ(c.name_reference, std::nullopt) << c.name;
+        EXPECT_EQ(c.permission_reference, std::nullopt) << c.name;
+        EXPECT_FALSE(c.exported_varies) << c.name;
+    }
+}
+
+// ===== literal values written as strings =====
+//
+// aapt2 always writes android:exported="true" as a typed boolean, but a
+// hand-made binary manifest can store the string "true".  Android reads it
+// with TypedArray.getBoolean, as it reads a string resource.
+
+namespace {
+
+TestAttr string_attr(std::string name, uint32_t id, std::string text)
+{
+    return TestAttr{kAndroidNs, std::move(name), id, std::move(text)};
+}
+
+} // namespace
+
+TEST(ManifestStrings, ExportedAsAString)
+{
+    const std::vector<std::pair<std::string, bool>> cases = {
+        {"true", true}, {"TRUE", true},   {"1", true},  {"True", false},
+        {"yes", false}, {"false", false}, {"0", false},
+    };
+    for (const auto &[text, expected] : cases) {
+        Manifest m = one_activity({string_attr("exported", kExportedId, text)},
+                                  /*with_intent_filter=*/!expected, ResourceMap::BeforeTheElements);
+        EXPECT_EQ(only_component(m).exported, std::optional<bool>(expected)) << text;
+        EXPECT_EQ(only_component(m).exported_reference, std::nullopt) << text;
+        EXPECT_EQ(only_component(m).is_exported(), expected) << text;
+    }
+    // Empty text gives getBoolean's default, false: the flag is set (so the
+    // intent filter does not make it exported).
+    Manifest empty = one_activity({string_attr("exported", kExportedId, "")},
+                                  /*with_intent_filter=*/true, ResourceMap::BeforeTheElements);
+    EXPECT_EQ(only_component(empty).exported, std::optional<bool>(false));
+    EXPECT_FALSE(only_component(empty).is_exported());
+}
+
+TEST(ManifestStrings, EmptyTextGivesTheAttributeDefault)
+{
+    // ParsingPackageUtils reads debuggable with the default false and
+    // allowBackup with the default true.
+    auto doc = axml::parse(
+        AxmlWriter().write(TestElement{"manifest",
+                                       {{"", "package", 0, "com.test"}},
+                                       {{"application",
+                                         {string_attr("debuggable", kDebuggableId, ""),
+                                          string_attr("allowBackup", kAllowBackupId, "")},
+                                         {}}}},
+                           ResourceMap::BeforeTheElements));
+    ASSERT_TRUE(doc.has_value());
+    Manifest m(std::move(*doc));
+    EXPECT_EQ(m.debuggable(), std::optional<bool>(false));
+    EXPECT_EQ(m.allow_backup(), std::optional<bool>(true));
+
+    doc = axml::parse(
+        AxmlWriter().write(TestElement{"manifest",
+                                       {{"", "package", 0, "com.test"}},
+                                       {{"application",
+                                         {string_attr("debuggable", kDebuggableId, "TRUE"),
+                                          string_attr("allowBackup", kAllowBackupId, "no")},
+                                         {}}}},
+                           ResourceMap::BeforeTheElements));
+    ASSERT_TRUE(doc.has_value());
+    Manifest set(std::move(*doc));
+    EXPECT_EQ(set.debuggable(), std::optional<bool>(true));
+    EXPECT_EQ(set.allow_backup(), std::optional<bool>(false));
+}
+
+TEST(ManifestStrings, TheTypedValueWinsOverTheRawValue)
+{
+    // An attribute holds two string indexes: the raw value and the typed
+    // value.  aapt2 writes the same index in both; this one says "false" in
+    // the raw value and "true" in the typed value.  TypedArray reads the
+    // typed value, so Android sees an exported activity.
+    TestAttr exported = string_attr("exported", kExportedId, "true");
+    exported.raw = "false";
+    TestAttr permission = string_attr("permission", kPermissionId, "com.test.REAL");
+    permission.raw = "com.test.DECOY";
+    Manifest m = one_activity({exported, permission}, /*with_intent_filter=*/false,
+                              ResourceMap::BeforeTheElements);
+    EXPECT_EQ(only_component(m).exported, std::optional<bool>(true));
+    EXPECT_EQ(only_component(m).permission, std::optional<std::string>("com.test.REAL"));
+}
+
+// ===== text and booleans resolved against a crafted resource table =====
+
+namespace {
+
+/** A manifest with one activity whose android:name is @p name and whose
+ *  other attributes are @p attrs, read with @p table. */
+Manifest crafted_with_table(TestAttr name, std::vector<TestAttr> attrs,
+                            const std::vector<uint8_t> &table_bytes,
+                            std::vector<TestAttr> root_attrs = {},
+                            std::vector<TestElement> extra_children = {})
+{
+    TestElement activity{"activity", {std::move(name)}, {}};
+    for (TestAttr &a : attrs)
+        activity.attrs.push_back(std::move(a));
+    TestElement root{"manifest", {{"", "package", 0, "com.test"}}, std::move(extra_children)};
+    for (TestAttr &a : root_attrs)
+        root.attrs.push_back(std::move(a));
+    root.children.push_back({"application", {}, {std::move(activity)}});
+    auto doc = axml::parse(AxmlWriter().write(root, ResourceMap::BeforeTheElements));
+    EXPECT_TRUE(doc.has_value());
+    auto table = ResourceTable::parse(table_bytes);
+    EXPECT_TRUE(table.has_value());
+    return Manifest(doc ? std::move(*doc) : axml::XmlDocument{}, table ? &*table : nullptr);
+}
+
+TestAttr literal_name(std::string text) { return string_attr("name", kNameId, std::move(text)); }
+
+using test::ArscBuilder;
+using test::ArscConfig;
+
+} // namespace
+
+TEST(ManifestTextReferences, AComponentNameGivenByReference)
+{
+    // aapt2 refuses a reference for a component's android:name, but Android
+    // resolves one (getNonConfigurationString(name, 0)).
+    ArscBuilder b;
+    b.value(0, ArscConfig(), ArscBuilder::kString, b.string("com.test.Named"));
+    b.value(1, ArscConfig(), ArscBuilder::kString, b.string("com.test.Default"));
+    b.value(1, ArscConfig().language('f', 'r'), ArscBuilder::kString, b.string("com.test.Fr"));
+    b.spec_flags(1, 0x0004); // varies with the locale, as aapt2 would mark it
+    const std::vector<uint8_t> table = b.build();
+
+    Manifest named =
+        crafted_with_table(reference_attr("name", kNameId, ArscBuilder::id(0)), {}, table);
+    EXPECT_EQ(only_component(named).name, "com.test.Named");
+    EXPECT_EQ(only_component(named).name_reference, ArscBuilder::id(0));
+
+    // A name that changes with the locale: Android ignores it.
+    Manifest localized =
+        crafted_with_table(reference_attr("name", kNameId, ArscBuilder::id(1)), {}, table);
+    EXPECT_EQ(only_component(localized).name, "");
+    EXPECT_EQ(only_component(localized).name_reference, ArscBuilder::id(1));
+
+    // A missing id.
+    Manifest missing =
+        crafted_with_table(reference_attr("name", kNameId, ArscBuilder::id(9)), {}, table);
+    EXPECT_EQ(only_component(missing).name, "");
+    EXPECT_EQ(only_component(missing).name_reference, ArscBuilder::id(9));
+}
+
+TEST(ManifestTextReferences, TheTypeSpecFlagsDecideLikeAndroid)
+{
+    // Android looks at the typeSpec flags, not at the values: a string with
+    // one value but flags that say "changes with the locale" is ignored, and
+    // one whose flags only say "changes with the Android version" is read.
+    ArscBuilder b;
+    const uint32_t guard = b.string("com.test.GUARD");
+    b.value(0, ArscConfig(), ArscBuilder::kString, guard).spec_flags(0, 0x0004);
+    b.value(1, ArscConfig(), ArscBuilder::kString, guard).spec_flags(1, 0x0400);
+    b.value(2, ArscConfig(), ArscBuilder::kString, guard);
+    b.value(2, ArscConfig().sdk(31), ArscBuilder::kString, guard).spec_flags(2, 0x0400);
+    const std::vector<uint8_t> table = b.build();
+    TestElement declared{"permission",
+                         {literal_name("com.test.GUARD"),
+                          TestAttr{kAndroidNs, "protectionLevel", 0x01010009, std::nullopt,
+                                   std::nullopt, axml::TypedValue{0x11, 2}}},
+                         {}};
+
+    Manifest ignored = crafted_with_table(
+        literal_name(".A"), {reference_attr("permission", kPermissionId, ArscBuilder::id(0))},
+        table, {}, {declared});
+    EXPECT_EQ(only_component(ignored).permission, std::nullopt);
+    EXPECT_FALSE(only_component(ignored).guarded_by_signature_permission);
+
+    Manifest version_only = crafted_with_table(
+        literal_name(".A"), {reference_attr("permission", kPermissionId, ArscBuilder::id(1))},
+        table, {}, {declared});
+    EXPECT_EQ(only_component(version_only).permission,
+              std::optional<std::string>("com.test.GUARD"));
+    EXPECT_TRUE(only_component(version_only).guarded_by_signature_permission);
+
+    // The same text in the default and v31 configurations: one value.
+    Manifest same_text = crafted_with_table(
+        literal_name(".A"), {reference_attr("permission", kPermissionId, ArscBuilder::id(2))},
+        table, {}, {declared});
+    EXPECT_EQ(only_component(same_text).permission, std::optional<std::string>("com.test.GUARD"));
+}
+
+TEST(ManifestTextReferences, VersionNameAndUsesPermission)
+{
+    ArscBuilder b;
+    b.value(0, ArscConfig(), ArscBuilder::kString, b.string("2.5"));
+    b.value(1, ArscConfig(), ArscBuilder::kString, b.string("android.permission.CAMERA"));
+    const std::vector<uint8_t> table = b.build();
+    TestElement uses_by_reference{
+        "uses-permission", {reference_attr("name", kNameId, ArscBuilder::id(1))}, {}};
+    TestElement uses_literal{"uses-permission", {literal_name("android.permission.INTERNET")}, {}};
+    Manifest m =
+        crafted_with_table(literal_name(".A"), {}, table,
+                           {reference_attr("versionName", kVersionNameId, ArscBuilder::id(0))},
+                           {uses_by_reference, uses_literal});
+    EXPECT_EQ(m.version_name(), std::optional<std::string_view>("2.5"));
+    EXPECT_EQ(m.version_name_reference(), ArscBuilder::id(0));
+    // Android reads <uses-permission android:name> with getNonResourceString,
+    // which ignores a reference.
+    EXPECT_EQ(m.permissions(), std::vector<std::string>{"android.permission.INTERNET"});
+}
+
+TEST(ManifestVariants, ALoopInOneConfigurationIsUnknown)
+{
+    // e0 is false by default and refers to itself in v31: on Android 12 and
+    // newer the value cannot be read.  dexpp counts that as possibly true.
+    ArscBuilder b;
+    b.value(0, ArscConfig(), ArscBuilder::kBoolean, 0);
+    b.value(0, ArscConfig().sdk(31), ArscBuilder::kReference, ArscBuilder::id(0));
+    Manifest m = crafted_with_table(literal_name(".A"),
+                                    {reference_attr("exported", kExportedId, ArscBuilder::id(0))},
+                                    b.build());
+    EXPECT_EQ(only_component(m).exported, std::optional<bool>(false));
+    EXPECT_TRUE(only_component(m).exported_varies);
+    EXPECT_TRUE(only_component(m).is_exported());
+}
+
+TEST(ManifestVariants, AChainLongerThanAndroidFollowsIsUnknown)
+{
+    // By default e0 is false.  In v31 it starts a chain of 25 references:
+    // Android gives up after 20, so that configuration has no value.
+    ArscBuilder b;
+    b.value(0, ArscConfig(), ArscBuilder::kBoolean, 0);
+    b.value(0, ArscConfig().sdk(31), ArscBuilder::kReference, ArscBuilder::id(1));
+    for (uint16_t i = 1; i < 25; ++i)
+        b.value(i, ArscConfig(), ArscBuilder::kReference, ArscBuilder::id(i + 1));
+    b.value(25, ArscConfig(), ArscBuilder::kBoolean, 0);
+    Manifest m = crafted_with_table(literal_name(".A"),
+                                    {reference_attr("exported", kExportedId, ArscBuilder::id(0))},
+                                    b.build());
+    EXPECT_EQ(only_component(m).exported, std::optional<bool>(false));
+    EXPECT_TRUE(only_component(m).exported_varies);
+
+    // The same chain, short enough: every configuration says false.
+    ArscBuilder short_chain;
+    short_chain.value(0, ArscConfig(), ArscBuilder::kBoolean, 0);
+    short_chain.value(0, ArscConfig().sdk(31), ArscBuilder::kReference, ArscBuilder::id(1));
+    for (uint16_t i = 1; i < 5; ++i)
+        short_chain.value(i, ArscConfig(), ArscBuilder::kReference, ArscBuilder::id(i + 1));
+    short_chain.value(5, ArscConfig(), ArscBuilder::kBoolean, 0);
+    Manifest short_m = crafted_with_table(
+        literal_name(".A"), {reference_attr("exported", kExportedId, ArscBuilder::id(0))},
+        short_chain.build());
+    EXPECT_EQ(only_component(short_m).exported, std::optional<bool>(false));
+    EXPECT_FALSE(only_component(short_m).exported_varies);
+    EXPECT_FALSE(only_component(short_m).is_exported());
+}
+
+TEST(ManifestVariants, TheSearchIsBounded)
+{
+    // A boolean with a value in 5000 configurations, all false.  The search
+    // looks at no more than a few thousand values, so the rest is unknown:
+    // the answer stays safe (possibly exported) and the work stays small.
+    ArscBuilder b;
+    for (uint16_t sdk = 1; sdk <= 5000; ++sdk)
+        b.value(0, ArscConfig().sdk(sdk), ArscBuilder::kBoolean, 0);
+    b.value(0, ArscConfig(), ArscBuilder::kBoolean, 0);
+    Manifest m = crafted_with_table(literal_name(".A"),
+                                    {reference_attr("exported", kExportedId, ArscBuilder::id(0))},
+                                    b.build());
+    EXPECT_EQ(only_component(m).exported, std::optional<bool>(false));
+    EXPECT_TRUE(only_component(m).exported_varies);
+    EXPECT_TRUE(only_component(m).is_exported());
 }

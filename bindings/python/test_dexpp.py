@@ -708,9 +708,9 @@ def test_manifest_references():
     assert exported.is_exported
     hidden = by_name["HiddenActivity"]
     assert hidden.exported is False and not hidden.is_exported
-    # A reference to a string: written, but unknown, so possibly exported.
+    # A reference to the string "true": Android reads it as true.
     text = by_name["TextActivity"]
-    assert text.exported is None
+    assert text.exported is True
     assert text.exported_reference == rt.id_of("string", "not_a_bool")
     assert text.is_exported and text.is_reachable
 
@@ -739,7 +739,8 @@ def test_resolve_bool_and_int():
     assert rt.resolve_bool(no) is False
     assert rt.resolve_bool(same_as_yes) is True
     assert rt.resolve_int(min_sdk) == 23
-    assert rt.resolve_bool(not_a_bool) is None
+    # The string "true" reads as true, as Android reads it.
+    assert rt.resolve_bool(not_a_bool) is True
     assert rt.resolve_int(not_a_bool) is None
     assert rt.resolve_bool(0x7F999999) is None
     assert rt.resolve_int(id=0x7F999999) is None

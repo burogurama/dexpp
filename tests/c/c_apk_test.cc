@@ -356,10 +356,10 @@ TEST(CApiApk, ResolvesReferencesInTheManifest)
     EXPECT_EQ(hidden->exported, 0);
     EXPECT_EQ(hidden->exported_reference, no);
     EXPECT_EQ(hidden->is_exported, 0);
-    // A reference to a string: set, but unknown, so possibly exported.
+    // A reference to the string "true": Android reads it as true.
     const DexppComponent *text = by_name["com.dexpp.refs.TextActivity"];
     ASSERT_NE(text, nullptr);
-    EXPECT_EQ(text->exported, -1);
+    EXPECT_EQ(text->exported, 1);
     EXPECT_EQ(text->exported_reference, not_a_bool);
     EXPECT_EQ(text->is_exported, 1);
     EXPECT_EQ(text->is_reachable, 1);
@@ -367,7 +367,7 @@ TEST(CApiApk, ResolvesReferencesInTheManifest)
     std::map<std::string, const DexppDeclaredPermission *> declared;
     for (size_t i = 0; i < m.declared_permission_count; ++i)
         declared[m.declared_permissions[i].name] = &m.declared_permissions[i];
-    ASSERT_EQ(declared.size(), 2u);
+    ASSERT_EQ(declared.size(), 4u);
     EXPECT_EQ(declared["com.dexpp.refs.P_SIGNATURE"]->has_protection_level, 1);
     EXPECT_EQ(declared["com.dexpp.refs.P_SIGNATURE"]->protection_level, 2);
     EXPECT_EQ(declared["com.dexpp.refs.P_TEXT"]->has_protection_level, 0);
@@ -406,7 +406,9 @@ TEST(CApiApk, ResolvesBooleanAndIntegerResources)
     EXPECT_EQ(b, 1);
     ASSERT_EQ(dexpp_apk_resolve_bool(apk, no, &b), 1);
     EXPECT_EQ(b, 0);
-    EXPECT_EQ(dexpp_apk_resolve_bool(apk, not_a_bool, &b), 0);
+    // The string "true" reads as true, as Android reads it.
+    ASSERT_EQ(dexpp_apk_resolve_bool(apk, not_a_bool, &b), 1);
+    EXPECT_EQ(b, 1);
     EXPECT_EQ(dexpp_apk_resolve_bool(apk, 0x7f999999, &b), 0);
 
     int64_t n = 0;

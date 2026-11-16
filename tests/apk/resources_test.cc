@@ -14,6 +14,7 @@
 #include <string_view>
 #include <vector>
 
+#include "arsc_builder.hpp"
 #include "dex.hpp"
 
 using namespace dex;
@@ -131,10 +132,11 @@ TEST(ResourcesTest, NotAResourceTableIsInvalidResources)
 
 // ===== booleans and integers, against tests/data/refs.apk =====
 //
-// refs.apk's resources (sources: RefsValues.xml for res/values and
-// RefsValuesV31.xml for res/values-v31) hold booleans, integers, strings, a
-// boolean that refers to another boolean, and a boolean whose value differs
-// in the v31 configuration.
+// refs.apk's resources (sources: RefsValues.xml for res/values,
+// RefsValuesV31.xml for res/values-v31, RefsValuesFr.xml for res/values-fr
+// and RefsValuesSrLatnLandNight.xml for res/values-b+sr+Latn-land-night)
+// hold booleans, integers, strings, a boolean that refers to another boolean,
+// and values that differ between configurations.
 
 namespace {
 
@@ -193,12 +195,28 @@ TEST(ResourcesTest, IntegerTypesConvertLikeAndroid)
     EXPECT_EQ(refs.table->resolve_int(refs.id("bool", "no")), std::optional<int64_t>(0));
 }
 
+TEST(ResourcesTest, StringsAreReadAsBooleansLikeAndroid)
+{
+    // TypedArray.getBoolean passes a string to XmlUtils.convertValueToBoolean:
+    // exactly "1", "true" and "TRUE" are true, any other text is false, and
+    // empty text gives the caller's default (no value here).
+    RefsTable refs = open_refs();
+    ASSERT_NE(refs.table, nullptr);
+    EXPECT_EQ(refs.table->resolve_bool(refs.id("string", "not_a_bool")), std::optional<bool>(true));
+    EXPECT_EQ(refs.table->resolve_bool(refs.id("string", "upper_true")), std::optional<bool>(true));
+    EXPECT_EQ(refs.table->resolve_bool(refs.id("string", "one_text")), std::optional<bool>(true));
+    EXPECT_EQ(refs.table->resolve_bool(refs.id("string", "capital_true")),
+              std::optional<bool>(false));
+    EXPECT_EQ(refs.table->resolve_bool(refs.id("string", "yes_text")), std::optional<bool>(false));
+    EXPECT_EQ(refs.table->resolve_bool(refs.id("string", "not_a_number")),
+              std::optional<bool>(false));
+    EXPECT_EQ(refs.table->resolve_bool(refs.id("string", "empty_text")), std::nullopt);
+}
+
 TEST(ResourcesTest, AValueOfAnotherTypeIsNotResolved)
 {
     RefsTable refs = open_refs();
     ASSERT_NE(refs.table, nullptr);
-    // <string name="not_a_bool">true</string>: a string, not a boolean.
-    EXPECT_EQ(refs.table->resolve_bool(refs.id("string", "not_a_bool")), std::nullopt);
     EXPECT_EQ(refs.table->resolve_int(refs.id("string", "not_a_number")), std::nullopt);
     EXPECT_EQ(refs.table->resolve_string(refs.id("bool", "yes")), std::nullopt);
     EXPECT_EQ(refs.table->resolve_string(refs.id("string", "not_a_bool")),
@@ -257,4 +275,97 @@ TEST(ResourcesTest, AReferenceLoopIsNotResolved)
     EXPECT_EQ(table->resolve_int(self), std::nullopt);
     EXPECT_EQ(table->resolve_string(self), std::nullopt);
     EXPECT_EQ(table->resolve_bool(yes), std::optional<bool>(true));
+}
+
+// ===== every configuration =====
+
+TEST(ResourceValues, EveryConfigurationIsListed)
+{
+    RefsTable refs = open_refs();
+    ASSERT_NE(refs.table, nullptr);
+
+    std::vector<ResourceValue> values = refs.table->values(refs.id("bool", "differs_on_v31"));
+    ASSERT_EQ(values.size(), 2u);
+    EXPECT_EQ(values[0].configuration, "");
+    EXPECT_EQ(values[0].type, 0x12);
+    EXPECT_EQ(values[0].data, 0u);
+    EXPECT_EQ(values[0].string, std::nullopt);
+    EXPECT_EQ(values[0].as_bool(), std::optional<bool>(false));
+    EXPECT_EQ(values[1].configuration, "v31");
+    EXPECT_EQ(values[1].data, 0xFFFFFFFFu);
+    EXPECT_EQ(values[1].as_bool(), std::optional<bool>(true));
+    EXPECT_EQ(values[1].as_int(), std::optional<int64_t>(-1));
+
+    // The names follow aapt2: a BCP 47 locale is written "b+sr+Latn", and
+    // aapt2 adds v8 to a night configuration.
+    values = refs.table->values(refs.id("string", "greeting"));
+    ASSERT_EQ(values.size(), 3u);
+    EXPECT_EQ(values[0].configuration, "");
+    EXPECT_EQ(values[0].string, std::optional<std::string>("Hello"));
+    EXPECT_EQ(values[1].configuration, "fr");
+    EXPECT_EQ(values[1].string, std::optional<std::string>("Bonjour"));
+    EXPECT_EQ(values[2].configuration, "b+sr+Latn-land-night-v8");
+    EXPECT_EQ(values[2].string, std::optional<std::string>("Zdravo"));
+    EXPECT_EQ(values[2].type, 0x03);
+    EXPECT_EQ(values[2].as_int(), std::nullopt);
+    EXPECT_EQ(values[2].as_bool(), std::optional<bool>(false));
+}
+
+TEST(ResourceValues, AReferenceIsNotFollowed)
+{
+    RefsTable refs = open_refs();
+    ASSERT_NE(refs.table, nullptr);
+    std::vector<ResourceValue> values = refs.table->values(refs.id("bool", "same_as_yes"));
+    ASSERT_EQ(values.size(), 1u);
+    EXPECT_EQ(values[0].type, 0x01);
+    EXPECT_EQ(values[0].data, refs.id("bool", "yes"));
+    EXPECT_EQ(values[0].as_bool(), std::nullopt);
+    EXPECT_EQ(values[0].as_int(), std::nullopt);
+
+    EXPECT_TRUE(refs.table->values(0x7f999999).empty());
+}
+
+TEST(ResourceValues, TheDefaultConfigurationIsUsedEvenWhenItComesLater)
+{
+    // The v31 value comes first in the table here; resolve_* still use the
+    // default configuration's.
+    test::ArscBuilder b;
+    b.value(0, test::ArscConfig().sdk(31), test::ArscBuilder::kBoolean, 0xFFFFFFFF);
+    b.value(0, test::ArscConfig(), test::ArscBuilder::kBoolean, 0);
+    auto table = ResourceTable::parse(b.build());
+    ASSERT_TRUE(table.has_value());
+    EXPECT_EQ(table->resolve_bool(test::ArscBuilder::id(0)), std::optional<bool>(false));
+    EXPECT_EQ(table->name_of(test::ArscBuilder::id(0))->entry, "e0");
+    ASSERT_EQ(table->values(test::ArscBuilder::id(0)).size(), 2u);
+}
+
+TEST(ResourceValues, ConfigurationNames)
+{
+    using test::ArscConfig;
+    const std::vector<std::pair<ArscConfig, std::string>> cases = {
+        {ArscConfig().language('f', 'r').region('C', 'A'), "fr-rCA"},
+        // A three-letter language, packed into two bytes: "fil".
+        {ArscConfig().raw(8, 0xAD).raw(9, 0x05), "fil"},
+        // Bytes that are not printable ASCII never reach the name.
+        {ArscConfig().language('\x01', '\xff'), "??"},
+        {ArscConfig().raw(12, 2).raw(14, 0x40).raw(15, 0x01), "land-xhdpi"},
+        {ArscConfig().raw(30, 0x58).raw(31, 0x02).sdk(13), "sw600dp-v13"},
+        {ArscConfig().raw(28, 0x80).raw(29, 0x26), "ldrtl-watch-night"},
+        {ArscConfig().raw(4, 0x36).raw(5, 0x01).raw(18, 0x02).raw(17, 0x02),
+         "mcc310-keyshidden-dpad"},
+        {ArscConfig().sdk(34).raw(26, 1), "v34.1"},
+    };
+    test::ArscBuilder b;
+    for (std::size_t i = 0; i < cases.size(); ++i)
+        b.value(static_cast<uint16_t>(i), cases[i].first, test::ArscBuilder::kIntDec,
+                static_cast<uint32_t>(i));
+    auto table = ResourceTable::parse(b.build());
+    ASSERT_TRUE(table.has_value());
+    for (std::size_t i = 0; i < cases.size(); ++i) {
+        std::vector<ResourceValue> values =
+            table->values(test::ArscBuilder::id(static_cast<uint16_t>(i)));
+        ASSERT_EQ(values.size(), 1u) << i;
+        EXPECT_EQ(values[0].configuration, cases[i].second);
+        EXPECT_EQ(values[0].as_int(), std::optional<int64_t>(static_cast<int64_t>(i)));
+    }
 }

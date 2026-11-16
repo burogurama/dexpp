@@ -92,11 +92,13 @@ std::expected<XmlDocument, Error> parse(std::span<const uint8_t> buf)
                     attr.resource_id = resource_ids[name_idx];
                 attr.typed.type = buf[a + 15];
                 attr.typed.data = rd32(buf, a + 16);
+                if (attr.typed.is(TypedValue::Type::String))
+                    attr.typed_string = std::string(pool.get(attr.typed.data));
                 uint32_t raw_idx = rd32(buf, a + 8);
                 if (raw_idx != NO_ENTRY)
                     attr.raw_value = std::string(pool.get(raw_idx));
-                else if (attr.typed.is(TypedValue::Type::String))
-                    attr.raw_value = std::string(pool.get(attr.typed.data));
+                else
+                    attr.raw_value = attr.typed_string;
                 node.attributes.push_back(std::move(attr));
             }
 

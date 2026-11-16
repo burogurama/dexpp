@@ -5,12 +5,25 @@
     <integer name="target_sdk">34</integer>
     <integer name="signature_level">2</integer>
     <integer name="one">1</integer>
+    <integer name="level_on_v31">2</integer>
     <bool name="debug">true</bool>
     <bool name="allow_backup">false</bool>
     <bool name="yes">true</bool>
     <bool name="no">false</bool>
     <bool name="same_as_yes">@bool/yes</bool>
     <bool name="differs_on_v31">false</bool>
+    <bool name="same_as_differs_on_v31">@bool/differs_on_v31</bool>
     <string name="not_a_bool">true</string>
     <string name="not_a_number">signature</string>
+    <string name="upper_true">TRUE</string>
+    <string name="one_text">1</string>
+    <string name="capital_true">True</string>
+    <string name="yes_text">yes</string>
+    <string name="empty_text"></string>
+    <string name="version_name">1.0</string>
+    <string name="signature_permission">com.dexpp.refs.P_SIGNATURE</string>
+    <string name="localized_permission">com.dexpp.refs.P_SIGNATURE</string>
+    <string name="permission_on_v31">com.dexpp.refs.P_SIGNATURE</string>
+    <string name="declared_name">com.dexpp.refs.P_BY_REFERENCE</string>
+    <string name="greeting">Hello</string>
 </resources>

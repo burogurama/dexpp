@@ -1,17 +1,21 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Source of refs.apk: a manifest whose attribute values are resource
-     references. The values are in RefsValues.xml (res/values) and
-     RefsValuesV31.xml (res/values-v31). tests/apk/manifest_test.cc
-     says how the APK was built. aapt2 refuses a reference for
-     android:versionCode, so it is a literal here; the tests cover that case
-     with a manifest built in memory. -->
+     references. The values are in RefsValues.xml (res/values),
+     RefsValuesV31.xml (res/values-v31), RefsValuesFr.xml (res/values-fr) and
+     RefsValuesSrLatnLandNight.xml (res/values-b+sr+Latn-land-night).
+     tests/apk/manifest_test.cc says how the APK was built. aapt2 refuses a
+     reference for android:versionCode and for the android:name of a
+     component, so those are literals here; the tests cover both cases with
+     a manifest built in memory. -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.dexpp.refs"
     android:versionCode="42"
-    android:versionName="1.0">
+    android:versionName="@string/version_name">
     <uses-sdk android:minSdkVersion="@integer/min_sdk" android:targetSdkVersion="@integer/target_sdk" />
     <permission android:name="com.dexpp.refs.P_SIGNATURE" android:protectionLevel="@integer/signature_level" />
     <permission android:name="com.dexpp.refs.P_TEXT" android:protectionLevel="@string/not_a_number" />
+    <permission android:name="com.dexpp.refs.P_VARYING" android:protectionLevel="@integer/level_on_v31" />
+    <permission android:name="@string/declared_name" android:protectionLevel="signature" />
     <application android:debuggable="@bool/debug" android:allowBackup="@bool/allow_backup">
         <activity android:name=".ExportedActivity" android:exported="@bool/yes" />
         <activity android:name=".HiddenActivity" android:exported="@bool/no">
@@ -24,9 +28,33 @@
         <activity android:name=".TextActivity" android:exported="@string/not_a_bool" />
         <activity android:name=".ThemeActivity" android:exported="?android:attr/windowFullscreen" />
         <activity android:name=".VariantActivity" android:exported="@bool/differs_on_v31" />
+        <activity android:name=".ChainedVariantActivity" android:exported="@bool/same_as_differs_on_v31" />
+        <activity android:name=".UpperTextActivity" android:exported="@string/upper_true" />
+        <activity android:name=".OneTextActivity" android:exported="@string/one_text" />
+        <activity android:name=".CapitalTextActivity" android:exported="@string/capital_true">
+            <intent-filter>
+                <action android:name="com.dexpp.refs.OPEN" />
+            </intent-filter>
+        </activity>
+        <activity android:name=".YesTextActivity" android:exported="@string/yes_text" />
+        <activity android:name=".EmptyTextActivity" android:exported="@string/empty_text">
+            <intent-filter>
+                <action android:name="com.dexpp.refs.OPEN" />
+            </intent-filter>
+        </activity>
         <service android:name=".GuardedService" android:exported="@bool/yes"
             android:permission="com.dexpp.refs.P_SIGNATURE" />
         <service android:name=".TextGuardedService" android:exported="@bool/yes"
             android:permission="com.dexpp.refs.P_TEXT" />
+        <service android:name=".VaryingLevelService" android:exported="@bool/yes"
+            android:permission="com.dexpp.refs.P_VARYING" />
+        <service android:name=".PermissionByReferenceService" android:exported="@bool/yes"
+            android:permission="@string/signature_permission" />
+        <service android:name=".LocalizedPermissionService" android:exported="@bool/yes"
+            android:permission="@string/localized_permission" />
+        <service android:name=".PermissionOnV31Service" android:exported="@bool/yes"
+            android:permission="@string/permission_on_v31" />
+        <service android:name=".DeclaredByReferenceService" android:exported="@bool/yes"
+            android:permission="com.dexpp.refs.P_BY_REFERENCE" />
     </application>
 </manifest>

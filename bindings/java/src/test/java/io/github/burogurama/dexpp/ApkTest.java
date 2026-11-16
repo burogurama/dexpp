@@ -202,9 +202,9 @@ class ApkTest {
             Component hidden = byName.get("HiddenActivity");
             assertEquals(Optional.of(false), hidden.exported());
             assertFalse(hidden.isExported());
-            // A reference to a string: written, but unknown, so possibly exported.
+            // A reference to the string "true": Android reads it as true.
             Component text = byName.get("TextActivity");
-            assertEquals(Optional.empty(), text.exported());
+            assertEquals(Optional.of(true), text.exported());
             assertEquals(rt.idOf("string", "not_a_bool"), text.exportedReference());
             assertTrue(text.isExported());
             assertTrue(text.isReachable());
@@ -239,7 +239,8 @@ class ApkTest {
             assertEquals(
                     OptionalLong.of(23), rt.resolveInt(rt.idOf("integer", "min_sdk").orElseThrow()));
             int notABool = rt.idOf("string", "not_a_bool").orElseThrow();
-            assertEquals(Optional.empty(), rt.resolveBool(notABool));
+            // The string "true" reads as true, as Android reads it.
+            assertEquals(Optional.of(true), rt.resolveBool(notABool));
             assertEquals(OptionalLong.empty(), rt.resolveInt(notABool));
             assertEquals(Optional.empty(), rt.resolveBool(0x7f999999));
             assertEquals(OptionalLong.empty(), rt.resolveInt(0x7f999999));

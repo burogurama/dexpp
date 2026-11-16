@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Resources for refs.apk (res/values-fr/values.xml); see RefsManifest.xml. -->
+<resources>
+    <string name="localized_permission">com.dexpp.refs.P_SIGNATURE</string>
+    <string name="greeting">Bonjour</string>
+</resources>

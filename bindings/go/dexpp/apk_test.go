@@ -239,9 +239,9 @@ func TestManifestReferences(t *testing.T) {
 	if hidden := byName["HiddenActivity"]; hidden.Exported == nil || *hidden.Exported || hidden.IsExported {
 		t.Errorf("HiddenActivity = %+v", hidden)
 	}
-	// A reference to a string: written, but unknown, so possibly exported.
+	// A reference to the string "true": Android reads it as true.
 	text := byName["TextActivity"]
-	if text.Exported != nil || text.ExportedReference == nil || *text.ExportedReference != id("string", "not_a_bool") ||
+	if text.Exported == nil || !*text.Exported || text.ExportedReference == nil || *text.ExportedReference != id("string", "not_a_bool") ||
 		!text.IsExported || !text.IsReachable {
 		t.Errorf("TextActivity = %+v", text)
 	}
@@ -289,8 +289,9 @@ func TestResolveBoolAndInt(t *testing.T) {
 	if got, ok := rt.ResolveInt(id("integer", "min_sdk")); !ok || got != 23 {
 		t.Errorf("ResolveInt(integer/min_sdk) = %d, %v", got, ok)
 	}
-	if _, ok := rt.ResolveBool(id("string", "not_a_bool")); ok {
-		t.Error("ResolveBool resolved a string")
+	// The string "true" reads as true, as Android reads it.
+	if got, ok := rt.ResolveBool(id("string", "not_a_bool")); !ok || !got {
+		t.Errorf("ResolveBool(string/not_a_bool) = %v, %v", got, ok)
 	}
 	if _, ok := rt.ResolveInt(id("string", "not_a_number")); ok {
 		t.Error("ResolveInt resolved a string")
