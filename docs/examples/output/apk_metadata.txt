@@ -15,6 +15,14 @@ com.dexpp.reach.SigService is exported, but guarded by com.dexpp.reach.P_SIGNATU
 0x7f010000 com.example.dexpp string app_name
 Dexpp Sample
 Dexpp Sample
+exported: False varies: True
+is_exported: True
+default False
+v31 True
+debuggable: True varies: True
+PermissionByReferenceService: com.dexpp.refs.P_SIGNATURE, reachable: False
+LocalizedPermissionService: none, reachable: True
+PermissionOnV31Service: none, reachable: True
 signed: True
 v1: True v2: True v3: True
 C=MA, O=DexppOrg, CN=Dexpp Test

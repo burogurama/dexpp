@@ -55,6 +55,35 @@ print(table.resolve_string(app_name))
 print(apk.resolve_string(app_name))
 # --8<-- [end:resources]
 
+# --8<-- [start:variants]
+refs_apk: dexpp.Apk = dexpp.Apk.open("tests/data/refs.apk")
+refs: dexpp.Manifest | None = refs_apk.manifest
+refs_table: dexpp.ResourceTable | None = refs_apk.resources
+assert refs is not None and refs_table is not None
+
+variant: dexpp.Component = next(
+    c for c in refs.components if c.name == "com.dexpp.refs.VariantActivity"
+)
+print("exported:", variant.exported, "varies:", variant.exported_varies)
+print("is_exported:", variant.is_exported)
+
+# The values behind the reference, one per configuration.
+reference: int | None = variant.exported_reference
+assert reference is not None
+for value in refs_table.values(reference):
+    print(value.configuration or "default", value.as_bool())
+
+print("debuggable:", refs.debuggable, "varies:", refs.debuggable_varies)
+# --8<-- [end:variants]
+
+# --8<-- [start:text_references]
+for component in refs.components:
+    if component.permission_reference is not None:
+        short_name: str = component.name.rsplit(".", 1)[1]
+        permission_name: str = component.permission or "none"
+        print(f"{short_name}: {permission_name}, reachable: {component.is_reachable}")
+# --8<-- [end:text_references]
+
 # --8<-- [start:signing]
 signed_apk: dexpp.Apk = dexpp.Apk.open("tests/data/signed.apk")
 signing: dexpp.SigningInfo = signed_apk.signing

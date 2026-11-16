@@ -1,5 +1,86 @@
 # Changelog
 
+## Unreleased
+
+### Manifest values given indirectly
+
+- A resource can have a different value in each configuration (language,
+  screen, Android version). The manifest view now looks at every
+  configuration of a referenced resource, not only the default one, so an app
+  can no longer hide an exported component behind a `res/values-v31` variant.
+    - A boolean attribute still holds the default configuration's value. A new
+      member says when another configuration gives another value: C++
+      `Component::exported_varies`, `Manifest::debuggable_varies()`,
+      `Manifest::allow_backup_varies()`; Python `exported_varies`,
+      `debuggable_varies`, `allow_backup_varies`; C `exported_varies`,
+      `debuggable_varies`, `allow_backup_varies`; Go `ExportedVaries`,
+      `DebuggableVaries`, `AllowBackupVaries`; Java `exportedVaries()`,
+      `debuggableVaries()`, `allowBackupVaries()`.
+    - `is_exported` (and so `is_reachable`) is now true when `exported`
+      varies: the component is exported on the devices that match a
+      configuration that says so.
+    - A protection level given by a reference works the same way:
+      `Manifest::declared_permission_protection_level_varies(name)` (Python
+      `declared_permission_protection_level_varies`, C
+      `DexppDeclaredPermission.protection_level_varies`, Go
+      `DeclaredPermission.ProtectionLevelVaries` and
+      `Manifest.DeclaredPermissionProtectionLevelVaries`, Java
+      `DeclaredPermission.protectionLevelVaries()` and
+      `Manifest.declaredPermissionProtectionLevelVaries`). A permission whose
+      level is below signature in some configuration no longer guards a
+      component.
+    - The integers (version code, SDK levels) keep the default
+      configuration's value.
+- Text where a boolean is expected is now read the way Android reads it
+  (`TypedArray.getBoolean` and `XmlUtils.convertValueToBoolean`): exactly
+  `"1"`, `"true"` and `"TRUE"` are true, any other text is false, and empty
+  text gives the attribute's default (false for `exported` and `debuggable`,
+  true for `allowBackup`). This covers a literal string in a hand-made binary
+  manifest and a reference to a `<string>` resource. Before, such a value was
+  unknown, and an unknown `exported` counted as exported.
+    - Breaking: `ResourceTable::resolve_bool` (and `resolve_bool`,
+      `dexpp_apk_resolve_bool`, `ResolveBool`, `resolveBool` in the bindings)
+      now reads strings with that rule instead of returning no value, and
+      reads a float, a dimension or a fraction as false.
+- Text attributes given by a reference are now resolved: the `android:name`
+  of a component and of a `<permission>`, `android:permission` and
+  `android:versionName`. Android reads them with
+  `TypedArray.getNonConfigurationString`, which ignores a string that changes
+  with the configuration (except the Android version); dexpp does the same,
+  and also leaves a string that changes only with the Android version without
+  a value. An unresolved or ignored reference gives no value and keeps its id
+  in a new member: C++ `Component::name_reference`,
+  `Component::permission_reference`, `Manifest::version_name_reference()`
+  (Python `name_reference`, `permission_reference`,
+  `version_name_reference`; C `name_reference`, `permission_reference`,
+  `version_name_reference`; Go `NameReference`, `PermissionReference`,
+  `VersionNameReference`; Java `nameReference()`, `permissionReference()`,
+  `versionNameReference()`). So a permission named through a reference now
+  counts as a guard, and one that Android ignores no longer does.
+- These text attributes and the boolean ones are read from the attribute's
+  typed value, as Android's `TypedArray` reads them, not from its raw string.
+  The two only differ in a hand-made file. `axml::XmlAttribute` has a new
+  `typed_string` member with the text of a string-typed value.
+- Breaking, C and Java: `DexppComponent`, `DexppDeclaredPermission` and
+  `DexppManifest` have new members, so their layout changed; the Java records
+  `Component`, `DeclaredPermission` and `Manifest` have new components.
+
+### Resource values in every configuration
+
+- `ResourceTable::values(id)` returns the value of a resource in every
+  configuration, as the table stores it: the configuration written like a
+  `res/values-...` folder name (`""`, `"v31"`, `"fr"`,
+  `"b+sr+Latn-land-night-v8"`), the raw type and data, the text of a string,
+  and the value read as a boolean or an integer. A reference is not followed.
+    - Python: `ResourceTable.values(id)` and the `ResourceValue` class.
+    - C: `dexpp_apk_resource_values()`, `DexppResourceValue` and
+      `dexpp_resource_value_array_free()`.
+    - Go: `ResourceTable.Values(id)` and `ResourceValue`, with `AsBool()` and
+      `AsInt()`.
+    - Java: `ResourceTable.values(id)` and the `ResourceValue` record.
+- The `resolve_*` lookups now use the first default-configuration value when
+  a damaged table holds two, as Android does, instead of the last one.
+
 ## 0.3.1
 
 ### APK from memory

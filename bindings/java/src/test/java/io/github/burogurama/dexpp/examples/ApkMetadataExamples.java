@@ -11,6 +11,7 @@ import io.github.burogurama.dexpp.InvalidApkException;
 import io.github.burogurama.dexpp.Manifest;
 import io.github.burogurama.dexpp.ResourceName;
 import io.github.burogurama.dexpp.ResourceTable;
+import io.github.burogurama.dexpp.ResourceValue;
 import io.github.burogurama.dexpp.SigningInfo;
 
 import java.io.IOException;
@@ -105,6 +106,52 @@ final class ApkMetadataExamples {
             System.out.println(table.resolveString(appName));
             System.out.println(apk.resolveString(appName));
             // --8<-- [end:resources]
+        }
+    }
+
+    static void variants() throws IOException {
+        // --8<-- [start:variants]
+        try (Apk refsApk = Apk.open(Path.of("../../tests/data/refs.apk"))) {
+            Manifest refs = refsApk.manifest().orElseThrow();
+            ResourceTable refsTable = refsApk.resources().orElseThrow();
+
+            Component variant = refs.components().stream()
+                    .filter((Component c) -> c.name().equals("com.dexpp.refs.VariantActivity"))
+                    .findFirst()
+                    .orElseThrow();
+            System.out.println("exported: " + variant.exported().orElseThrow()
+                    + " varies: " + variant.exportedVaries());
+            System.out.println("isExported: " + variant.isExported());
+
+            // The values behind the reference, one per configuration.
+            int reference = variant.exportedReference().orElseThrow();
+            for (ResourceValue value : refsTable.values(reference)) {
+                String configuration =
+                        value.configuration().isEmpty() ? "default" : value.configuration();
+                System.out.println(configuration + " " + value.asBool().orElseThrow());
+            }
+
+            System.out.println("debuggable: " + refs.debuggable().orElseThrow()
+                    + " varies: " + refs.debuggableVaries());
+        }
+        // --8<-- [end:variants]
+    }
+
+    static void textReferences() throws IOException {
+        try (Apk refsApk = Apk.open(Path.of("../../tests/data/refs.apk"))) {
+            Manifest refs = refsApk.manifest().orElseThrow();
+            // --8<-- [start:text_references]
+            for (Component component : refs.components()) {
+                if (component.permissionReference().isEmpty()) {
+                    continue;
+                }
+                String name = component.name();
+                String shortName = name.substring(name.lastIndexOf('.') + 1);
+                String permission = component.permission().orElse("none");
+                System.out.println(shortName + ": " + permission
+                        + ", reachable: " + component.isReachable());
+            }
+            // --8<-- [end:text_references]
         }
     }
 

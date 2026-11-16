@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 
 	"github.com/burogurama/dexpp/bindings/go/dexpp"
 )
@@ -153,6 +154,77 @@ func ExampleApk_Resources() {
 	// 0x7f010000 com.example.dexpp string app_name
 	// Dexpp Sample true
 	// Dexpp Sample true
+}
+
+// Read a manifest value that differs between resource configurations.
+func ExampleResourceTable_Values() {
+	// --8<-- [start:variants]
+	refsAPK, refs := openManifest("../../../tests/data/refs.apk")
+	defer refsAPK.Close()
+	refsTable := refsAPK.Resources()
+	if refsTable == nil {
+		log.Fatal("no resource table")
+	}
+
+	var variant dexpp.Component
+	for _, c := range refs.Components {
+		if c.Name == "com.dexpp.refs.VariantActivity" {
+			variant = c
+		}
+	}
+	if variant.Exported != nil {
+		fmt.Println("exported:", *variant.Exported, "varies:", variant.ExportedVaries)
+	}
+	fmt.Println("is exported:", variant.IsExported)
+
+	// The values behind the reference, one per configuration.
+	if variant.ExportedReference != nil {
+		for _, value := range refsTable.Values(*variant.ExportedReference) {
+			configuration := value.Configuration
+			if configuration == "" {
+				configuration = "default"
+			}
+			b, _ := value.AsBool()
+			fmt.Println(configuration, b)
+		}
+	}
+
+	if refs.Debuggable != nil {
+		fmt.Println("debuggable:", *refs.Debuggable, "varies:", refs.DebuggableVaries)
+	}
+	// --8<-- [end:variants]
+
+	// Output:
+	// exported: false varies: true
+	// is exported: true
+	// default false
+	// v31 true
+	// debuggable: true varies: true
+}
+
+// List the components whose android:permission is a resource reference.
+func ExampleComponent_permissionReference() {
+	refsAPK, refs := openManifest("../../../tests/data/refs.apk")
+	defer refsAPK.Close()
+
+	// --8<-- [start:text_references]
+	for _, component := range refs.Components {
+		if component.PermissionReference == nil {
+			continue
+		}
+		shortName := component.Name[strings.LastIndex(component.Name, ".")+1:]
+		permission := "none"
+		if component.Permission != nil {
+			permission = *component.Permission
+		}
+		fmt.Printf("%s: %s, reachable: %v\n", shortName, permission, component.IsReachable)
+	}
+	// --8<-- [end:text_references]
+
+	// Output:
+	// PermissionByReferenceService: com.dexpp.refs.P_SIGNATURE, reachable: false
+	// LocalizedPermissionService: none, reachable: true
+	// PermissionOnV31Service: none, reachable: true
 }
 
 // Read the signature schemes and the certificates of a signed APK.
