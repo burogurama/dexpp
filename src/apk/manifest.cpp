@@ -27,6 +27,8 @@ struct FrameworkAttribute
 namespace framework {
 constexpr FrameworkAttribute kName{"name", 0x01010003};
 constexpr FrameworkAttribute kPermission{"permission", 0x01010006};
+constexpr FrameworkAttribute kReadPermission{"readPermission", 0x01010007};
+constexpr FrameworkAttribute kWritePermission{"writePermission", 0x01010008};
 constexpr FrameworkAttribute kProtectionLevel{"protectionLevel", 0x01010009};
 constexpr FrameworkAttribute kDebuggable{"debuggable", 0x0101000f};
 constexpr FrameworkAttribute kExported{"exported", 0x01010010};
@@ -42,33 +44,68 @@ constexpr std::string_view kAndroidNamespace = "http://schemas.android.com/apk/r
 using detail::FinalValue;
 using detail::ResourceTableAccess;
 
-/** A boolean or integer attribute as read. */
-template <typename T> struct TypedRead
+/** What Android reads from an attribute in one configuration. */
+template <typename T> struct Reading
 {
-    /** The value written, or for a reference the default configuration's
-     *  value; nullopt when absent or unknown. */
-    std::optional<T> value;
-    /** The reference id when the attribute is written as a reference. */
-    std::optional<uint32_t> reference;
-    /** Every distinct value the attribute takes over all configurations;
-     *  nullopt stands for a configuration whose value is unknown.  Empty for
-     *  a missing attribute. */
-    std::vector<std::optional<T>> all;
+    enum class Kind : uint8_t {
+        Value,   ///< `value`.
+        Null,    ///< A null value: Android reads it as not written.
+        Unknown, ///< dexpp cannot tell.
+    };
+    Kind kind = Kind::Null;
+    T value{};
 
-    bool varies() const { return all.size() > 1; }
-    void add(std::optional<T> v)
-    {
-        if (std::find(all.begin(), all.end(), v) == all.end())
-            all.push_back(v);
-    }
+    static Reading of(T v) { return Reading{Kind::Value, std::move(v)}; }
+    static Reading null() { return Reading{Kind::Null, T{}}; }
+    static Reading unknown() { return Reading{Kind::Unknown, T{}}; }
+    bool operator==(const Reading &) const = default;
 };
 
-/** A text attribute as read: its value when it has a single one, and its
- *  reference id when it is written as a reference. */
-struct TextRead
+/** An attribute as read. */
+template <typename T> struct AttributeRead
 {
-    std::optional<std::string> value;
+    /** The element has the attribute. */
+    bool present = false;
+    /** The reference id when the attribute is written as a reference. */
     std::optional<uint32_t> reference;
+    /** What Android reads in the default configuration; for text, the one
+     *  value Android reads on every device.  Null for a missing attribute. */
+    Reading<T> first;
+    /** Every distinct reading over all configurations.  Empty for a missing
+     *  attribute. */
+    std::vector<Reading<T>> all;
+
+    std::optional<T> value() const
+    {
+        if (first.kind == Reading<T>::Kind::Value)
+            return first.value;
+        return std::nullopt;
+    }
+    bool unknown() const { return first.kind == Reading<T>::Kind::Unknown; }
+    /** The attribute gives no value: it is missing, or Android reads it as
+     *  not written. */
+    bool gives_nothing() const { return first.kind == Reading<T>::Kind::Null; }
+
+    void add(const Reading<T> &r)
+    {
+        if (std::find(all.begin(), all.end(), r) == all.end())
+            all.push_back(r);
+    }
+    /** True when Android reads different values in different
+     *  configurations; a null reading counts as @p if_null, what Android
+     *  uses when the attribute is not written, and an unknown one as one
+     *  more answer. */
+    bool varies(const T &if_null) const
+    {
+        std::vector<Reading<T>> seen;
+        for (Reading<T> r : all) {
+            if (r.kind == Reading<T>::Kind::Null)
+                r = Reading<T>::of(if_null);
+            if (std::find(seen.begin(), seen.end(), r) == seen.end())
+                seen.push_back(r);
+        }
+        return seen.size() > 1;
+    }
 };
 
 /** Finds framework attributes on an element the way Android does, and reads
@@ -122,119 +159,116 @@ class AttributeLookup
 
     /** A boolean attribute, read like TypedArray.getBoolean(attribute,
      *  @p android_default): a literal value, or a reference resolved through
-     *  the resource table in every configuration. */
-    TypedRead<bool> boolean(const axml::XmlNode &node, const FrameworkAttribute &attribute,
-                            bool android_default) const
+     *  the resource table in every configuration.  A null value reads as
+     *  Null: TypedArray.hasValue() is false for it, and getBoolean() gives
+     *  the default. */
+    AttributeRead<bool> boolean(const axml::XmlNode &node, const FrameworkAttribute &attribute,
+                                bool android_default) const
     {
-        TypedRead<bool> out;
-        const axml::XmlAttribute *a = find(node, attribute);
-        if (!a)
-            return out;
-        out.reference = reference_of(*a);
-        if (!out.reference.has_value()) {
-            // A null value counts as not written: TypedArray.hasValue() is
-            // false for it.
-            if (a->typed.type == detail::kTypeNull)
-                return out;
+        auto outcome = [&](uint8_t type, uint32_t data,
+                           std::optional<std::string_view> text) -> Reading<bool> {
+            if (detail::is_null_value(type, data))
+                return Reading<bool>::null();
+            // A theme attribute: its value depends on the theme.
+            if (type == detail::kTypeAttribute || type == detail::kTypeDynamicAttribute)
+                return Reading<bool>::unknown();
+            return Reading<bool>::of(
+                detail::boolean_value(type, data, text).value_or(android_default));
+        };
+        auto literal = [&](const axml::XmlAttribute &a) {
             std::optional<std::string_view> text;
-            if (a->typed.type == detail::kTypeString)
-                text = a->typed_string;
-            out.value =
-                detail::boolean_value(a->typed.type, a->typed.data, text).value_or(android_default);
-            out.add(out.value);
-            return out;
-        }
-        if (!resources_ || !detail::is_resource_reference(a->typed.type)) {
-            out.add(std::nullopt);
-            return out;
-        }
-        auto outcome = [&](const FinalValue &v) -> std::optional<bool> {
-            // A null value or a theme attribute at the end of the chain:
-            // unknown.
-            if (v.type == detail::kTypeNull || v.type == detail::kTypeAttribute ||
-                v.type == detail::kTypeDynamicAttribute)
-                return std::nullopt;
+            if (a.typed.type == detail::kTypeString)
+                text = a.typed_string;
+            return outcome(a.typed.type, a.typed.data, text);
+        };
+        auto resolved = [&](const FinalValue &v) {
             std::optional<std::string_view> text;
             if (v.type == detail::kTypeString)
                 text = ResourceTableAccess::pool_string(*resources_, v.data);
-            return detail::boolean_value(v.type, v.data, text).value_or(android_default);
+            return outcome(v.type, v.data, text);
         };
-        if (auto v = ResourceTableAccess::default_value(*resources_, *out.reference))
-            out.value = outcome(*v);
-        collect(out, outcome);
-        return out;
+        return read<bool>(node, attribute, literal, resolved);
     }
 
     /** An integer attribute: a literal value, or a reference resolved
-     *  through the resource table in every configuration. */
-    TypedRead<int64_t> integer(const axml::XmlNode &node, const FrameworkAttribute &attribute) const
+     *  through the resource table in every configuration.  Android reads
+     *  these with TypedArray.getInt() or peekValue(), which give the default
+     *  or nothing for a null value. */
+    AttributeRead<int64_t> integer(const axml::XmlNode &node,
+                                   const FrameworkAttribute &attribute) const
     {
-        TypedRead<int64_t> out;
-        const axml::XmlAttribute *a = find(node, attribute);
-        if (!a)
-            return out;
-        out.reference = reference_of(*a);
-        if (!out.reference.has_value()) {
-            out.value = a->as_int();
-            if (out.value.has_value())
-                out.add(out.value);
-            return out;
-        }
-        if (!resources_ || !detail::is_resource_reference(a->typed.type)) {
-            out.add(std::nullopt);
-            return out;
-        }
-        auto outcome = [](const FinalValue &v) -> std::optional<int64_t> {
-            if (!detail::is_int_type(v.type))
-                return std::nullopt;
-            return static_cast<int32_t>(v.data);
+        auto outcome = [](uint8_t type, uint32_t data) -> Reading<int64_t> {
+            if (detail::is_null_value(type, data))
+                return Reading<int64_t>::null();
+            if (!detail::is_int_type(type))
+                return Reading<int64_t>::unknown();
+            return Reading<int64_t>::of(static_cast<int32_t>(data));
         };
-        if (auto v = ResourceTableAccess::default_value(*resources_, *out.reference))
-            out.value = outcome(*v);
-        collect(out, outcome);
-        return out;
+        auto literal = [&](const axml::XmlAttribute &a) {
+            return outcome(a.typed.type, a.typed.data);
+        };
+        auto resolved = [&](const FinalValue &v) { return outcome(v.type, v.data); };
+        return read<int64_t>(node, attribute, literal, resolved);
     }
 
     /** A text attribute that the package parser reads with
      *  TypedArray.getNonConfigurationString(attribute, 0): android:name of a
-     *  component or of a `<permission>`, android:permission and
+     *  component or of a `<permission>`, android:permission,
+     *  android:readPermission, android:writePermission and
      *  android:versionName.
      *
      *  A literal is the string the typed value names.  A reference is
      *  resolved, but Android returns null when the string resource changes
      *  with the configuration (see detail::kNonConfigurationMask), so that
-     *  case has no value.  A string that differs only between Android
+     *  case reads as Null.  A string that differs only between Android
      *  versions passes that check, but its value depends on the device, so
-     *  it has no single value either. */
-    TextRead text(const axml::XmlNode &node, const FrameworkAttribute &attribute) const
+     *  it reads as Unknown.  A null value is Null, as getNonConfigurationString
+     *  returns null for it. */
+    AttributeRead<std::string> text(const axml::XmlNode &node,
+                                    const FrameworkAttribute &attribute) const
     {
-        TextRead out;
+        AttributeRead<std::string> out;
         const axml::XmlAttribute *a = find(node, attribute);
         if (!a)
             return out;
+        out.present = true;
         out.reference = reference_of(*a);
         if (!out.reference.has_value()) {
-            if (a->typed.type == detail::kTypeString)
-                out.value = a->typed_string;
-            return out;
+            out.first = text_outcome(a->typed.type, a->typed.data, a->typed_string);
         }
-        if (!resources_ || !detail::is_resource_reference(a->typed.type))
-            return out;
-        const detail::EveryValue &every = every_value(*out.reference);
-        if (every.incomplete || (every.spec_flags & detail::kNonConfigurationMask) != 0)
-            return out;
-        std::optional<std::string_view> single;
-        for (const FinalValue &v : every.values) {
-            if (v.type != detail::kTypeString)
-                return out;
-            std::optional<std::string_view> s =
-                ResourceTableAccess::pool_string(*resources_, v.data);
-            if (!s.has_value() || (single.has_value() && *single != *s))
-                return out;
-            single = s;
+        else if (!resources_ || !detail::is_resource_reference(a->typed.type)) {
+            out.first = Reading<std::string>::unknown();
         }
-        if (single.has_value())
-            out.value = std::string(*single);
+        else {
+            const detail::EveryValue &every = every_value(*out.reference);
+            if (every.incomplete) {
+                out.first = Reading<std::string>::unknown();
+            }
+            else if ((every.spec_flags & detail::kNonConfigurationMask) != 0) {
+                out.first = Reading<std::string>::null(); // Android ignores it
+            }
+            else {
+                // Every configuration must give the same reading; otherwise
+                // the value depends on the device.
+                std::optional<Reading<std::string>> single;
+                for (const FinalValue &v : every.values) {
+                    std::optional<std::string_view> s;
+                    if (v.type == detail::kTypeString)
+                        s = ResourceTableAccess::pool_string(*resources_, v.data);
+                    Reading<std::string> r =
+                        (v.type == detail::kTypeString && !s.has_value())
+                            ? Reading<std::string>::unknown()
+                            : text_outcome(v.type, v.data, s.value_or(std::string_view()));
+                    if (single.has_value() && !(*single == r)) {
+                        single = Reading<std::string>::unknown();
+                        break;
+                    }
+                    single = std::move(r);
+                }
+                out.first = single.value_or(Reading<std::string>::unknown());
+            }
+        }
+        out.add(out.first);
         return out;
     }
 
@@ -271,14 +305,65 @@ class AttributeLookup
     // depends on the theme the app runs with.  The dynamic forms are the same
     // references into a shared library's resources.
 
-    /** The id a reference-typed value holds; nullopt for any other value. */
+    /** The id a reference-typed value holds; nullopt for any other value,
+     *  and for `@null` (a reference to id 0), which is a null value. */
     static std::optional<uint32_t> reference_of(const axml::XmlAttribute &a)
     {
         const uint8_t type = a.typed.type;
+        if (detail::is_null_reference(type, a.typed.data))
+            return std::nullopt;
         if (type == detail::kTypeReference || type == detail::kTypeAttribute ||
             type == detail::kTypeDynamicReference || type == detail::kTypeDynamicAttribute)
             return a.typed.data;
         return std::nullopt;
+    }
+
+    /** What getNonConfigurationString gives for a value that is not a
+     *  reference: the string of a string value, null for a null value.  Any
+     *  other type Android turns into text with TypedValue.coerceToString();
+     *  dexpp does not, and reads it as unknown. */
+    static Reading<std::string> text_outcome(uint8_t type, uint32_t data, std::string_view text)
+    {
+        if (detail::is_null_value(type, data))
+            return Reading<std::string>::null();
+        if (type == detail::kTypeString)
+            return Reading<std::string>::of(std::string(text));
+        return Reading<std::string>::unknown();
+    }
+
+    /** Read a boolean or integer attribute: @p literal gives the reading of
+     *  a value that is not a reference, @p resolved the reading of a value
+     *  a reference ends at.  The first reading is the default
+     *  configuration's; `all` holds the reading of every configuration. */
+    template <typename T, typename Literal, typename Resolved>
+    AttributeRead<T> read(const axml::XmlNode &node, const FrameworkAttribute &attribute,
+                          Literal literal, Resolved resolved) const
+    {
+        AttributeRead<T> out;
+        const axml::XmlAttribute *a = find(node, attribute);
+        if (!a)
+            return out;
+        out.present = true;
+        out.reference = reference_of(*a);
+        if (!out.reference.has_value()) {
+            out.first = literal(*a);
+            out.add(out.first);
+            return out;
+        }
+        if (!resources_ || !detail::is_resource_reference(a->typed.type)) {
+            out.first = Reading<T>::unknown();
+            out.add(out.first);
+            return out;
+        }
+        auto v = ResourceTableAccess::default_value(*resources_, *out.reference);
+        out.first = v.has_value() ? resolved(*v) : Reading<T>::unknown();
+        out.add(out.first);
+        const detail::EveryValue &every = every_value(*out.reference);
+        for (const FinalValue &final_value : every.values)
+            out.add(resolved(final_value));
+        if (every.incomplete)
+            out.add(Reading<T>::unknown());
+        return out;
     }
 
     /** Every value @p id can end at (see ResourceTableAccess::every_value),
@@ -296,19 +381,6 @@ class AttributeLookup
                 ResourceTableAccess::every_value(*resources_, id, std::min(kSearchLimit, budget_));
         budget_ -= std::min(budget_, every.visited);
         return searches_.emplace(id, std::move(every)).first->second;
-    }
-
-    /** Fill out.all with the outcome of every value the reference can end
-     *  at, plus the default configuration's.  An incomplete search adds an
-     *  unknown value. */
-    template <typename T, typename Outcome> void collect(TypedRead<T> &out, Outcome outcome) const
-    {
-        const detail::EveryValue &every = every_value(*out.reference);
-        out.add(out.value);
-        for (const FinalValue &v : every.values)
-            out.add(outcome(v));
-        if (every.incomplete)
-            out.add(std::nullopt);
     }
 
     bool by_resource_id_;
@@ -340,8 +412,26 @@ IntentFilter parse_filter(const AttributeLookup &attrs, const axml::XmlNode &nod
     return f;
 }
 
+/** A permission as Android ends up with it: a value, or unknown. */
+struct Permission
+{
+    std::optional<std::string> value;
+    bool unknown = false;
+
+    /** What a text attribute gives when it gives a value or is unknown;
+     *  @p otherwise when it gives none (missing, or read as not written). */
+    static Permission of(const AttributeRead<std::string> &read, const Permission &otherwise)
+    {
+        if (read.gives_nothing())
+            return otherwise;
+        return Permission{read.value(), read.unknown()};
+    }
+    bool gives_something() const { return value.has_value() || unknown; }
+};
+
 void collect_components(const AttributeLookup &attrs, const axml::XmlNode &app,
-                        std::string_view package, std::vector<Component> &out)
+                        std::string_view package, const Permission &app_permission,
+                        std::vector<Component> &out)
 {
     struct Tag
     {
@@ -360,19 +450,45 @@ void collect_components(const AttributeLookup &attrs, const axml::XmlNode &app,
             Component c;
             c.kind = tag.kind;
             auto name = attrs.text(*node, framework::kName);
-            c.name = qualify(name.value.value_or(std::string()), package);
+            c.name = qualify(name.value().value_or(std::string()), package);
             c.name_reference = name.reference;
-            // The parser reads android:exported only when it has a value
-            // (TypedArray.hasValue), and then with getBoolean(attr, false).
-            auto exported = attrs.boolean(*node, framework::kExported, false);
-            c.exported = exported.value;
-            c.exported_reference = exported.reference;
-            c.exported_varies = exported.varies();
-            auto permission = attrs.text(*node, framework::kPermission);
-            c.permission = std::move(permission.value);
-            c.permission_reference = permission.reference;
+            c.name_unknown = name.unknown();
             for (const auto *filter : node->children_named("intent-filter"))
                 c.intent_filters.push_back(parse_filter(attrs, *filter));
+
+            // The parser reads android:exported only when it has a value
+            // (TypedArray.hasValue), and then with getBoolean(attr, false).
+            // Without a value, the intent filters decide.
+            auto exported = attrs.boolean(*node, framework::kExported, false);
+            c.exported = exported.value();
+            c.exported_reference = exported.reference;
+            c.exported_unknown = exported.unknown();
+            c.exported_varies = exported.varies(!c.intent_filters.empty());
+
+            // ParsedActivityUtils (activities and receivers) and
+            // ParsedServiceUtils: getNonConfigurationString(permission, 0),
+            // and the application's permission when that returns null.
+            auto own = attrs.text(*node, framework::kPermission);
+            const Permission permission = Permission::of(own, app_permission);
+            c.permission = permission.value;
+            c.permission_unknown = permission.unknown;
+            c.permission_reference = own.reference;
+            c.permission_inherited = own.gives_nothing() && app_permission.gives_something();
+
+            if (tag.kind == Component::Kind::Provider) {
+                // ParsedProviderUtils: readPermission, else permission, else
+                // the application's; the same for writePermission.
+                auto read = attrs.text(*node, framework::kReadPermission);
+                const Permission read_permission = Permission::of(read, permission);
+                c.read_permission = read_permission.value;
+                c.read_permission_unknown = read_permission.unknown;
+                c.read_permission_reference = read.reference;
+                auto write = attrs.text(*node, framework::kWritePermission);
+                const Permission write_permission = Permission::of(write, permission);
+                c.write_permission = write_permission.value;
+                c.write_permission_unknown = write_permission.unknown;
+                c.write_permission_reference = write.reference;
+            }
             out.push_back(std::move(c));
         }
     }
@@ -395,19 +511,23 @@ Manifest::Manifest(axml::XmlDocument doc, const ResourceTable *resources) : doc_
         }
 
     auto version_code = attrs.integer(root, framework::kVersionCode);
-    version_code_ = version_code.value;
+    version_code_ = version_code.value();
     version_code_reference_ = version_code.reference;
+    version_code_unknown_ = version_code.unknown();
     auto version_name = attrs.text(root, framework::kVersionName);
-    version_name_ = std::move(version_name.value);
+    version_name_ = version_name.value();
     version_name_reference_ = version_name.reference;
+    version_name_unknown_ = version_name.unknown();
 
     if (const auto *uses_sdk = root.child("uses-sdk")) {
         auto min_sdk = attrs.integer(*uses_sdk, framework::kMinSdkVersion);
-        min_sdk_ = min_sdk.value;
+        min_sdk_ = min_sdk.value();
         min_sdk_reference_ = min_sdk.reference;
+        min_sdk_unknown_ = min_sdk.unknown();
         auto target_sdk = attrs.integer(*uses_sdk, framework::kTargetSdkVersion);
-        target_sdk_ = target_sdk.value;
+        target_sdk_ = target_sdk.value();
         target_sdk_reference_ = target_sdk.reference;
+        target_sdk_unknown_ = target_sdk.unknown();
     }
 
     for (const auto *up : root.children_named("uses-permission")) {
@@ -417,39 +537,39 @@ Manifest::Manifest(axml::XmlDocument doc, const ResourceTable *resources) : doc_
     }
 
     // signatureOrSystem is deprecated but still appears; both 2 and 3 mean the
-    // permission requires the app's signing key (or system), so a third-party
+    // permission requires the app's signature (or system), so a third-party
     // app cannot hold it. The base level is the low nibble; higher bits are flags.
     constexpr int kProtectionMaskBase = 0x0f;
+    constexpr int kProtectionNormal = 0;
     constexpr int kProtectionSignature = 2;
     constexpr int kProtectionSignatureOrSystem = 3;
-    auto is_signature = [&](const std::optional<int64_t> &level) {
-        if (!level.has_value())
+    auto is_signature = [&](const Reading<int64_t> &level) {
+        if (level.kind == Reading<int64_t>::Kind::Unknown)
             return false;
-        const int base = static_cast<int>(*level) & kProtectionMaskBase;
+        // ParsedPermissionUtils reads the level with getInt(attr,
+        // PROTECTION_NORMAL): a null value is normal.
+        const int64_t raw =
+            level.kind == Reading<int64_t>::Kind::Value ? level.value : kProtectionNormal;
+        const int base = static_cast<int>(raw) & kProtectionMaskBase;
         return base == kProtectionSignature || base == kProtectionSignatureOrSystem;
     };
 
     for (const auto *dp : root.children_named("permission")) {
-        std::string n = attrs.text(*dp, framework::kName).value.value_or(std::string());
+        std::string n = attrs.text(*dp, framework::kName).value().value_or(std::string());
         if (n.empty())
             continue;
-        // protectionLevel defaults to "normal" (0) when omitted, and is
-        // unknown (nullopt) when it is a reference that could not be resolved.
+        // protectionLevel is normal (0) when omitted or null, and unknown
+        // (nullopt) when it is a reference whose value cannot be told.
         auto level = attrs.integer(*dp, framework::kProtectionLevel);
         ProtectionLevel known;
-        if (!level.value.has_value() && !level.reference.has_value()) {
-            known.value = 0;
-        }
-        else {
-            if (level.value.has_value())
-                known.value = static_cast<int>(*level.value);
-            known.varies = level.varies();
-            // The guard counts only when every configuration gives a
-            // signature level: on a device that matches a weaker one, a
-            // third-party app can hold the permission.
-            known.always_signature =
-                !level.all.empty() && std::all_of(level.all.begin(), level.all.end(), is_signature);
-        }
+        if (!level.unknown())
+            known.value = static_cast<int>(level.value().value_or(kProtectionNormal));
+        known.varies = level.varies(kProtectionNormal);
+        // The guard counts only when every configuration gives a signature
+        // level: on a device that matches a weaker one, a third-party app
+        // can hold the permission.
+        known.always_signature =
+            level.present && std::all_of(level.all.begin(), level.all.end(), is_signature);
         declared_permission_levels_[n] = known;
         declared_permissions_.push_back(std::move(n));
     }
@@ -458,26 +578,42 @@ Manifest::Manifest(axml::XmlDocument doc, const ResourceTable *resources) : doc_
         // ParsingPackageUtils reads both with TypedArray.getBoolean:
         // debuggable defaults to false, allowBackup to true.
         auto debuggable = attrs.boolean(*app, framework::kDebuggable, false);
-        debuggable_ = debuggable.value;
+        debuggable_ = debuggable.value();
         debuggable_reference_ = debuggable.reference;
-        debuggable_varies_ = debuggable.varies();
+        debuggable_unknown_ = debuggable.unknown();
+        debuggable_varies_ = debuggable.varies(false);
         auto allow_backup = attrs.boolean(*app, framework::kAllowBackup, true);
-        allow_backup_ = allow_backup.value;
+        allow_backup_ = allow_backup.value();
         allow_backup_reference_ = allow_backup.reference;
-        allow_backup_varies_ = allow_backup.varies();
-        collect_components(attrs, *app, package_, components_);
+        allow_backup_unknown_ = allow_backup.unknown();
+        allow_backup_varies_ = allow_backup.varies(true);
+        // ParsingPackageUtils: getNonConfigurationString(permission, 0),
+        // read before the components, which fall back to it.
+        auto permission = attrs.text(*app, framework::kPermission);
+        application_permission_ = permission.value();
+        application_permission_reference_ = permission.reference;
+        application_permission_unknown_ = permission.unknown();
+        const Permission app_permission = Permission::of(permission, Permission{});
+        collect_components(attrs, *app, package_, app_permission, components_);
     }
 
-    // Resolve each component's guard against the app-declared permission levels.
+    // Resolve each component's guard against the app-declared permission
+    // levels.  A permission that is unknown, undeclared (e.g. a platform
+    // permission), or below signature in some configuration does not guard.
+    auto guards = [&](const std::optional<std::string> &permission) {
+        if (!permission.has_value())
+            return false;
+        auto it = declared_permission_levels_.find(*permission);
+        return it != declared_permission_levels_.end() && it->second.always_signature;
+    };
     for (auto &c : components_) {
-        if (!c.permission.has_value())
-            continue; // none, or a reference without a single value.
-        auto it = declared_permission_levels_.find(*c.permission);
-        if (it == declared_permission_levels_.end())
-            continue; // undeclared (e.g. platform) permission — treated as reachable.
-        // A level that is unknown, or below signature in some configuration,
-        // does not guard.
-        c.guarded_by_signature_permission = it->second.always_signature;
+        // A provider is reached by reading or by writing, so both must be
+        // guarded.
+        if (c.kind == Component::Kind::Provider)
+            c.guarded_by_signature_permission =
+                guards(c.read_permission) && guards(c.write_permission);
+        else
+            c.guarded_by_signature_permission = guards(c.permission);
     }
 }
 
@@ -486,7 +622,7 @@ std::optional<int> Manifest::declared_permission_protection_level(std::string_vi
     auto it = declared_permission_levels_.find(std::string(name));
     if (it == declared_permission_levels_.end())
         return std::nullopt;
-    return it->second.value; // nullopt when the level is an unresolved reference
+    return it->second.value; // nullopt when the level is unknown
 }
 
 bool Manifest::declared_permission_protection_level_varies(std::string_view name) const
@@ -499,6 +635,13 @@ std::optional<std::string_view> Manifest::version_name() const
 {
     if (version_name_.has_value())
         return *version_name_;
+    return std::nullopt;
+}
+
+std::optional<std::string_view> Manifest::application_permission() const
+{
+    if (application_permission_.has_value())
+        return *application_permission_;
     return std::nullopt;
 }
 

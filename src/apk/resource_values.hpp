@@ -35,6 +35,26 @@ inline bool is_resource_reference(uint8_t type)
     return type == kTypeReference || type == kTypeDynamicReference;
 }
 
+/** `@null`: a reference to id 0.  aapt2 writes `@null` this way, both in a
+ *  binary XML attribute and in a resource value.  Android's attribute
+ *  resolution (AttributeResolution.cpp) turns it into TYPE_NULL with
+ *  DATA_NULL_UNDEFINED, the value of an attribute that is not written. */
+inline bool is_null_reference(uint8_t type, uint32_t data)
+{
+    return is_resource_reference(type) && data == 0;
+}
+
+/** A value Android reads as "not written": TYPE_NULL, whatever its data
+ *  (DATA_NULL_UNDEFINED, or DATA_NULL_EMPTY for `@empty`), or `@null`.
+ *  TypedArray.hasValue() is false for both null forms, and getBoolean(),
+ *  getInt(), getNonConfigurationString() and peekValue() give their default
+ *  or null for both; only hasValueOrEmpty() tells `@empty` apart, and the
+ *  package parser does not use it for the attributes dexpp reads. */
+inline bool is_null_value(uint8_t type, uint32_t data)
+{
+    return type == kTypeNull || is_null_reference(type, data);
+}
+
 /** How Android reads a value as a boolean.
  *
  *  TypedArray.getBoolean(index, default) (frameworks/base,
@@ -69,7 +89,8 @@ std::optional<bool> boolean_value(uint8_t type, uint32_t data,
  *  value of the device's Android version. */
 constexpr uint32_t kNonConfigurationMask = 0x37BFF;
 
-/** One value a resource can end at: not a reference. */
+/** One value a resource can end at: not a reference.  A chain that ends at
+ *  `@null` ends at a TYPE_NULL value (see is_null_value()). */
 struct FinalValue
 {
     uint8_t type = 0;
@@ -84,9 +105,8 @@ struct EveryValue
     /** The distinct values, references followed in every configuration. */
     std::vector<FinalValue> values;
     /** True when some configuration ends where no value can be read: an id
-     *  the table does not have, a complex entry, a null reference, a chain
-     *  longer than Android follows, a loop, or more values than the search
-     *  looks at. */
+     *  the table does not have, a complex entry, a chain longer than Android
+     *  follows, a loop, or more values than the search looks at. */
     bool incomplete = false;
     /** The typeSpec flags of every entry on the way, combined. */
     uint32_t spec_flags = 0;
@@ -105,8 +125,9 @@ struct ResourceTableAccess
      *  `incomplete`. */
     static EveryValue every_value(const ResourceTable &table, uint32_t id, std::size_t limit);
 
-    /** The value the resolve_* functions use for @p id, references
-     *  followed; nullopt when it cannot be read. */
+    /** The value of @p id in the configuration the resolve_* functions use,
+     *  references followed; a TYPE_NULL value when the chain reaches
+     *  `@null`; nullopt when it cannot be read. */
     static std::optional<FinalValue> default_value(const ResourceTable &table, uint32_t id);
 
     /** String @p index of the table's value pool; nullopt when out of

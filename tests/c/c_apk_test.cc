@@ -234,7 +234,7 @@ TEST(CApiApk, SeparatesExportedFromReachable)
     EXPECT_EQ(levels["com.dexpp.reach.P_DANGEROUS"], 1);
     EXPECT_EQ(levels["com.dexpp.reach.P_SIGNATURE"], 2);
 
-    ASSERT_EQ(m.component_count, 8u);
+    ASSERT_EQ(m.component_count, 13u);
     size_t exported = 0;
     size_t reachable = 0;
     for (size_t i = 0; i < m.component_count; ++i) {
@@ -248,8 +248,8 @@ TEST(CApiApk, SeparatesExportedFromReachable)
             EXPECT_STREQ(c.permission, "com.dexpp.reach.P_SIGNATURE");
         }
     }
-    EXPECT_EQ(exported, 7u);
-    EXPECT_EQ(reachable, 5u);
+    EXPECT_EQ(exported, 12u);
+    EXPECT_EQ(reachable, 6u);
     dexpp_manifest_clear(&m);
 
     // This APK has a manifest but no code.

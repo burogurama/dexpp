@@ -6,7 +6,8 @@
      tests/apk/manifest_test.cc says how the APK was built. aapt2 refuses a
      reference for android:versionCode and for the android:name of a
      component, so those are literals here; the tests cover both cases with
-     a manifest built in memory. -->
+     a manifest built in memory. Some resources are @null or @empty, which
+     Android reads as an attribute that is not written. -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.dexpp.refs"
     android:versionCode="42"
@@ -42,6 +43,18 @@
                 <action android:name="com.dexpp.refs.OPEN" />
             </intent-filter>
         </activity>
+        <activity android:name=".NullActivity" android:exported="@bool/nothing" />
+        <activity android:name=".NullFilteredActivity" android:exported="@bool/same_as_nothing">
+            <intent-filter>
+                <action android:name="com.dexpp.refs.OPEN" />
+            </intent-filter>
+        </activity>
+        <activity android:name=".EmptyActivity" android:exported="@bool/empty_bool" />
+        <activity android:name=".LiteralNullActivity" android:exported="@null">
+            <intent-filter>
+                <action android:name="com.dexpp.refs.OPEN" />
+            </intent-filter>
+        </activity>
         <service android:name=".GuardedService" android:exported="@bool/yes"
             android:permission="com.dexpp.refs.P_SIGNATURE" />
         <service android:name=".TextGuardedService" android:exported="@bool/yes"
@@ -56,5 +69,7 @@
             android:permission="@string/permission_on_v31" />
         <service android:name=".DeclaredByReferenceService" android:exported="@bool/yes"
             android:permission="com.dexpp.refs.P_BY_REFERENCE" />
+        <service android:name=".NullPermissionService" android:exported="@bool/yes"
+            android:permission="@string/no_permission" />
     </application>
 </manifest>

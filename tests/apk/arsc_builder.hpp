@@ -49,6 +49,7 @@ struct ArscConfig
 class ArscBuilder
 {
   public:
+    static constexpr uint8_t kNull = 0x00;
     static constexpr uint8_t kReference = 0x01;
     static constexpr uint8_t kString = 0x03;
     static constexpr uint8_t kIntDec = 0x10;

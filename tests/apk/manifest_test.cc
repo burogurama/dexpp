@@ -165,6 +165,11 @@ TEST(ManifestTest, ApplicationFlags)
 // tests/data/reachable.apk (source ReachableManifest.xml) declares permissions at
 // every protection level and guards exported components with them, exercising
 // Component::is_reachable and the declared-permission protectionLevel lookup.
+// Its <application> requires the signature permission, so every component
+// without a permission of its own inherits it.  It was built with the Android
+// SDK's aapt2 (build-tools 36.0.0), without a classes.dex:
+//
+//   aapt2 link -o reachable.apk -I android.jar --manifest ReachableManifest.xml
 TEST(ManifestTest, DeclaredPermissionProtectionLevels)
 {
     auto apk = Apk::open("tests/data/reachable.apk");
@@ -186,45 +191,130 @@ TEST(ManifestTest, Reachability)
     const Manifest *m = apk->manifest();
     ASSERT_NE(m, nullptr);
 
-    auto reachable = [&](std::string_view name) {
-        const Component *c = find_component(*m, name);
+    auto component = [&](std::string_view name) {
+        const Component *c =
+            find_component(*m, std::string("com.dexpp.reach.") + std::string(name));
         EXPECT_NE(c, nullptr) << name;
+        return c;
+    };
+    auto reachable = [&](std::string_view name) {
+        const Component *c = component(name);
         return c != nullptr && c->is_reachable();
     };
     auto exported = [&](std::string_view name) {
-        const Component *c = find_component(*m, name);
+        const Component *c = component(name);
         return c != nullptr && c->is_exported();
     };
 
-    // Exported and unguarded, or guarded by a normal/dangerous permission a
-    // third-party app can hold -> reachable.
-    EXPECT_TRUE(reachable("com.dexpp.reach.OpenActivity"));
-    EXPECT_TRUE(reachable("com.dexpp.reach.NormalActivity"));
-    EXPECT_TRUE(reachable("com.dexpp.reach.DangerousActivity"));
-    EXPECT_TRUE(reachable("com.dexpp.reach.OpenReceiver"));
+    // Guarded by its own normal/dangerous permission, which a third-party
+    // app can hold -> reachable, although the application requires a
+    // signature permission.
+    EXPECT_TRUE(reachable("NormalActivity"));
+    EXPECT_TRUE(reachable("DangerousActivity"));
+    EXPECT_TRUE(reachable("NormalReceiver"));
+    EXPECT_FALSE(component("NormalActivity")->permission_inherited);
     // Guarded by an undeclared (platform) permission -> still reachable (unknown level).
-    EXPECT_TRUE(reachable("com.dexpp.reach.PlatformPermActivity"));
+    EXPECT_TRUE(reachable("PlatformPermActivity"));
 
     // Guarded by a signature permission the app declares -> not reachable,
     // even though it is exported.
-    EXPECT_TRUE(exported("com.dexpp.reach.SigActivity"));
-    EXPECT_FALSE(reachable("com.dexpp.reach.SigActivity"));
-    EXPECT_TRUE(find_component(*m, "com.dexpp.reach.SigActivity")->guarded_by_signature_permission);
-    EXPECT_TRUE(exported("com.dexpp.reach.SigService"));
-    EXPECT_FALSE(reachable("com.dexpp.reach.SigService"));
+    EXPECT_TRUE(exported("SigActivity"));
+    EXPECT_FALSE(reachable("SigActivity"));
+    EXPECT_TRUE(component("SigActivity")->guarded_by_signature_permission);
+    EXPECT_TRUE(exported("SigService"));
+    EXPECT_FALSE(reachable("SigService"));
+
+    // No permission of their own: they take the application's signature
+    // permission, so they are not reachable either.
+    for (const char *name : {"InheritingActivity", "InheritingService", "InheritingReceiver"}) {
+        const Component *c = component(name);
+        ASSERT_NE(c, nullptr) << name;
+        EXPECT_TRUE(c->is_exported()) << name;
+        EXPECT_EQ(c->permission, std::optional<std::string>("com.dexpp.reach.P_SIGNATURE")) << name;
+        EXPECT_TRUE(c->permission_inherited) << name;
+        EXPECT_EQ(c->permission_reference, std::nullopt) << name;
+        EXPECT_FALSE(c->permission_unknown) << name;
+        EXPECT_TRUE(c->guarded_by_signature_permission) << name;
+        EXPECT_FALSE(c->is_reachable()) << name;
+        // Only a provider has read and write permissions.
+        EXPECT_EQ(c->read_permission, std::nullopt) << name;
+        EXPECT_EQ(c->write_permission, std::nullopt) << name;
+    }
 
     // Not exported -> not reachable.
-    EXPECT_FALSE(exported("com.dexpp.reach.HiddenActivity"));
-    EXPECT_FALSE(reachable("com.dexpp.reach.HiddenActivity"));
+    EXPECT_FALSE(exported("HiddenActivity"));
+    EXPECT_FALSE(reachable("HiddenActivity"));
 
-    // Counts: 5 of 6 activities exported, 4 reachable.
+    // Counts: 5 of 6 activities exported, 3 reachable.
     int act_exported = 0, act_reachable = 0;
     for (const auto *c : m->components_of(Component::Kind::Activity)) {
         act_exported += c->is_exported();
         act_reachable += c->is_reachable();
     }
     EXPECT_EQ(act_exported, 5);
-    EXPECT_EQ(act_reachable, 4);
+    EXPECT_EQ(act_reachable, 3);
+}
+
+TEST(ManifestTest, TheApplicationPermission)
+{
+    auto apk = Apk::open("tests/data/reachable.apk");
+    ASSERT_TRUE(apk.has_value()) << (apk ? "" : apk.error().message);
+    const Manifest *m = apk->manifest();
+    ASSERT_NE(m, nullptr);
+    EXPECT_EQ(m->application_permission(),
+              std::optional<std::string_view>("com.dexpp.reach.P_SIGNATURE"));
+    EXPECT_EQ(m->application_permission_reference(), std::nullopt);
+    EXPECT_FALSE(m->application_permission_unknown());
+
+    // sample.apk's application has no permission: nothing to inherit.
+    auto sample = open_sample();
+    const Manifest *s = sample.manifest();
+    ASSERT_NE(s, nullptr);
+    EXPECT_EQ(s->application_permission(), std::nullopt);
+    for (const Component &c : s->components())
+        EXPECT_FALSE(c.permission_inherited) << c.name;
+}
+
+TEST(ManifestTest, ProviderReadAndWritePermissions)
+{
+    // A provider is reached by reading or by writing.  Android gives it a
+    // read permission (android:readPermission, else android:permission,
+    // else the application's) and a write permission (the same with
+    // android:writePermission), and it is guarded only when both are.
+    auto apk = Apk::open("tests/data/reachable.apk");
+    ASSERT_TRUE(apk.has_value()) << (apk ? "" : apk.error().message);
+    const Manifest *m = apk->manifest();
+    ASSERT_NE(m, nullptr);
+    const std::optional<std::string> signature("com.dexpp.reach.P_SIGNATURE");
+
+    // Nothing of its own: both come from the application.
+    const Component *c = find_component(*m, "com.dexpp.reach.InheritingProvider");
+    ASSERT_NE(c, nullptr);
+    EXPECT_EQ(c->kind, Component::Kind::Provider);
+    EXPECT_EQ(c->permission, signature);
+    EXPECT_TRUE(c->permission_inherited);
+    EXPECT_EQ(c->read_permission, signature);
+    EXPECT_EQ(c->write_permission, signature);
+    EXPECT_TRUE(c->guarded_by_signature_permission);
+    EXPECT_FALSE(c->is_reachable());
+
+    // A normal read permission: any app can read it.
+    c = find_component(*m, "com.dexpp.reach.ReadableProvider");
+    ASSERT_NE(c, nullptr);
+    EXPECT_EQ(c->read_permission, std::optional<std::string>("com.dexpp.reach.P_NORMAL"));
+    EXPECT_EQ(c->write_permission, signature);
+    EXPECT_FALSE(c->guarded_by_signature_permission);
+    EXPECT_TRUE(c->is_reachable());
+
+    // Its own signature permission, but a dangerous write permission.
+    c = find_component(*m, "com.dexpp.reach.WritableProvider");
+    ASSERT_NE(c, nullptr);
+    EXPECT_EQ(c->permission, signature);
+    EXPECT_FALSE(c->permission_inherited);
+    EXPECT_EQ(c->read_permission, signature);
+    EXPECT_EQ(c->write_permission, std::optional<std::string>("com.dexpp.reach.P_DANGEROUS"));
+    EXPECT_FALSE(c->guarded_by_signature_permission);
+    EXPECT_TRUE(c->is_reachable());
 }
 
 // ===== framework attributes are read by resource id =====
@@ -592,6 +682,9 @@ TEST(ManifestAttributes, AResourceMapAfterTheFirstElementIsIgnored)
 //   aapt2 link -o refs.apk -I android.jar --manifest RefsManifest.xml compiled.zip
 //   touch -t 198001010000 classes.dex       # tests/data/classes.dex
 //   TZ=UTC zip -X -j refs.apk classes.dex
+//
+// aapt2 writes `@null` as a reference to id 0 and `@empty` as TYPE_NULL with
+// DATA_NULL_EMPTY, in the manifest and in the resource table alike.
 
 namespace {
 
@@ -704,12 +797,14 @@ TEST(ManifestReferences, ExportedIsResolved)
     ASSERT_NE(c, nullptr);
     EXPECT_EQ(c->exported, std::optional<bool>(true));
 
-    // None of these has a value that changes with the configuration.
+    // None of these has a value that changes with the configuration, and
+    // every value is known.
     for (const char *name :
          {"ExportedActivity", "HiddenActivity", "ChainedActivity", "IntegerActivity"}) {
         c = find_component(*m, std::string("com.dexpp.refs.") + name);
         ASSERT_NE(c, nullptr) << name;
         EXPECT_FALSE(c->exported_varies) << name;
+        EXPECT_FALSE(c->exported_unknown) << name;
     }
 }
 
@@ -773,6 +868,7 @@ TEST(ManifestReferences, AnUnresolvedExportedCountsAsExported)
     ASSERT_NE(c, nullptr);
     EXPECT_EQ(c->exported, std::nullopt);
     EXPECT_EQ(c->exported_reference, 0x0101020du);
+    EXPECT_TRUE(c->exported_unknown);
     EXPECT_FALSE(c->exported_varies);
     EXPECT_TRUE(c->is_exported());
     EXPECT_TRUE(c->is_reachable());
@@ -828,16 +924,20 @@ TEST(ManifestReferences, PermissionsGivenByReference)
     ASSERT_NE(c, nullptr);
     EXPECT_EQ(c->permission, std::optional<std::string>("com.dexpp.refs.P_SIGNATURE"));
     EXPECT_EQ(c->permission_reference, resource_id(apk, "string", "signature_permission"));
+    EXPECT_FALSE(c->permission_unknown);
     EXPECT_TRUE(c->guarded_by_signature_permission);
     EXPECT_FALSE(c->is_reachable());
 
     // The string has a res/values-fr variant (with the same text).  Android
     // reads android:permission with getNonConfigurationString(attr, 0), which
-    // returns null for a value that changes with the locale: no permission.
+    // returns null for a value that changes with the locale: no permission,
+    // and that is known.
     c = find_component(*m, "com.dexpp.refs.LocalizedPermissionService");
     ASSERT_NE(c, nullptr);
     EXPECT_EQ(c->permission, std::nullopt);
     EXPECT_EQ(c->permission_reference, resource_id(apk, "string", "localized_permission"));
+    EXPECT_FALSE(c->permission_unknown);
+    EXPECT_FALSE(c->permission_inherited);
     EXPECT_FALSE(c->guarded_by_signature_permission);
     EXPECT_TRUE(c->is_reachable());
 
@@ -847,6 +947,7 @@ TEST(ManifestReferences, PermissionsGivenByReference)
     ASSERT_NE(c, nullptr);
     EXPECT_EQ(c->permission, std::nullopt);
     EXPECT_EQ(c->permission_reference, resource_id(apk, "string", "permission_on_v31"));
+    EXPECT_TRUE(c->permission_unknown);
     EXPECT_TRUE(c->is_reachable());
 
     // <permission android:name="@string/declared_name"
@@ -871,12 +972,18 @@ TEST(ManifestReferences, WithoutTheResourceTableOnlyTheReferenceIsKnown)
 
     EXPECT_EQ(m.min_sdk(), std::nullopt);
     EXPECT_EQ(m.min_sdk_reference(), resource_id(apk, "integer", "min_sdk"));
+    EXPECT_TRUE(m.min_sdk_unknown());
+    EXPECT_TRUE(m.target_sdk_unknown());
     EXPECT_EQ(m.debuggable(), std::nullopt);
     EXPECT_EQ(m.debuggable_reference(), resource_id(apk, "bool", "debug"));
+    EXPECT_TRUE(m.debuggable_unknown());
+    EXPECT_TRUE(m.allow_backup_unknown());
     EXPECT_FALSE(m.debuggable_varies());
     EXPECT_EQ(m.version_code(), 42);
+    EXPECT_FALSE(m.version_code_unknown());
     EXPECT_EQ(m.version_name(), std::nullopt);
     EXPECT_EQ(m.version_name_reference(), resource_id(apk, "string", "version_name"));
+    EXPECT_TRUE(m.version_name_unknown());
     // The permission declared by reference has no name: it is left out.
     EXPECT_EQ(m.declared_permissions().size(), 3u);
 
@@ -884,7 +991,14 @@ TEST(ManifestReferences, WithoutTheResourceTableOnlyTheReferenceIsKnown)
     ASSERT_NE(hidden, nullptr);
     EXPECT_EQ(hidden->exported, std::nullopt);
     EXPECT_EQ(hidden->exported_reference, resource_id(apk, "bool", "no"));
+    EXPECT_TRUE(hidden->exported_unknown);
     EXPECT_TRUE(hidden->is_exported()); // unknown: possibly exported
+
+    // Without the table, a reference to a null value is unknown too.
+    const Component *null_activity = find_component(m, "com.dexpp.refs.NullActivity");
+    ASSERT_NE(null_activity, nullptr);
+    EXPECT_TRUE(null_activity->exported_unknown);
+    EXPECT_TRUE(null_activity->is_exported());
 
     // The signature level is unknown too, so the service is not guarded.
     EXPECT_EQ(m.declared_permission_protection_level("com.dexpp.refs.P_SIGNATURE"), std::nullopt);
@@ -899,6 +1013,7 @@ TEST(ManifestReferences, WithoutTheResourceTableOnlyTheReferenceIsKnown)
     EXPECT_EQ(by_reference->permission, std::nullopt);
     EXPECT_EQ(by_reference->permission_reference,
               resource_id(apk, "string", "signature_permission"));
+    EXPECT_TRUE(by_reference->permission_unknown);
     EXPECT_TRUE(by_reference->is_reachable());
 }
 
@@ -918,15 +1033,18 @@ TEST(ManifestReferences, AMissingIdIsNotResolved)
                    table);
     EXPECT_EQ(known.version_code(), 23);
     EXPECT_EQ(known.version_code_reference(), min_sdk);
+    EXPECT_FALSE(known.version_code_unknown());
     const Component &c = only_component(known);
     EXPECT_EQ(c.exported, std::nullopt);
     EXPECT_EQ(c.exported_reference, missing);
+    EXPECT_TRUE(c.exported_unknown);
     EXPECT_TRUE(c.is_exported());
 
     Manifest unknown(crafted_manifest({reference_attr("versionCode", kVersionCodeId, missing)}, {}),
                      table);
     EXPECT_EQ(unknown.version_code(), std::nullopt);
     EXPECT_EQ(unknown.version_code_reference(), missing);
+    EXPECT_TRUE(unknown.version_code_unknown());
 
     // A plain integer is still read as before.
     Manifest plain(
@@ -949,13 +1067,28 @@ TEST(ManifestReferences, PlainValuesHaveNoReference)
     EXPECT_EQ(m->target_sdk_reference(), std::nullopt);
     EXPECT_EQ(m->version_code_reference(), std::nullopt);
     EXPECT_EQ(m->version_name_reference(), std::nullopt);
+    EXPECT_EQ(m->application_permission_reference(), std::nullopt);
     EXPECT_FALSE(m->debuggable_varies());
     EXPECT_FALSE(m->allow_backup_varies());
+    EXPECT_FALSE(m->debuggable_unknown());
+    EXPECT_FALSE(m->allow_backup_unknown());
+    EXPECT_FALSE(m->version_code_unknown());
+    EXPECT_FALSE(m->version_name_unknown());
+    EXPECT_FALSE(m->min_sdk_unknown());
+    EXPECT_FALSE(m->target_sdk_unknown());
+    EXPECT_FALSE(m->application_permission_unknown());
     for (const Component &c : m->components()) {
         EXPECT_EQ(c.exported_reference, std::nullopt) << c.name;
         EXPECT_EQ(c.name_reference, std::nullopt) << c.name;
         EXPECT_EQ(c.permission_reference, std::nullopt) << c.name;
+        EXPECT_EQ(c.read_permission_reference, std::nullopt) << c.name;
+        EXPECT_EQ(c.write_permission_reference, std::nullopt) << c.name;
         EXPECT_FALSE(c.exported_varies) << c.name;
+        EXPECT_FALSE(c.exported_unknown) << c.name;
+        EXPECT_FALSE(c.name_unknown) << c.name;
+        EXPECT_FALSE(c.permission_unknown) << c.name;
+        EXPECT_FALSE(c.read_permission_unknown) << c.name;
+        EXPECT_FALSE(c.write_permission_unknown) << c.name;
     }
 }
 
@@ -1089,18 +1222,21 @@ TEST(ManifestTextReferences, AComponentNameGivenByReference)
         crafted_with_table(reference_attr("name", kNameId, ArscBuilder::id(0)), {}, table);
     EXPECT_EQ(only_component(named).name, "com.test.Named");
     EXPECT_EQ(only_component(named).name_reference, ArscBuilder::id(0));
+    EXPECT_FALSE(only_component(named).name_unknown);
 
     // A name that changes with the locale: Android ignores it.
     Manifest localized =
         crafted_with_table(reference_attr("name", kNameId, ArscBuilder::id(1)), {}, table);
     EXPECT_EQ(only_component(localized).name, "");
     EXPECT_EQ(only_component(localized).name_reference, ArscBuilder::id(1));
+    EXPECT_FALSE(only_component(localized).name_unknown);
 
     // A missing id.
     Manifest missing =
         crafted_with_table(reference_attr("name", kNameId, ArscBuilder::id(9)), {}, table);
     EXPECT_EQ(only_component(missing).name, "");
     EXPECT_EQ(only_component(missing).name_reference, ArscBuilder::id(9));
+    EXPECT_TRUE(only_component(missing).name_unknown);
 }
 
 TEST(ManifestTextReferences, TheTypeSpecFlagsDecideLikeAndroid)
@@ -1125,6 +1261,7 @@ TEST(ManifestTextReferences, TheTypeSpecFlagsDecideLikeAndroid)
         literal_name(".A"), {reference_attr("permission", kPermissionId, ArscBuilder::id(0))},
         table, {}, {declared});
     EXPECT_EQ(only_component(ignored).permission, std::nullopt);
+    EXPECT_FALSE(only_component(ignored).permission_unknown);
     EXPECT_FALSE(only_component(ignored).guarded_by_signature_permission);
 
     Manifest version_only = crafted_with_table(
@@ -1156,6 +1293,7 @@ TEST(ManifestTextReferences, VersionNameAndUsesPermission)
                            {uses_by_reference, uses_literal});
     EXPECT_EQ(m.version_name(), std::optional<std::string_view>("2.5"));
     EXPECT_EQ(m.version_name_reference(), ArscBuilder::id(0));
+    EXPECT_FALSE(m.version_name_unknown());
     // Android reads <uses-permission android:name> with getNonResourceString,
     // which ignores a reference.
     EXPECT_EQ(m.permissions(), std::vector<std::string>{"android.permission.INTERNET"});
@@ -1224,4 +1362,425 @@ TEST(ManifestVariants, TheSearchIsBounded)
     EXPECT_EQ(only_component(m).exported, std::optional<bool>(false));
     EXPECT_TRUE(only_component(m).exported_varies);
     EXPECT_TRUE(only_component(m).is_exported());
+}
+
+// ===== null values =====
+//
+// Android reads a null value as if the attribute were not written: `@null`
+// (a reference to id 0), `@empty` (TYPE_NULL, DATA_NULL_EMPTY), and a
+// reference whose resource ends at one of them.  AttributeResolution.cpp turns
+// `@null` into TYPE_NULL, TypedArray.hasValue() is false for TYPE_NULL, and
+// getBoolean(), getInt() and getNonConfigurationString() give their default.
+
+TEST(ManifestNullValues, AReferenceToANullValueReadsAsNotWritten)
+{
+    Apk apk = open_refs();
+    const Manifest *m = apk.manifest();
+    ASSERT_NE(m, nullptr);
+
+    // @bool/nothing is @null.  Not written, so the intent filters decide:
+    // there are none.  The reference id is kept.
+    const Component *c = find_component(*m, "com.dexpp.refs.NullActivity");
+    ASSERT_NE(c, nullptr);
+    EXPECT_EQ(c->exported, std::nullopt);
+    EXPECT_EQ(c->exported_reference, resource_id(apk, "bool", "nothing"));
+    EXPECT_FALSE(c->exported_unknown);
+    EXPECT_FALSE(c->exported_varies);
+    EXPECT_FALSE(c->is_exported());
+    EXPECT_FALSE(c->is_reachable());
+
+    // @bool/same_as_nothing is @bool/nothing: the chain ends at @null.  With
+    // an intent filter, the component is exported.
+    c = find_component(*m, "com.dexpp.refs.NullFilteredActivity");
+    ASSERT_NE(c, nullptr);
+    EXPECT_EQ(c->exported, std::nullopt);
+    EXPECT_EQ(c->exported_reference, resource_id(apk, "bool", "same_as_nothing"));
+    EXPECT_FALSE(c->exported_unknown);
+    EXPECT_TRUE(c->is_exported());
+
+    // @bool/empty_bool is @empty: the same as @null for a boolean.
+    c = find_component(*m, "com.dexpp.refs.EmptyActivity");
+    ASSERT_NE(c, nullptr);
+    EXPECT_EQ(c->exported, std::nullopt);
+    EXPECT_EQ(c->exported_reference, resource_id(apk, "bool", "empty_bool"));
+    EXPECT_FALSE(c->exported_unknown);
+    EXPECT_FALSE(c->is_exported());
+
+    // android:exported="@null" directly: a reference to id 0, which is no
+    // resource, so it reads like a missing attribute.
+    c = find_component(*m, "com.dexpp.refs.LiteralNullActivity");
+    ASSERT_NE(c, nullptr);
+    EXPECT_EQ(c->exported, std::nullopt);
+    EXPECT_EQ(c->exported_reference, std::nullopt);
+    EXPECT_FALSE(c->exported_unknown);
+    EXPECT_TRUE(c->is_exported()); // it has an intent filter
+
+    // android:permission="@string/no_permission", which is @null: no
+    // permission, and that is known.
+    c = find_component(*m, "com.dexpp.refs.NullPermissionService");
+    ASSERT_NE(c, nullptr);
+    EXPECT_EQ(c->permission, std::nullopt);
+    EXPECT_EQ(c->permission_reference, resource_id(apk, "string", "no_permission"));
+    EXPECT_FALSE(c->permission_unknown);
+    EXPECT_FALSE(c->permission_inherited);
+    EXPECT_TRUE(c->is_reachable());
+}
+
+namespace {
+
+constexpr uint32_t kReadPermissionId = 0x01010007;
+constexpr uint32_t kWritePermissionId = 0x01010008;
+constexpr uint32_t kProtectionLevelId = 0x01010009;
+constexpr uint8_t kTypeNull = 0x00;
+constexpr uint8_t kTypeIntHex = 0x11;
+
+TestAttr typed_attr(std::string name, uint32_t id, uint8_t type, uint32_t data)
+{
+    return TestAttr{kAndroidNs,   std::move(name), id,
+                    std::nullopt, std::nullopt,    axml::TypedValue{type, data}};
+}
+
+TestElement intent_filter()
+{
+    return {"intent-filter",
+            {},
+            {{"action", {{kAndroidNs, "name", kNameId, "android.intent.action.VIEW"}}, {}}}};
+}
+
+/** A manifest that declares com.test.SIG (signature) and com.test.NORMAL
+ *  (normal), with an `<application>` that has @p app_attrs and
+ *  @p components, read with the resource table @p table_bytes. */
+Manifest app_manifest(std::vector<TestAttr> app_attrs, std::vector<TestElement> components,
+                      const std::vector<uint8_t> &table_bytes)
+{
+    TestElement root{"manifest", {{"", "package", 0, "com.test"}}, {}};
+    root.children.push_back({"permission",
+                             {literal_name("com.test.SIG"),
+                              typed_attr("protectionLevel", kProtectionLevelId, kTypeIntHex, 2)},
+                             {}});
+    root.children.push_back({"permission",
+                             {literal_name("com.test.NORMAL"),
+                              typed_attr("protectionLevel", kProtectionLevelId, kTypeIntHex, 0)},
+                             {}});
+    root.children.push_back({"application", std::move(app_attrs), std::move(components)});
+    auto doc = axml::parse(AxmlWriter().write(root, ResourceMap::BeforeTheElements));
+    EXPECT_TRUE(doc.has_value());
+    auto table = ResourceTable::parse(table_bytes);
+    EXPECT_TRUE(table.has_value());
+    return Manifest(doc ? std::move(*doc) : axml::XmlDocument{}, table ? &*table : nullptr);
+}
+
+/** An exported component of kind @p tag named @p name with @p attrs. */
+TestElement exported_component(std::string tag, std::string name, std::vector<TestAttr> attrs = {})
+{
+    TestElement e{std::move(tag),
+                  {literal_name(std::move(name)),
+                   TestAttr{kAndroidNs, "exported", kExportedId, std::nullopt, true}},
+                  {}};
+    for (TestAttr &a : attrs)
+        e.attrs.push_back(std::move(a));
+    return e;
+}
+
+const Component &named(const Manifest &m, std::string_view name)
+{
+    const Component *c = find_component(m, name);
+    EXPECT_NE(c, nullptr) << name;
+    static const Component missing{};
+    return c ? *c : missing;
+}
+
+} // namespace
+
+TEST(ManifestNullValues, LiteralNullValues)
+{
+    // TYPE_NULL with DATA_NULL_UNDEFINED, `@empty` and `@null` written
+    // directly in the manifest: not written, so the intent filter decides.
+    const std::vector<std::pair<uint8_t, uint32_t>> cases = {
+        {kTypeNull, 0}, {kTypeNull, 1}, {kTypeReference, 0}};
+    for (const auto &[type, data] : cases) {
+        Manifest with_filter =
+            one_activity({typed_attr("exported", kExportedId, type, data)},
+                         /*with_intent_filter=*/true, ResourceMap::BeforeTheElements);
+        const Component &c = only_component(with_filter);
+        EXPECT_EQ(c.exported, std::nullopt) << int(type) << "/" << data;
+        EXPECT_EQ(c.exported_reference, std::nullopt) << int(type) << "/" << data;
+        EXPECT_FALSE(c.exported_unknown) << int(type) << "/" << data;
+        EXPECT_TRUE(c.is_exported()) << int(type) << "/" << data;
+
+        Manifest without =
+            one_activity({typed_attr("exported", kExportedId, type, data)},
+                         /*with_intent_filter=*/false, ResourceMap::BeforeTheElements);
+        EXPECT_FALSE(only_component(without).is_exported()) << int(type) << "/" << data;
+    }
+}
+
+TEST(ManifestNullValues, ANullValueInTheTable)
+{
+    // aapt2 writes @null in a table as a reference to 0; TYPE_NULL with
+    // DATA_NULL_UNDEFINED or DATA_NULL_EMPTY is read the same way.
+    ArscBuilder b;
+    b.value(0, ArscConfig(), ArscBuilder::kNull, 0);
+    b.value(1, ArscConfig(), ArscBuilder::kNull, 1);
+    b.value(2, ArscConfig(), ArscBuilder::kReference, 0);
+    const std::vector<uint8_t> table = b.build();
+    for (uint16_t entry = 0; entry < 3; ++entry) {
+        Manifest m = crafted_with_table(
+            literal_name(".A"), {reference_attr("exported", kExportedId, ArscBuilder::id(entry))},
+            table);
+        const Component &c = only_component(m);
+        EXPECT_EQ(c.exported, std::nullopt) << entry;
+        EXPECT_EQ(c.exported_reference, ArscBuilder::id(entry)) << entry;
+        EXPECT_FALSE(c.exported_unknown) << entry;
+        EXPECT_FALSE(c.is_exported()) << entry;
+    }
+}
+
+TEST(ManifestNullValues, NullInOneConfigurationUsesTheIntentFilters)
+{
+    // e0 is false by default and @null in values-v31: on Android 12 and
+    // newer the attribute counts as not written, so the intent filters
+    // decide there.
+    ArscBuilder b;
+    b.value(0, ArscConfig(), ArscBuilder::kBoolean, 0);
+    b.value(0, ArscConfig().sdk(31), ArscBuilder::kReference, 0);
+    const std::vector<uint8_t> table = b.build();
+    const TestAttr exported = reference_attr("exported", kExportedId, ArscBuilder::id(0));
+
+    // No intent filter: not exported in either configuration.
+    Manifest closed = app_manifest({}, {{"activity", {literal_name(".A"), exported}, {}}}, table);
+    EXPECT_EQ(only_component(closed).exported, std::optional<bool>(false));
+    EXPECT_FALSE(only_component(closed).exported_varies);
+    EXPECT_FALSE(only_component(closed).is_exported());
+
+    // An intent filter: exported on Android 12 and newer.
+    Manifest open =
+        app_manifest({}, {{"activity", {literal_name(".A"), exported}, {intent_filter()}}}, table);
+    EXPECT_EQ(only_component(open).exported, std::optional<bool>(false));
+    EXPECT_TRUE(only_component(open).exported_varies);
+    EXPECT_TRUE(only_component(open).is_exported());
+}
+
+TEST(ManifestNullValues, ApplicationFlagsAndProtectionLevels)
+{
+    // e0 is @null.  debuggable and allowBackup read as not written (Android
+    // uses their defaults), and a protection level reads as normal.  e1 is
+    // @null by default and true in values-v31: debuggable then varies (its
+    // default is false), allowBackup does not (its default is true).
+    ArscBuilder b;
+    b.value(0, ArscConfig(), ArscBuilder::kReference, 0);
+    b.value(1, ArscConfig(), ArscBuilder::kReference, 0);
+    b.value(1, ArscConfig().sdk(31), ArscBuilder::kBoolean, 0xFFFFFFFF);
+    const std::vector<uint8_t> table = b.build();
+
+    Manifest m = app_manifest({reference_attr("debuggable", kDebuggableId, ArscBuilder::id(0)),
+                               reference_attr("allowBackup", kAllowBackupId, ArscBuilder::id(0))},
+                              {}, table);
+    EXPECT_EQ(m.debuggable(), std::nullopt);
+    EXPECT_EQ(m.debuggable_reference(), ArscBuilder::id(0));
+    EXPECT_FALSE(m.debuggable_unknown());
+    EXPECT_FALSE(m.debuggable_varies());
+    EXPECT_EQ(m.allow_backup(), std::nullopt);
+    EXPECT_FALSE(m.allow_backup_unknown());
+
+    Manifest varying =
+        app_manifest({reference_attr("debuggable", kDebuggableId, ArscBuilder::id(1)),
+                      reference_attr("allowBackup", kAllowBackupId, ArscBuilder::id(1))},
+                     {}, table);
+    EXPECT_EQ(varying.debuggable(), std::nullopt);
+    EXPECT_TRUE(varying.debuggable_varies());
+    EXPECT_FALSE(varying.allow_backup_varies());
+
+    // <permission android:protectionLevel="@integer/e0">, e0 being @null.
+    TestElement root{"manifest", {{"", "package", 0, "com.test"}}, {}};
+    root.children.push_back(
+        {"permission",
+         {literal_name("com.test.P"),
+          reference_attr("protectionLevel", kProtectionLevelId, ArscBuilder::id(0))},
+         {}});
+    auto doc = axml::parse(AxmlWriter().write(root, ResourceMap::BeforeTheElements));
+    ASSERT_TRUE(doc.has_value());
+    auto parsed = ResourceTable::parse(table);
+    ASSERT_TRUE(parsed.has_value());
+    Manifest levels(std::move(*doc), &*parsed);
+    EXPECT_EQ(levels.declared_permission_protection_level("com.test.P"), 0);
+    EXPECT_FALSE(levels.declared_permission_protection_level_varies("com.test.P"));
+}
+
+// ===== the application's permission =====
+//
+// ParsingPackageUtils reads <application android:permission> with
+// getNonConfigurationString(attr, 0).  ParsedActivityUtils (activities and
+// receivers) and ParsedServiceUtils give a component the application's
+// permission when its own getNonConfigurationString returns null.
+// ParsedProviderUtils does the same for a provider's read and write
+// permissions, after android:readPermission / writePermission and
+// android:permission.
+
+TEST(ManifestApplicationPermission, EveryKindInherits)
+{
+    Manifest m =
+        app_manifest({string_attr("permission", kPermissionId, "com.test.SIG")},
+                     {exported_component("activity", ".A"), exported_component("service", ".S"),
+                      exported_component("receiver", ".R"), exported_component("provider", ".P")},
+                     ArscBuilder().value(0, ArscConfig(), ArscBuilder::kBoolean, 0).build());
+    EXPECT_EQ(m.application_permission(), std::optional<std::string_view>("com.test.SIG"));
+    ASSERT_EQ(m.components().size(), 4u);
+    for (const Component &c : m.components()) {
+        EXPECT_EQ(c.permission, std::optional<std::string>("com.test.SIG")) << c.name;
+        EXPECT_TRUE(c.permission_inherited) << c.name;
+        EXPECT_TRUE(c.guarded_by_signature_permission) << c.name;
+        EXPECT_FALSE(c.is_reachable()) << c.name;
+    }
+    const Component &provider = named(m, "com.test.P");
+    EXPECT_EQ(provider.read_permission, std::optional<std::string>("com.test.SIG"));
+    EXPECT_EQ(provider.write_permission, std::optional<std::string>("com.test.SIG"));
+}
+
+TEST(ManifestApplicationPermission, AComponentPermissionThatGivesNothingInherits)
+{
+    // e0 is @null; e1 changes with the locale, so Android ignores it; e2 is
+    // missing, so its value is unknown.
+    ArscBuilder b;
+    b.value(0, ArscConfig(), ArscBuilder::kReference, 0);
+    const uint32_t normal = b.string("com.test.NORMAL");
+    b.value(1, ArscConfig(), ArscBuilder::kString, normal);
+    b.value(1, ArscConfig().language('f', 'r'), ArscBuilder::kString, normal);
+    b.spec_flags(1, 0x0004);
+    const uint32_t missing = ArscBuilder::id(2);
+    Manifest m = app_manifest(
+        {string_attr("permission", kPermissionId, "com.test.SIG")},
+        {exported_component("activity", ".Null",
+                            {reference_attr("permission", kPermissionId, ArscBuilder::id(0))}),
+         exported_component("activity", ".Localized",
+                            {reference_attr("permission", kPermissionId, ArscBuilder::id(1))}),
+         exported_component("activity", ".Missing",
+                            {reference_attr("permission", kPermissionId, missing)}),
+         exported_component("activity", ".Empty",
+                            {typed_attr("permission", kPermissionId, kTypeNull, 1)})},
+        b.build());
+
+    for (const char *name : {"com.test.Null", "com.test.Localized", "com.test.Empty"}) {
+        const Component &c = named(m, name);
+        EXPECT_EQ(c.permission, std::optional<std::string>("com.test.SIG")) << name;
+        EXPECT_TRUE(c.permission_inherited) << name;
+        EXPECT_FALSE(c.permission_unknown) << name;
+        EXPECT_TRUE(c.guarded_by_signature_permission) << name;
+        EXPECT_FALSE(c.is_reachable()) << name;
+    }
+    EXPECT_EQ(named(m, "com.test.Null").permission_reference, ArscBuilder::id(0));
+    EXPECT_EQ(named(m, "com.test.Empty").permission_reference, std::nullopt);
+
+    // The component's own value is unknown: it may be any permission, so the
+    // application's does not count and the component is not guarded.
+    const Component &unknown = named(m, "com.test.Missing");
+    EXPECT_EQ(unknown.permission, std::nullopt);
+    EXPECT_EQ(unknown.permission_reference, missing);
+    EXPECT_TRUE(unknown.permission_unknown);
+    EXPECT_FALSE(unknown.permission_inherited);
+    EXPECT_FALSE(unknown.guarded_by_signature_permission);
+    EXPECT_TRUE(unknown.is_reachable());
+}
+
+TEST(ManifestApplicationPermission, GivenByAReference)
+{
+    // e0 is com.test.SIG; e1 changes with the locale; e2 is missing.
+    ArscBuilder b;
+    const uint32_t sig = b.string("com.test.SIG");
+    b.value(0, ArscConfig(), ArscBuilder::kString, sig);
+    b.value(1, ArscConfig(), ArscBuilder::kString, sig);
+    b.value(1, ArscConfig().language('f', 'r'), ArscBuilder::kString, sig);
+    b.spec_flags(1, 0x0004);
+    const std::vector<uint8_t> table = b.build();
+    auto with_app_permission = [&](uint32_t id) {
+        return app_manifest(
+            {reference_attr("permission", kPermissionId, id)},
+            {exported_component("activity", ".A"),
+             exported_component("activity", ".Own",
+                                {string_attr("permission", kPermissionId, "com.test.NORMAL")})},
+            table);
+    };
+
+    Manifest resolved = with_app_permission(ArscBuilder::id(0));
+    EXPECT_EQ(resolved.application_permission(), std::optional<std::string_view>("com.test.SIG"));
+    EXPECT_EQ(resolved.application_permission_reference(), ArscBuilder::id(0));
+    EXPECT_FALSE(resolved.application_permission_unknown());
+    EXPECT_TRUE(named(resolved, "com.test.A").permission_inherited);
+    EXPECT_FALSE(named(resolved, "com.test.A").is_reachable());
+    // Its own normal permission wins.
+    EXPECT_EQ(named(resolved, "com.test.Own").permission,
+              std::optional<std::string>("com.test.NORMAL"));
+    EXPECT_FALSE(named(resolved, "com.test.Own").permission_inherited);
+    EXPECT_TRUE(named(resolved, "com.test.Own").is_reachable());
+
+    // Android ignores a string that changes with the locale: no permission
+    // to inherit.
+    Manifest ignored = with_app_permission(ArscBuilder::id(1));
+    EXPECT_EQ(ignored.application_permission(), std::nullopt);
+    EXPECT_EQ(ignored.application_permission_reference(), ArscBuilder::id(1));
+    EXPECT_FALSE(ignored.application_permission_unknown());
+    EXPECT_EQ(named(ignored, "com.test.A").permission, std::nullopt);
+    EXPECT_FALSE(named(ignored, "com.test.A").permission_inherited);
+    EXPECT_TRUE(named(ignored, "com.test.A").is_reachable());
+
+    // Unknown: the component inherits an unknown permission, which does not
+    // guard it.
+    Manifest unknown = with_app_permission(ArscBuilder::id(2));
+    EXPECT_EQ(unknown.application_permission(), std::nullopt);
+    EXPECT_TRUE(unknown.application_permission_unknown());
+    const Component &a = named(unknown, "com.test.A");
+    EXPECT_EQ(a.permission, std::nullopt);
+    EXPECT_TRUE(a.permission_inherited);
+    EXPECT_TRUE(a.permission_unknown);
+    EXPECT_TRUE(a.is_reachable());
+}
+
+TEST(ManifestApplicationPermission, ProviderReadAndWritePermissions)
+{
+    // e0 is @null.
+    ArscBuilder b;
+    b.value(0, ArscConfig(), ArscBuilder::kReference, 0);
+    const std::vector<uint8_t> table = b.build();
+    Manifest m = app_manifest(
+        {string_attr("permission", kPermissionId, "com.test.SIG")},
+        {// readPermission is @null: it falls back to the application's.
+         exported_component(
+             "provider", ".NullRead",
+             {reference_attr("readPermission", kReadPermissionId, ArscBuilder::id(0))}),
+         // Its own permission is normal; readPermission is the signature one.
+         exported_component("provider", ".OwnPermission",
+                            {string_attr("permission", kPermissionId, "com.test.NORMAL"),
+                             string_attr("readPermission", kReadPermissionId, "com.test.SIG")}),
+         // Both given, both signature.
+         exported_component("provider", ".Both",
+                            {string_attr("readPermission", kReadPermissionId, "com.test.SIG"),
+                             string_attr("writePermission", kWritePermissionId, "com.test.SIG")}),
+         // A missing id: unknown.
+         exported_component(
+             "provider", ".UnknownWrite",
+             {reference_attr("writePermission", kWritePermissionId, ArscBuilder::id(5))})},
+        table);
+
+    const Component &null_read = named(m, "com.test.NullRead");
+    EXPECT_EQ(null_read.read_permission, std::optional<std::string>("com.test.SIG"));
+    EXPECT_EQ(null_read.read_permission_reference, ArscBuilder::id(0));
+    EXPECT_FALSE(null_read.read_permission_unknown);
+    EXPECT_TRUE(null_read.guarded_by_signature_permission);
+
+    const Component &own = named(m, "com.test.OwnPermission");
+    EXPECT_EQ(own.permission, std::optional<std::string>("com.test.NORMAL"));
+    EXPECT_FALSE(own.permission_inherited);
+    EXPECT_EQ(own.read_permission, std::optional<std::string>("com.test.SIG"));
+    EXPECT_EQ(own.write_permission, std::optional<std::string>("com.test.NORMAL"));
+    EXPECT_FALSE(own.guarded_by_signature_permission);
+    EXPECT_TRUE(own.is_reachable());
+
+    EXPECT_TRUE(named(m, "com.test.Both").guarded_by_signature_permission);
+
+    const Component &unknown = named(m, "com.test.UnknownWrite");
+    EXPECT_EQ(unknown.read_permission, std::optional<std::string>("com.test.SIG"));
+    EXPECT_EQ(unknown.write_permission, std::nullopt);
+    EXPECT_TRUE(unknown.write_permission_unknown);
+    EXPECT_FALSE(unknown.guarded_by_signature_permission);
+    EXPECT_TRUE(unknown.is_reachable());
 }

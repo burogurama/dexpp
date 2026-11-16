@@ -321,9 +321,16 @@ EveryValue ResourceTableAccess::every_value(const ResourceTable &table, uint32_t
                     out.incomplete = true;
                     return out;
                 }
-                if (!v.has_value || (is_resource_reference(v.type) && v.data == 0)) {
-                    // A complex entry, or @null.
+                if (!v.has_value) {
+                    // A complex entry.
                     out.incomplete = true;
+                    continue;
+                }
+                if (is_null_reference(v.type, v.data)) {
+                    // @null ends the chain with a null value, as
+                    // AssetManager2::ResolveReference stops at it.
+                    if (distinct.insert(uint64_t{kTypeNull} << 32).second)
+                        out.values.push_back(FinalValue{kTypeNull, 0});
                     continue;
                 }
                 if (is_resource_reference(v.type)) {
@@ -345,10 +352,22 @@ EveryValue ResourceTableAccess::every_value(const ResourceTable &table, uint32_t
 std::optional<FinalValue> ResourceTableAccess::default_value(const ResourceTable &table,
                                                              uint32_t id)
 {
-    const ResourceTable::Value *v = table.value_entry(id);
-    if (!v)
-        return std::nullopt;
-    return FinalValue{v->type, v->data};
+    // value_entry() follows the chain the same way, but gives nothing for
+    // @null; here @null is a value: the null value Android reads.
+    for (int step = 0; step <= kMaxReferenceSteps; ++step) {
+        auto it = table.entries_.find(id);
+        if (it == table.entries_.end())
+            return std::nullopt;
+        const ResourceTable::Value &v = it->second.values[it->second.primary];
+        if (!v.has_value)
+            return std::nullopt;
+        if (is_null_reference(v.type, v.data))
+            return FinalValue{kTypeNull, 0};
+        if (!is_resource_reference(v.type))
+            return FinalValue{v.type, v.data};
+        id = v.data;
+    }
+    return std::nullopt; // a reference loop, or a longer chain than Android follows
 }
 
 std::optional<std::string_view> ResourceTableAccess::pool_string(const ResourceTable &table,

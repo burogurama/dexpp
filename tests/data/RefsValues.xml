@@ -26,4 +26,8 @@
     <string name="permission_on_v31">com.dexpp.refs.P_SIGNATURE</string>
     <string name="declared_name">com.dexpp.refs.P_BY_REFERENCE</string>
     <string name="greeting">Hello</string>
+    <item name="nothing" type="bool">@null</item>
+    <item name="empty_bool" type="bool">@empty</item>
+    <bool name="same_as_nothing">@bool/nothing</bool>
+    <item name="no_permission" type="string">@null</item>
 </resources>

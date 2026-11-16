@@ -1,4 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Source of reachable.apk: permissions at every protection level, and
+     components guarded by them. The application's android:permission is the
+     signature permission, so a component that gives no permission of its own
+     takes that one; a provider takes it for reading and for writing unless
+     it sets android:readPermission or android:writePermission.
+     tests/apk/manifest_test.cc says how the APK was built. -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.dexpp.reach"
     android:versionCode="1" android:versionName="1.0">
@@ -6,14 +12,23 @@
     <permission android:name="com.dexpp.reach.P_NORMAL" android:protectionLevel="normal"/>
     <permission android:name="com.dexpp.reach.P_DANGEROUS" android:protectionLevel="dangerous"/>
     <permission android:name="com.dexpp.reach.P_SIGNATURE" android:protectionLevel="signature"/>
-    <application android:label="Reach">
-        <activity android:name=".OpenActivity" android:exported="true"/>
+    <application android:label="Reach" android:permission="com.dexpp.reach.P_SIGNATURE">
+        <activity android:name=".InheritingActivity" android:exported="true"/>
         <activity android:name=".NormalActivity" android:exported="true" android:permission="com.dexpp.reach.P_NORMAL"/>
         <activity android:name=".DangerousActivity" android:exported="true" android:permission="com.dexpp.reach.P_DANGEROUS"/>
         <activity android:name=".SigActivity" android:exported="true" android:permission="com.dexpp.reach.P_SIGNATURE"/>
         <activity android:name=".HiddenActivity" android:exported="false"/>
         <activity android:name=".PlatformPermActivity" android:exported="true" android:permission="android.permission.DUMP"/>
         <service android:name=".SigService" android:exported="true" android:permission="com.dexpp.reach.P_SIGNATURE"/>
-        <receiver android:name=".OpenReceiver" android:exported="true"/>
+        <service android:name=".InheritingService" android:exported="true"/>
+        <receiver android:name=".InheritingReceiver" android:exported="true"/>
+        <receiver android:name=".NormalReceiver" android:exported="true" android:permission="com.dexpp.reach.P_NORMAL"/>
+        <provider android:name=".InheritingProvider" android:authorities="com.dexpp.reach.inheriting"
+            android:exported="true"/>
+        <provider android:name=".ReadableProvider" android:authorities="com.dexpp.reach.readable"
+            android:exported="true" android:readPermission="com.dexpp.reach.P_NORMAL"/>
+        <provider android:name=".WritableProvider" android:authorities="com.dexpp.reach.writable"
+            android:exported="true" android:permission="com.dexpp.reach.P_SIGNATURE"
+            android:writePermission="com.dexpp.reach.P_DANGEROUS"/>
     </application>
 </manifest>
