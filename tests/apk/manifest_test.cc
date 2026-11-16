@@ -1184,7 +1184,8 @@ TEST(ManifestVariants, AChainLongerThanAndroidFollowsIsUnknown)
     b.value(0, ArscConfig(), ArscBuilder::kBoolean, 0);
     b.value(0, ArscConfig().sdk(31), ArscBuilder::kReference, ArscBuilder::id(1));
     for (uint16_t i = 1; i < 25; ++i)
-        b.value(i, ArscConfig(), ArscBuilder::kReference, ArscBuilder::id(i + 1));
+        b.value(i, ArscConfig(), ArscBuilder::kReference,
+                ArscBuilder::id(static_cast<uint16_t>(i + 1)));
     b.value(25, ArscConfig(), ArscBuilder::kBoolean, 0);
     Manifest m = crafted_with_table(literal_name(".A"),
                                     {reference_attr("exported", kExportedId, ArscBuilder::id(0))},
@@ -1197,7 +1198,8 @@ TEST(ManifestVariants, AChainLongerThanAndroidFollowsIsUnknown)
     short_chain.value(0, ArscConfig(), ArscBuilder::kBoolean, 0);
     short_chain.value(0, ArscConfig().sdk(31), ArscBuilder::kReference, ArscBuilder::id(1));
     for (uint16_t i = 1; i < 5; ++i)
-        short_chain.value(i, ArscConfig(), ArscBuilder::kReference, ArscBuilder::id(i + 1));
+        short_chain.value(i, ArscConfig(), ArscBuilder::kReference,
+                          ArscBuilder::id(static_cast<uint16_t>(i + 1)));
     short_chain.value(5, ArscConfig(), ArscBuilder::kBoolean, 0);
     Manifest short_m = crafted_with_table(
         literal_name(".A"), {reference_attr("exported", kExportedId, ArscBuilder::id(0))},
