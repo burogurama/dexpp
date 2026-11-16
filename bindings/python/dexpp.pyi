@@ -1840,11 +1840,23 @@ class Component:
         """The component's class name with its package, such as
         `com.example.MainActivity`. A short name in the manifest, such as
         `.MainActivity`, is completed with the app's package.
+
+        It is empty when the attribute is missing, or when it is a resource reference
+        that gives no single value; then `name_reference` is set.
+        """
+    @property
+    def name_reference(self) -> Optional[int]:
+        """The resource id when `android:name` is written as a reference, such as
+        `@string/main_activity`, whether it was resolved or not. `None` for a plain
+        value or a missing attribute.
         """
     @property
     def exported(self) -> Optional[bool]:
         """The `android:exported` attribute: `True` or `False` as the manifest writes
-        it, or as the resource it refers to says.
+        it, or as the resource it refers to says in the default configuration.
+
+        A value written as text, such as the string `"true"`, is read as Android reads
+        it: only `"1"`, `"true"` and `"TRUE"` are true.
 
         It is `None` when the attribute is missing, or when it is a resource reference
         that could not be resolved; then `exported_reference` is set. `is_exported`
@@ -1859,8 +1871,29 @@ class Component:
         `exported is None` with `exported_reference` set means the value is unknown.
         """
     @property
+    def exported_varies(self) -> bool:
+        """True when `android:exported` is a reference whose value is not the same in
+        every resource configuration: for example false in `res/values` and true in
+        `res/values-v31`, so the component is exported on Android 12 and newer.
+
+        `exported` holds the default configuration's value, and `is_exported` is true.
+        """
+    @property
     def permission(self) -> Optional[str]:
-        """The permission a caller must hold to use the component, or `None`."""
+        """The permission a caller must hold to use the component, or `None`.
+
+        It is also `None` when the attribute is a resource reference that gives no
+        single value; then `permission_reference` is set. Android ignores a string
+        resource that changes with the language, the screen or another configuration,
+        so such a reference guards nothing. A string that changes only with the
+        Android version depends on the device, and is `None` too.
+        """
+    @property
+    def permission_reference(self) -> Optional[int]:
+        """The resource id when `android:permission` is written as a reference, such as
+        `@string/guard`, whether it was resolved or not. `None` for a plain value or a
+        missing attribute.
+        """
     @property
     def intent_filters(self) -> list[IntentFilter]:
         """The component's intent filters."""
@@ -1875,8 +1908,11 @@ class Component:
         """Whether other apps can address the component: the `exported` attribute when
         the manifest sets it, otherwise true when the component has an intent filter.
 
-        When the attribute is a reference that could not be resolved, its value is
-        unknown and this is true: the component may be exported.
+        When the attribute is a reference whose value differs between configurations
+        (`exported_varies`), this is true: the component is exported on the devices
+        that match a configuration that says so. When the attribute is a reference
+        that could not be resolved, its value is unknown and this is true: the
+        component may be exported.
         """
     @property
     def is_reachable(self) -> bool:
@@ -1895,13 +1931,18 @@ class Manifest:
 
     Attributes the manifest may leave out are `None` when they are not set.
 
-    A boolean or integer attribute can be written as a resource reference, such as
+    An attribute can be written as a resource reference, such as
     `android:debuggable="@bool/debug"`. Its property then holds the value the APK's
     resource table gives, in the default configuration, and the matching
     `..._reference` property holds the reference id. When the reference cannot be
     resolved, the value is `None` and the `..._reference` property is still set: the
     attribute is written, but its value is unknown. A `..._reference` property is
     `None` for a plain value or a missing attribute.
+
+    A boolean whose resource has another value in some configuration (a language,
+    a screen size, an Android version) has a matching `..._varies` property that is
+    true. Integers always hold the default configuration's value. Text, such as
+    `version_name`, is `None` when the string changes with the configuration.
     """
 
     @property
@@ -1915,7 +1956,14 @@ class Manifest:
         """The resource id when `android:versionCode` is a reference, or `None`."""
     @property
     def version_name(self) -> Optional[str]:
-        """`android:versionName`, or `None`."""
+        """`android:versionName`, or `None`.
+
+        It is also `None` when the attribute is a reference to a string that is not the
+        same in every configuration; then `version_name_reference` is set.
+        """
+    @property
+    def version_name_reference(self) -> Optional[int]:
+        """The resource id when `android:versionName` is a reference, or `None`."""
     @property
     def min_sdk(self) -> Optional[int]:
         """`android:minSdkVersion` of `<uses-sdk>`, or `None`."""
@@ -1946,6 +1994,17 @@ class Manifest:
 
         The low four bits are the base level: 0 normal, 1 dangerous, 2 signature, 3
         signatureOrSystem. Higher bits are flags.
+
+        For a level given by a resource reference, this is the default configuration's
+        value; see `declared_permission_protection_level_varies`.
+        """
+    def declared_permission_protection_level_varies(self, name: str) -> bool:
+        """True when the app declares this permission with a protection level given by
+        a resource reference whose value is not the same in every configuration.
+
+        Such a permission is a guard only when every configuration gives signature or
+        signatureOrSystem: on a device that matches a weaker level, any app can hold
+        it. False for a permission the app does not declare.
         """
     @property
     def components(self) -> list[Component]:
@@ -1963,11 +2022,25 @@ class Manifest:
     def debuggable_reference(self) -> Optional[int]:
         """The resource id when `android:debuggable` is a reference, or `None`."""
     @property
+    def debuggable_varies(self) -> bool:
+        """True when `android:debuggable` is a reference whose value is not the same in
+        every configuration. `debuggable` holds the default configuration's value; a
+        device that matches another configuration uses that one. For triage, treat a
+        varying value as possibly true.
+        """
+    @property
     def allow_backup(self) -> Optional[bool]:
         """`android:allowBackup` of `<application>`, or `None` when it is not set."""
     @property
     def allow_backup_reference(self) -> Optional[int]:
         """The resource id when `android:allowBackup` is a reference, or `None`."""
+    @property
+    def allow_backup_varies(self) -> bool:
+        """True when `android:allowBackup` is a reference whose value is not the same in
+        every configuration. `allow_backup` holds the default configuration's value; a
+        device that matches another configuration uses that one. For triage, treat a
+        varying value as possibly true.
+        """
 
 class ResourceName:
     """The full name of a resource: `package:type/entry`.
@@ -1988,27 +2061,79 @@ class ResourceName:
     def __eq__(self, other: object) -> bool: ...
     def __hash__(self) -> int: ...
 
+class ResourceValue:
+    """The value of a resource in one configuration, as the table stores it. A value
+    that refers to another resource is not followed.
+    """
+
+    @property
+    def configuration(self) -> str:
+        """The configuration, written like the qualifiers of a `res/` folder name: `""`
+        for the default configuration (`res/values`), `"v31"` for Android 12 and newer,
+        `"fr"` for French, `"b+sr+Latn-land-night-v8"` for a combination. The text is
+        the one `aapt2 dump resources` prints.
+        """
+    @property
+    def type(self) -> int:
+        """The value's type, a `Res_value` data type from Android's `ResourceTypes.h`:
+        for example `0x01` a reference to another resource, `0x03` a string, `0x10` a
+        decimal integer, `0x11` a hexadecimal integer, `0x12` a boolean.
+        """
+    @property
+    def data(self) -> int:
+        """The raw 32-bit data: the id of the resource a reference names, the integer
+        itself, 0 or not 0 for a boolean (aapt2 writes true as `0xFFFFFFFF`), or the
+        index of a string in the table's string pool.
+        """
+    @property
+    def string(self) -> Optional[str]:
+        """The text of a string value (type `0x03`), or `None` for any other type."""
+    def as_bool(self) -> Optional[bool]:
+        """The value read as a boolean, the way Android reads a boolean attribute.
+
+        An integer-typed value is true when it is not 0. A string is true when it is
+        exactly `"1"`, `"true"` or `"TRUE"`, and false otherwise, so `"True"` and
+        `"yes"` are false. A floating-point value, a dimension or a fraction is false.
+        `None` for a reference (not followed here), a null value or an empty string,
+        for which Android uses the attribute's default.
+        """
+    def as_int(self) -> Optional[int]:
+        """The value read as an integer: any integer-typed value (an integer, a
+        boolean, a color), as its signed 32-bit data. `None` for any other type.
+        """
+
 class ResourceTable:
     """The decoded `resources.arsc` table of an APK.
 
-    It maps resource ids to names and to string, boolean and integer values. When a
-    resource has several variants, for example one per language, the value of the
-    default configuration is used. A resource whose value refers to another resource
-    is followed to the end.
+    It maps resource ids to names and to string, boolean and integer values. A
+    resource can have a value in several configurations, for example one per
+    language: `values` lists them all, and the `resolve_...` methods use the value of
+    the default configuration. They follow a resource whose value refers to another
+    resource to the end, for up to 20 steps as Android does.
     """
 
     def name_of(self, id: int) -> Optional[ResourceName]:
         """The name of the resource with this id, or `None` when the table has no such
         id.
         """
+    def values(self, id: int) -> list[ResourceValue]:
+        """Every value of the resource with this id, one for each configuration the
+        table gives it, in table order. Empty when the table has no such id.
+
+        A complex entry, such as a style, an array or a plural, has no single value and
+        is left out. A value that refers to another resource is returned as it is:
+        call `values` with its `data` to follow it.
+        """
     def resolve_string(self, id: int) -> Optional[str]:
         """The value of a string resource, or `None` when the id is missing or its value
         is not a string.
         """
     def resolve_bool(self, id: int) -> Optional[bool]:
-        """The value of a resource as a boolean: a bool resource, or any integer-typed
-        value (nonzero is true), as Android reads it. `None` when the id is missing or
-        its value is of another type, such as a string.
+        """The value of a resource as a boolean, read as Android reads it (see
+        `ResourceValue.as_bool`): a bool resource, any integer-typed value (nonzero is
+        true), or a string (`"1"`, `"true"` and `"TRUE"` are true, any other text is
+        false). `None` when the id is missing, or its value is null or an empty
+        string.
         """
     def resolve_int(self, id: int) -> Optional[int]:
         """The value of a resource as an integer: an integer resource, or any other

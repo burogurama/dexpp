@@ -723,7 +723,96 @@ def test_manifest_references():
     sample = dexpp.Apk.open("tests/data/sample.apk").manifest
     assert sample is not None
     assert sample.min_sdk_reference is None and sample.debuggable_reference is None
-    assert all(c.exported_reference is None for c in sample.components)
+    assert sample.version_name_reference is None
+    assert not sample.debuggable_varies and not sample.allow_backup_varies
+    for c in sample.components:
+        assert c.exported_reference is None and not c.exported_varies
+        assert c.name_reference is None and c.permission_reference is None
+
+
+def test_manifest_values_that_vary_between_configurations():
+    # refs.apk: res/values and res/values-v31 give some resources different values.
+    apk = dexpp.Apk.open("tests/data/refs.apk")
+    rt = apk.resources
+    m = apk.manifest
+    assert rt is not None and m is not None
+
+    # true by default, false on v31; false by default, true on v31.
+    assert m.debuggable is True and m.debuggable_varies
+    assert m.allow_backup is False and m.allow_backup_varies
+
+    by_name = {c.name.split(".")[-1]: c for c in m.components}
+    variant = by_name["VariantActivity"]
+    assert variant.exported is False
+    assert variant.exported_varies
+    assert variant.is_exported and variant.is_reachable
+    assert not by_name["ExportedActivity"].exported_varies
+
+    # Strings read as booleans like Android: only "1", "true" and "TRUE" are true.
+    assert by_name["UpperTextActivity"].exported is True
+    assert by_name["CapitalTextActivity"].exported is False
+    assert not by_name["EmptyTextActivity"].is_exported
+
+    # A protection level that is normal on v31 does not guard.
+    assert m.declared_permission_protection_level("com.dexpp.refs.P_VARYING") == 2
+    assert m.declared_permission_protection_level_varies(name="com.dexpp.refs.P_VARYING")
+    assert not m.declared_permission_protection_level_varies("com.dexpp.refs.P_SIGNATURE")
+    assert by_name["VaryingLevelService"].is_reachable
+
+
+def test_manifest_text_references():
+    apk = dexpp.Apk.open("tests/data/refs.apk")
+    rt = apk.resources
+    m = apk.manifest
+    assert rt is not None and m is not None
+    assert m.version_name == "1.0"
+    assert m.version_name_reference == rt.id_of("string", "version_name")
+    assert "com.dexpp.refs.P_BY_REFERENCE" in m.declared_permissions
+
+    by_name = {c.name.split(".")[-1]: c for c in m.components}
+    by_reference = by_name["PermissionByReferenceService"]
+    assert by_reference.permission == "com.dexpp.refs.P_SIGNATURE"
+    assert by_reference.permission_reference == rt.id_of("string", "signature_permission")
+    assert by_reference.guarded_by_signature_permission
+    assert not by_reference.is_reachable
+    # A string with a res/values-fr variant: Android ignores it, so nothing guards.
+    localized = by_name["LocalizedPermissionService"]
+    assert localized.permission is None
+    assert localized.permission_reference == rt.id_of("string", "localized_permission")
+    assert localized.is_reachable
+    assert not by_name["DeclaredByReferenceService"].is_reachable
+    assert by_name["ExportedActivity"].name_reference is None
+
+
+def test_resource_values():
+    rt = dexpp.Apk.open("tests/data/refs.apk").resources
+    assert rt is not None
+    differs = rt.id_of("bool", "differs_on_v31")
+    assert differs is not None
+    values = rt.values(differs)
+    assert [v.configuration for v in values] == ["", "v31"]
+    assert [v.as_bool() for v in values] == [False, True]
+    assert values[0].type == 0x12 and values[0].data == 0
+    assert values[1].as_int() == -1 and values[1].string is None
+    assert "v31" in repr(values[1])
+
+    greeting = rt.id_of("string", "greeting")
+    assert greeting is not None
+    texts = {v.configuration: v.string for v in rt.values(id=greeting)}
+    assert texts == {"": "Hello", "fr": "Bonjour", "b+sr+Latn-land-night-v8": "Zdravo"}
+
+    same_as_yes = rt.id_of("bool", "same_as_yes")
+    assert same_as_yes is not None
+    (reference,) = rt.values(same_as_yes)
+    assert reference.type == 0x01 and reference.data == rt.id_of("bool", "yes")
+    assert reference.as_bool() is None
+
+    assert rt.values(0x7F999999) == []
+    capital = rt.id_of("string", "capital_true")
+    empty = rt.id_of("string", "empty_text")
+    assert capital is not None and empty is not None
+    assert rt.resolve_bool(capital) is False
+    assert rt.resolve_bool(empty) is None
 
 
 def test_resolve_bool_and_int():

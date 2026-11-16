@@ -34,6 +34,7 @@
 #include <pybind11/stl.h>
 
 #include <cstddef>
+#include <format>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -1229,9 +1230,12 @@ PYBIND11_MODULE(dexpp, m)
     py::class_<Component>(m, "Component")
         .def_readonly("kind", &Component::kind)
         .def_readonly("name", &Component::name)
+        .def_readonly("name_reference", &Component::name_reference)
         .def_readonly("exported", &Component::exported)
         .def_readonly("exported_reference", &Component::exported_reference)
+        .def_readonly("exported_varies", &Component::exported_varies)
         .def_readonly("permission", &Component::permission)
+        .def_readonly("permission_reference", &Component::permission_reference)
         .def_readonly("intent_filters", &Component::intent_filters)
         .def_readonly("guarded_by_signature_permission",
                       &Component::guarded_by_signature_permission)
@@ -1251,6 +1255,7 @@ PYBIND11_MODULE(dexpp, m)
                                        return py::none();
                                    return py::cast(std::string(*v));
                                })
+        .def_property_readonly("version_name_reference", &Manifest::version_name_reference)
         .def_property_readonly("min_sdk", &Manifest::min_sdk)
         .def_property_readonly("min_sdk_reference", &Manifest::min_sdk_reference)
         .def_property_readonly("target_sdk", &Manifest::target_sdk)
@@ -1259,6 +1264,8 @@ PYBIND11_MODULE(dexpp, m)
         .def_property_readonly("declared_permissions", &Manifest::declared_permissions)
         .def("declared_permission_protection_level",
              &Manifest::declared_permission_protection_level, py::arg("name"))
+        .def("declared_permission_protection_level_varies",
+             &Manifest::declared_permission_protection_level_varies, py::arg("name"))
         .def_property_readonly("components", &Manifest::components)
         .def(
             "components_of",
@@ -1278,8 +1285,10 @@ PYBIND11_MODULE(dexpp, m)
                                })
         .def_property_readonly("debuggable", &Manifest::debuggable)
         .def_property_readonly("debuggable_reference", &Manifest::debuggable_reference)
+        .def_property_readonly("debuggable_varies", &Manifest::debuggable_varies)
         .def_property_readonly("allow_backup", &Manifest::allow_backup)
-        .def_property_readonly("allow_backup_reference", &Manifest::allow_backup_reference);
+        .def_property_readonly("allow_backup_reference", &Manifest::allow_backup_reference)
+        .def_property_readonly("allow_backup_varies", &Manifest::allow_backup_varies);
 
     py::class_<ResourceName>(m, "ResourceName")
         .def_readonly("package", &ResourceName::package)
@@ -1292,6 +1301,19 @@ PYBIND11_MODULE(dexpp, m)
              })
         .def("__repr__", [](const ResourceName &n) {
             return "ResourceName(" + n.package + ":" + n.type + "/" + n.entry + ")";
+        });
+
+    py::class_<ResourceValue>(m, "ResourceValue")
+        .def_readonly("configuration", &ResourceValue::configuration)
+        .def_readonly("type", &ResourceValue::type)
+        .def_readonly("data", &ResourceValue::data)
+        .def_readonly("string", &ResourceValue::string)
+        .def("as_bool", &ResourceValue::as_bool)
+        .def("as_int", &ResourceValue::as_int)
+        .def("__repr__", [](const ResourceValue &v) {
+            return std::format("ResourceValue({}, type=0x{:02x}, data=0x{:08x})",
+                               v.configuration.empty() ? "default" : v.configuration, v.type,
+                               v.data);
         });
 
     py::class_<ResourceTable>(m, "ResourceTable")
@@ -1313,6 +1335,7 @@ PYBIND11_MODULE(dexpp, m)
                 return py::cast(std::string(*s));
             },
             py::arg("id"))
+        .def("values", &ResourceTable::values, py::arg("id"))
         .def("resolve_bool", &ResourceTable::resolve_bool, py::arg("id"))
         .def("resolve_int", &ResourceTable::resolve_int, py::arg("id"))
         .def("id_of", &ResourceTable::id_of, py::arg("type"), py::arg("entry"))
