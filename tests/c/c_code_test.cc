@@ -10,6 +10,7 @@
 #include <set>
 #include <string>
 #include <type_traits>
+#include <utility>
 #include <vector>
 
 #include "c_test_util.hpp"
@@ -98,6 +99,64 @@ TEST(CApiCode, RendersEveryInstructionOfEveryFixtureLikeTheCppApi)
         dexpp_context_free(ctx);
     }
     EXPECT_GE(kinds.size(), 15u);
+}
+
+TEST(CApiCode, DisassemblesWithNames)
+{
+    DexppContext *ctx = open_dex("tests/data/classes.dex");
+    ASSERT_NE(ctx, nullptr);
+    DexppMethod *main = find_method(ctx, "LTestDex;", "main");
+    ASSERT_NE(main, nullptr);
+
+    size_t count = 0;
+    DexppDisassemblyLine *lines = dexpp_method_disassemble(main, &count);
+    ASSERT_EQ(count, 5u);
+    std::vector<std::pair<uint32_t, std::string>> got;
+    for (size_t i = 0; i < count; ++i)
+        got.emplace_back(lines[i].offset, lines[i].text);
+    EXPECT_EQ(
+        got,
+        (std::vector<std::pair<uint32_t, std::string>>{
+            {0, "sget-object v1, Ljava/lang/System;->out:Ljava/io/PrintStream;"},
+            {2, "invoke-static {}, LTestDex;->helloDex()Ljava/lang/String;"},
+            {5, "move-result-object v0"},
+            {6, "invoke-virtual {v1, v0}, Ljava/io/PrintStream;->println(Ljava/lang/String;)V"},
+            {9, "return-void"},
+        }));
+    dexpp_disassembly_line_array_free(lines, count);
+    dexpp_disassembly_line_array_free(nullptr, 0);
+    dexpp_method_free(main);
+    dexpp_context_free(ctx);
+
+    // A method without code has no lines: NULL with count 0.
+    DexppContext *shapes = open_dex("tests/data/shapes.dex");
+    ASSERT_NE(shapes, nullptr);
+    DexppMethod *area = find_method(shapes, "LShape;", "area");
+    ASSERT_NE(area, nullptr);
+    count = 7;
+    lines = dexpp_method_disassemble(area, &count);
+    EXPECT_EQ(lines, nullptr);
+    EXPECT_EQ(count, 0u);
+    dexpp_disassembly_line_array_free(lines, count);
+    dexpp_method_free(area);
+    dexpp_context_free(shapes);
+
+    // Method handles, method types and call sites are named too.
+    DexppContext *handles = open_dex("tests/data/handles.dex");
+    ASSERT_NE(handles, nullptr);
+    DexppMethod *run = find_method(handles, "LHandles;", "run");
+    ASSERT_NE(run, nullptr);
+    lines = dexpp_method_disassemble(run, &count);
+    ASSERT_EQ(count, 7u);
+    EXPECT_STREQ(lines[3].text, "const-method-handle v2, invoke-static@LHandles;->target(I)I");
+    EXPECT_STREQ(lines[4].text, "const-method-type v3, (I)I");
+    EXPECT_EQ(
+        std::string(lines[5].text).rfind("invoke-custom {v1}, call_site@0(\"apply\", (I)V)@", 0),
+        0u)
+        << lines[5].text;
+    dexpp_disassembly_line_array_free(lines, count);
+    dexpp_method_free(run);
+    dexpp_context_free(handles);
 }
 
 // A C caller may store any value of the enum's integer type in an enum member:

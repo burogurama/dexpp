@@ -110,6 +110,7 @@ set(DEXPP_CORE_SOURCES
     src/analysis/method.cpp
     src/analysis/field.cpp
     src/analysis/instruction.cpp
+    src/analysis/disassembly.cpp
     src/analysis/cfg.cpp
     src/analysis/call_graph.cpp
     src/analysis/class_hierarchy.cpp

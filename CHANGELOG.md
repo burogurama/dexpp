@@ -148,6 +148,58 @@
 - The `resolve_*` lookups now use the first default-configuration value when
   a damaged table holds two, as Android does, instead of the last one.
 
+### Cross-references: faster, and much less memory
+
+- Building the cross-reference index (`xrefs()` in every binding) no longer
+  decodes every method into the context's instruction cache, where the
+  instructions stayed for the life of the context. It now reads each
+  method's code once, picks out the instructions that name a string, a type,
+  a field or a method without decoding the others, and keeps nothing but the
+  index. The index holds exactly the same results, in the same order. On a
+  146 MB app with 16 DEX files, building it took 4.0 s and added 1.9 GB of
+  memory; it now takes 0.5 s (1.3 s on one thread) and adds 0.44 GB.
+- The index is built on several threads, as the call graph is: each DEX file
+  is read on its own thread, and the four tables (strings, types, fields,
+  methods) are filled on their own threads. The thread count of the analysis
+  (`ApkLoadOptions::threads`, `threads` in Python, C and Java, `WithThreads`
+  in Go) controls it, and the index does not depend on it.
+- Building the call graph no longer keeps every method's code item in memory
+  for the life of the context either: on the same app it now adds 0.39 GB
+  instead of 0.54 GB.
+- An explicit thread count above 1 is now used by the call graph and the
+  cross-references whatever the size of the program. Before, a program whose
+  DEX files besides the biggest held less than 1 MiB always stayed on the
+  calling thread. The automatic count (0) keeps that rule.
+
+### Readable bytecode
+
+- A method's code can now be read as text with every reference named, in the
+  style of smali and dexdump: one line per instruction, with its offset, such
+  as `invoke-virtual {v0, v1},
+  Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;`,
+  `const-string v1, "hello"` or `iget v0, v1, Lcom/example/Foo;->count:I`.
+    - Strings are quoted, with quotes, backslashes, control characters and
+      invisible characters (such as U+200B or a right-to-left override)
+      escaped.
+    - A method handle shows its kind and member (`invoke-static@LA;->f()V`),
+      a prototype its descriptor, and a call site its method name, method
+      type, extra arguments and bootstrap method.
+    - Branch targets are code offsets, the same numbers as the offsets of the
+      lines; switch and array tables are written out in the instruction that
+      uses them.
+    - A reference outside its table, in a damaged file, shows as the raw
+      index with a question mark (`string@4?`).
+    - C++: `Method::disassemble()` and `dex::DisassemblyLine`. Python:
+      `Method.disassemble()` and `DisassemblyLine`. C:
+      `dexpp_method_disassemble()`, `DexppDisassemblyLine` and
+      `dexpp_disassembly_line_array_free()`. Go: `Method.Disassemble()` and
+      `DisassemblyLine`. Java: `DexMethod.disassemble()` and the
+      `DisassemblyLine` record.
+- `to_string` (Go `ToString`, Java `Dexpp.toString`) still writes one
+  instruction with raw pool indices, as it has no file to name them from.
+- The demo disassembler (`main_test`) now prints the named form, and each
+  method's prototype.
+
 ## 0.3.1
 
 ### APK from memory

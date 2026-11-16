@@ -6,6 +6,7 @@
 #include <memory>
 #include <optional>
 #include <span>
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -87,6 +88,13 @@ struct ParameterRegister
     bool is_wide; ///< True for long / double (occupies reg and reg + 1).
 };
 
+/** One instruction of a method, as readable text (see Method::disassemble()). */
+struct DisassemblyLine
+{
+    uint32_t offset;  ///< Code-unit offset of the instruction, as in Instruction.
+    std::string text; ///< The instruction with its references named, smali style.
+};
+
 /** A lightweight handle to a single DEX method.
  *
  *  Get one from Class::methods(), CallGraph::method_for() or
@@ -144,6 +152,43 @@ class Method
      *  for as long as this Method (and any other handle into the same context).
      *  Returns an empty span for abstract/native methods (code_off == 0). */
     std::span<const Instruction> instructions() const;
+
+    /** The method's code as readable text: one line per instruction, in the
+     *  order of instructions(), each with the instruction's offset.
+     *
+     *  The text is in the style of smali and dexdump: the opcode name, then
+     *  the operands, with every reference named instead of numbered.
+     *  - Methods are `Lclass;->name(Params)Return`, fields
+     *    `Lclass;->name:Type`, types their descriptor and prototypes
+     *    `(Params)Return`: `invoke-virtual {v0, v1},
+     *    Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;`.
+     *  - Strings are in double quotes, with quotes, backslashes, control
+     *    characters and invisible characters (such as U+200B or the
+     *    bidirectional overrides) escaped: `const-string v1, "a"b
+"`.
+     *  - A method handle is its kind and member:
+     *    `invoke-static@Lclass;->name()V`.  A call site is `call_site@N`
+     *    followed by its method name, method type and extra arguments in
+     *    parentheses, then `@` and the bootstrap method.
+     *  - Literals are hexadecimal, as smali writes them: `0x1f`, `-0x1`, with
+     *    an `L` suffix for the wide constants.
+     *  - Branch targets are absolute code offsets in hexadecimal, the same
+     *    numbers as the `offset` of the lines: `if-eqz v0, 0012`.
+     *  - Switch and array tables are written out in the instruction that uses
+     *    them, since their payload is not an instruction of its own:
+     *    `packed-switch v0, {0x1 -> 0012, 0x2 -> 0016}` and
+     *    `fill-array-data v0, [0x1, 0x2]` (elements of 1, 2 or 8 bytes get a
+     *    `t`, `s` or `L` suffix, as in smali).
+     *  - The /range forms list their registers as `{v0 .. v5}`, and the
+     *    /2addr forms name two registers.
+     *
+     *  A reference whose index is outside its table (a damaged file) is the
+     *  raw index followed by a question mark, such as `string@4?`; so is a
+     *  branch target outside the code, or a table that is missing or
+     *  damaged.  Empty for abstract / native methods.  Unlike
+     *  dex::to_string(), which has no context and prints pool indices, this
+     *  needs the method's DEX file to name the references. */
+    std::vector<DisassemblyLine> disassemble() const;
 
     /** Control-flow graph for this method's bytecode.  Cached per-context;
      *  repeated calls return the same reference.  Returns an empty Cfg for

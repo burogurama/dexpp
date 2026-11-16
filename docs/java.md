@@ -18,6 +18,7 @@ for.
 | Load a DEX file, several DEX files, or an APK | `AnalysisContext.fromDex`, `fromDexFiles`, `fromApk` |
 | Classes, class references, methods, fields | `DexClass`, `ClassRef`, `DexMethod`, `DexField` |
 | Decoded bytecode | `DexMethod.instructions`, `Dexpp.opcodeName`, `Dexpp.toString` |
+| The code as text, with names | `DexMethod.disassemble` |
 | Control-flow graph, try blocks | `DexMethod.cfg`, `DexMethod.tryBlocks` |
 | Calls, field accesses, string loads, type uses, parameter registers | `DexMethod.calls` and the methods after it |
 | Annotations, initial values of static fields | `DexClass.annotations`, `DexField.initialValue`, ... |

@@ -111,8 +111,8 @@ keeps it. How you read it depends on the language:
   same is true for the control-flow graph below.
 
 The text shows constant-pool operands as raw indices, such as `field@1` or
-`string@12`. An instruction alone has no context to turn them into names. To
-get names, use the resolved lists below.
+`string@12`. An instruction alone has no context to turn them into names. The
+method has that context: see [The code as text](#the-code-as-text) below.
 
 Each instruction has one of 28 types, one per family of opcodes:
 `InvokeInstruction`, `FieldInstruction`, `ConstStringInstruction`,
@@ -130,6 +130,50 @@ type switch or a type assertion, and Java pattern matching (`instanceof` or a
 
 `opcode_name` (Go: `dexpp.OpcodeName`, Java: `Dexpp.opcodeName`) gives the
 name of an opcode byte.
+
+### The code as text
+
+`disassemble()` (Go: `Disassemble()`, Java: `disassemble()`) returns a
+method's code as text, one line per instruction, with every reference named.
+
+<!-- example: code.disassemble -->
+
+Each line has the instruction's `offset` and its `text`. The lines are in the
+order of the instructions, so line `i` is the text of instruction `i`. A
+method without code has no lines. The text follows the style of smali and
+dexdump:
+
+- A method is `Lclass;->name(Params)Return`, a field `Lclass;->name:Type`, a
+  type its descriptor, and a prototype `(Params)Return`.
+- A string is in double quotes. Quotes, backslashes, control characters (such
+  as a newline or a NUL) and invisible characters (such as a zero-width space
+  or a right-to-left override) are escaped, so the line shows what is really
+  in the string: `"say \"hi\"\n"`, `"\u202e"`.
+- A method handle is its kind and its member: `invoke-static@LA;->f()V`. A
+  call site (the target of `invoke-custom`) is `call_site@N`, then its method
+  name, method type and extra arguments in parentheses, then `@` and the
+  bootstrap method.
+- Literals are hexadecimal, as in smali: `0x1f`, `-0x1`, and `0x10L` for a
+  64-bit constant.
+- A branch target is the offset it jumps to, in hexadecimal. It is the same
+  number as the `offset` of the line it jumps to, and as the code offsets of
+  the rest of the API (cross-references, try blocks, the control-flow graph):
+  `if-eqz v0, 0012`.
+- Switch and array tables are written inside the instruction that uses them,
+  because their data is not an instruction of its own:
+  `packed-switch v0, {0x1 -> 0012, 0x2 -> 0016}` and
+  `fill-array-data v0, [0x1, 0x2]`. Array elements of 1, 2 and 8 bytes get a
+  `t`, `s` and `L` suffix, as in smali.
+- The `/range` forms list their registers as `{v0 .. v5}`, and the `/2addr`
+  forms name two registers.
+
+In a damaged file, a reference can point outside its table. The line then
+shows the raw index followed by a question mark, such as `string@4?`. The
+same mark follows a branch target outside the method's code, and a switch or
+array table that is missing or damaged.
+
+Each call builds the text again, so keep the list when you need it more than
+once.
 
 ## What a method refers to
 

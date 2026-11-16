@@ -26,13 +26,16 @@ struct AnalysisContextImpl;
 struct ApkLoadOptions
 {
     /** Threads used to decompress and parse the DEX entries, and later to
-     *  build the context's call graph.  0 = automatic: one per hardware
-     *  thread, never more than one per DEX file.  1 = do everything on the
-     *  calling thread.  Loading only starts extra threads when at least 3 DEX
-     *  entries are deflate-compressed; with fewer, starting them costs more
-     *  than it saves.  Set this to 1 when the caller already analyses several
-     *  APKs in parallel, so the machine is not oversubscribed, or when the
-     *  program must not start threads at all. */
+     *  build the context's call graph and cross-references.  0 = automatic:
+     *  one per hardware thread, never more than one per DEX file.  1 = do
+     *  everything on the calling thread.  Loading only starts extra threads
+     *  when at least 3 DEX entries are deflate-compressed; with fewer,
+     *  starting them costs more than it saves.  With 0, the call graph and
+     *  the cross-references also stay on the calling thread for a small
+     *  program; a count above 1 is used whatever the program's size.  Set
+     *  this to 1 when the caller already analyses several APKs in parallel,
+     *  so the machine is not oversubscribed, or when the program must not
+     *  start threads at all. */
     unsigned threads = 0;
 
     /** Two option sets are equal when every member is equal. */

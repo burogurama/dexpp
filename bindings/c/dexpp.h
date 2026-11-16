@@ -411,8 +411,9 @@ DEXPP_C_API DexppContext *dexpp_context_from_dex_files(const char *const *paths,
 
 /** Load every top-level classes*.dex of an APK, in multidex order. `threads`
  *  is the number of threads for decompressing and, later, for building the
- *  call graph: 0 lets the library choose, 1 keeps all work on the calling
- *  thread. Errors: FILE_NOT_FOUND, CANNOT_READ, INVALID_APK, INVALID_DEX. */
+ *  call graph and the cross-references: 0 lets the library choose, 1 keeps
+ *  all work on the calling thread. Errors: FILE_NOT_FOUND, CANNOT_READ,
+ *  INVALID_APK, INVALID_DEX. */
 DEXPP_C_API DexppContext *dexpp_context_from_apk(const char *path, uint32_t threads,
                                                  DexppError **err);
 
@@ -766,7 +767,8 @@ typedef struct DexppSwitchCase
  *  for them, and are 0 or NULL otherwise. Offsets are in 16-bit code units.
  *  Pool indices (string_index, type_index, ...) are raw indices into the DEX
  *  file's tables; dexpp_method_calls() and the other reference functions
- *  give resolved names. */
+ *  give resolved names, and dexpp_method_disassemble() the whole instruction
+ *  as text with names. */
 typedef struct DexppInstruction
 {
     DexppInstructionKind kind;    /**< The instruction family. */
@@ -826,8 +828,44 @@ DEXPP_C_API const char *dexpp_opcode_name(uint8_t opcode);
 /** One instruction as text: the opcode name, then its operands, with pool
  *  operands as raw indices (`string@12`). A `kind` this header does not list
  *  gives the opcode name alone, and a width other than DEXPP_WIDTH_PAIR counts
- *  as DEXPP_WIDTH_SINGLE. */
+ *  as DEXPP_WIDTH_SINGLE. dexpp_method_disassemble() names the references. */
 DEXPP_C_API char *dexpp_instruction_to_string(const DexppInstruction *insn);
+
+/** One instruction of a method as readable text. */
+typedef struct DexppDisassemblyLine
+{
+    uint32_t offset; /**< Offset of the instruction in the method's code, in code units: the
+                          same number as the instruction's `offset`. */
+    char *text;      /**< The instruction with every reference named, in the style of smali
+                          and dexdump. It holds no NUL byte: control characters are
+                          escaped. */
+} DexppDisassemblyLine;
+
+/** The method's code as readable text: one line per instruction, in the
+ *  order of dexpp_method_instructions(), each with the instruction's offset.
+ *  Empty for a method without code. Free with
+ *  dexpp_disassembly_line_array_free().
+ *
+ *  The text is the opcode name, then the operands, with every reference named
+ *  instead of numbered: a method is `Lclass;->name(Params)Return`, a field
+ *  `Lclass;->name:Type`, a type its descriptor, a prototype `(Params)Return`,
+ *  and a method handle its kind and member (`invoke-static@LA;->f()V`). A
+ *  string is in double quotes, with quotes, backslashes, control characters
+ *  and invisible characters escaped. A call site is `call_site@N` followed by
+ *  its name, method type and extra arguments in parentheses, then `@` and the
+ *  bootstrap method. Literals are hexadecimal as in smali (`0x1f`, `-0x1`,
+ *  `0x10L` for a wide constant). Branch targets are code offsets in
+ *  hexadecimal, the same numbers as the `offset` of the lines
+ *  (`if-eqz v0, 0012`). Switch and array tables are written out in the
+ *  instruction that uses them: `packed-switch v0, {0x1 -> 0012}` and
+ *  `fill-array-data v0, [0x1, 0x2]`. A reference whose index is outside its
+ *  table is the raw index followed by a question mark (`string@4?`), and so
+ *  is a branch target outside the code or a damaged table. */
+DEXPP_C_API DexppDisassemblyLine *dexpp_method_disassemble(const DexppMethod *m, size_t *count);
+
+/** Free an array of DexppDisassemblyLine and the text of every line. Accepts
+ *  NULL. */
+DEXPP_C_API void dexpp_disassembly_line_array_free(DexppDisassemblyLine *lines, size_t count);
 
 /** @} */
 

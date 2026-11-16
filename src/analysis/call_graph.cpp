@@ -3,18 +3,15 @@
 #include "call_graph_builder.hpp"
 
 #include <algorithm>
-#include <atomic>
 #include <deque>
-#include <exception>
 #include <string>
 #include <string_view>
-#include <thread>
 #include <unordered_map>
 #include <utility>
 
 #include "access_flags.hpp"
 #include "analysis_context_impl.hpp"
-#include "invoke_sites.hpp"
+#include "code_scan.hpp"
 #include "joining_threads.hpp"
 #include "method.hpp"
 #include "opcode_kinds.hpp"
@@ -161,42 +158,6 @@ class Interner
     std::vector<std::string_view> views_;
     std::vector<std::size_t> hashes_;
 };
-
-// Run fn(i) for every i in `order` on up to `threads` threads, the calling
-// thread included.  An exception thrown by fn is kept and rethrown here once
-// every thread has stopped — escaping a std::thread, it would std::terminate
-// the process; when several throw, the one for the lowest i wins.
-template <typename Fn>
-void for_each_parallel(const std::vector<std::size_t> &order, std::size_t threads, Fn &&fn)
-{
-    std::vector<std::exception_ptr> errors(order.size());
-    std::atomic<std::size_t> next{0};
-    auto work = [&] {
-        for (std::size_t k = next.fetch_add(1); k < order.size(); k = next.fetch_add(1)) {
-            try {
-                fn(order[k]);
-            }
-            catch (...) {
-                errors[order[k]] = std::current_exception();
-            }
-        }
-    };
-    {
-        detail::JoiningThreads pool;
-        try {
-            for (std::size_t t = 1; t < threads; ++t)
-                pool.start(work);
-        }
-        catch (const std::exception &) {
-            // Could not start every thread (resource limits): the threads
-            // that did start, plus this one, still drain the queue.
-        }
-        work();
-    } // the pool joins here
-    for (const auto &error : errors)
-        if (error)
-            std::rethrow_exception(error);
-}
 
 // A compressed-row table: row r is values[offsets[r] .. offsets[r + 1]).
 struct Rows
@@ -353,9 +314,7 @@ CallGraph detail::CallGraphAccess::build(const AnalysisContextImpl &impl)
     g.impl_ = &impl;
 
     const std::size_t dex_count = impl.dex_files().size();
-    // hardware_concurrency() reads system files on every call; ask once.
-    static const unsigned hardware_threads = std::max(1u, std::thread::hardware_concurrency());
-    const std::size_t threads = impl.threads != 0 ? impl.threads : hardware_threads;
+    const std::size_t threads = impl.thread_budget();
 
     // ---- Per-DEX preparation, one thread per DEX file -----------------------
     // Everything the steps below need from one DEX file is independent of the
@@ -397,6 +356,7 @@ CallGraph detail::CallGraphAccess::build(const AnalysisContextImpl &impl)
     auto prepare = [&](std::size_t i) {
         const auto &dex = impl.dex_files()[i];
         DexPrep &p = prep[i];
+        std::optional<raw::CodeItem> scratch;
 
         const auto type_count = static_cast<uint32_t>(dex.type_ids().size());
         p.type_view.resize(type_count);
@@ -440,9 +400,11 @@ CallGraph detail::CallGraphAccess::build(const AnalysisContextImpl &impl)
                     if (!impl.method_item(i, em.method_idx))
                         continue; // malformed class_data: skip this method
                     std::size_t begin = p.sites.size();
-                    if (em.code_off != 0)
-                        if (const raw::CodeItem *ci = impl.get_code_item(i, em.code_off))
-                            detail::find_invokes(ci->insns, p.sites);
+                    // The code item is only borrowed, not cached: the graph
+                    // needs it once, and every method's code kept alive for
+                    // the context's lifetime would cost more than the graph.
+                    if (const raw::CodeItem *ci = impl.peek_code_item(i, em.code_off, scratch))
+                        detail::find_invokes(ci->insns, p.sites);
                     p.methods.push_back(DexPrep::Method{em.method_idx, em.access_flags, em.code_off,
                                                         begin, p.sites.size()});
                 }
@@ -451,26 +413,7 @@ CallGraph detail::CallGraphAccess::build(const AnalysisContextImpl &impl)
         p.method_offsets.push_back(p.methods.size());
     };
 
-    {
-        // Biggest DEX files first, so a large one picked up last does not keep
-        // the other threads idle while it finishes.
-        std::vector<std::size_t> order(dex_count);
-        for (std::size_t i = 0; i < dex_count; ++i)
-            order[i] = i;
-        std::stable_sort(order.begin(), order.end(), [&](std::size_t a, std::size_t b) {
-            return impl.buffer_of(a).size() > impl.buffer_of(b).size();
-        });
-        // Threads only pay off when the DEX files besides the biggest hold real
-        // work: for a few small ones, starting a thread costs more than the
-        // whole preparation (measured: ~10 µs serial vs ~80 µs threaded).
-        constexpr std::size_t kMinParallelBytes = std::size_t{1} << 20;
-        std::size_t besides_biggest = 0;
-        for (std::size_t k = 1; k < dex_count; ++k)
-            besides_biggest += impl.buffer_of(order[k]).size();
-        std::size_t prepare_threads =
-            besides_biggest >= kMinParallelBytes ? std::min(threads, dex_count) : 1;
-        for_each_parallel(order, prepare_threads, prepare);
-    }
+    impl.for_each_dex_parallel(prepare);
 
     // ---- Interning ----------------------------------------------------------
     // Nodes are keyed by (class id, signature id), where a signature is a
@@ -667,7 +610,7 @@ CallGraph detail::CallGraphAccess::build(const AnalysisContextImpl &impl)
         std::vector<std::size_t> chunks((count + kChunk - 1) / kChunk);
         for (std::size_t c = 0; c < chunks.size(); ++c)
             chunks[c] = c;
-        for_each_parallel(chunks, std::min(threads, chunks.size()), [&](std::size_t c) {
+        detail::for_each_parallel(chunks, std::min(threads, chunks.size()), [&](std::size_t c) {
             fn(c * kChunk, std::min(count, (c + 1) * kChunk));
         });
     };

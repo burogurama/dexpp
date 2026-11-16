@@ -472,6 +472,60 @@ def test_mnemonics():
     assert any(r.startswith("return-object v") for r in rendered)
 
 
+def test_disassemble():
+    ctx = dexpp.AnalysisContext.from_dex("tests/data/classes.dex")
+    cls = ctx.find_class("LTestDex;")
+    main = next(m for m in cls.methods if m.name == "main")
+    lines = main.disassemble()
+    assert [(line.offset, line.text) for line in lines] == [
+        (0, "sget-object v1, Ljava/lang/System;->out:Ljava/io/PrintStream;"),
+        (2, "invoke-static {}, LTestDex;->helloDex()Ljava/lang/String;"),
+        (5, "move-result-object v0"),
+        (6, "invoke-virtual {v1, v0}, Ljava/io/PrintStream;->println(Ljava/lang/String;)V"),
+        (9, "return-void"),
+    ]
+    # One line per instruction, at the instruction's offset.
+    assert [line.offset for line in lines] == [i.base.offset for i in main.instructions]
+    # A method makes a new list on each call.
+    assert main.disassemble() is not lines
+
+    # Strings are quoted, with what would hide or break the line escaped.
+    clinit = _method("tests/data/multistring.dex", "LMultiStringTest;", "<clinit>")
+    texts = [line.text for line in clinit.disassemble()]
+    assert any(t.endswith(' "test\\u0000embedded"') for t in texts), texts
+    assert any(t.endswith(' ""') for t in texts), texts
+
+    # Method handles, method types, call sites and a /range form.
+    run = _method("tests/data/handles.dex", "LHandles;", "run")
+    texts = [line.text for line in run.disassemble()]
+    assert "const-method-handle v2, invoke-static@LHandles;->target(I)I" in texts
+    assert "const-method-type v3, (I)I" in texts
+    assert any(t.startswith('invoke-custom {v1}, call_site@0("apply", (I)V)@LHandles;->bootstrap(')
+               for t in texts), texts
+    spread = _method("tests/data/handles.dex", "LHandles;", "spread")
+    assert spread.disassemble()[0].text.startswith("invoke-polymorphic/range {v0 .. v5}, ")
+
+    # A switch table is written out; its targets are the offsets of lines.
+    packed = _method("tests/data/switches.dex", "LSwitches;", "packed")
+    lines = packed.disassemble()
+    assert lines[0].text == "packed-switch v0, {0xa -> 000e, 0xb -> 000b, 0xc -> 0008, 0xd -> 0005}"
+    assert {0x0E, 0x0B, 0x08, 0x05} <= {line.offset for line in lines}
+
+    # No code, no lines.
+    assert _method("tests/data/shapes.dex", "LShape;", "area").disassemble() == []
+
+
+def test_disassembly_lines_own_their_text():
+    def take():
+        return _method("tests/data/classes.dex", "LTestDex;", "helloDex").disassemble()
+
+    lines, busy = _after_owners_are_freed(take)
+    assert [(line.offset, line.text) for line in lines] == [
+        (0, 'const-string v0, "Hello Dex++!!"'),
+        (2, "return-object v0"),
+    ]
+
+
 def test_strings_enumeration():
     ctx = dexpp.AnalysisContext.from_dex("tests/data/classes.dex")
     strings = ctx.strings()
@@ -1791,7 +1845,7 @@ def test_work_done_again_on_every_read_is_a_method():
         dexpp.AnalysisContext: ["classes", "strings"],
         dexpp.Xrefs: ["referenced_strings"],
         dexpp.CallNode: ["callers", "callees"],
-        dexpp.Method: ["calls", "field_accesses", "string_loads", "type_uses"],
+        dexpp.Method: ["calls", "field_accesses", "string_loads", "type_uses", "disassemble"],
         dexpp.Apk: ["entries"],
         dexpp.Model: ["class_descriptors", "required_version", "pool_stats"],
     }

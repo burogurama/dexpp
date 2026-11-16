@@ -310,8 +310,8 @@ std::string_view opcode_name(uint8_t opcode);
 /** Render one decoded instruction as "<mnemonic> <operands>" (no leading code
  *  offset).  Constant-pool operands appear as raw indices — `string@N`, `type@N`,
  *  `method@N`, `field@N`, `proto@N`, `method_handle@N`, `site@N` — because this
- *  function has no AnalysisContext to resolve them; use the analysis layer when
- *  you need resolved names. */
+ *  function has no AnalysisContext to resolve them.  Method::disassemble()
+ *  gives the same instructions with every reference named. */
 std::string to_string(const Instruction &insn);
 
 /** Decode a raw insns[] array (16-bit code units) into typed instructions.

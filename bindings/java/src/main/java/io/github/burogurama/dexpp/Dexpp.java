@@ -28,7 +28,7 @@ public final class Dexpp {
      * Writes one instruction as text: the opcode name, then its operands, such as {@code
      * "const-string v0, string@12"}. Operands that point into a table of the DEX file are shown as
      * raw indices ({@code string@12}, {@code method@4}); an instruction alone cannot turn them into
-     * names.
+     * names. {@link DexMethod#disassemble()} gives the same instructions with every reference named.
      *
      * <p>It works for decoded instructions and for records made by hand.
      *

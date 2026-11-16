@@ -204,8 +204,8 @@ is true for several goroutines.
 
 Loading an APK can use several threads. By default dex++ picks the number of
 threads by itself: it uses them to decompress the DEX files of a large APK,
-and later to build the call graph. Ask for one thread when your own program
-already analyses several APKs in parallel:
+and later to build the call graph and the cross-references. Ask for one thread
+when your own program already analyses several APKs in parallel:
 
 | Language | Load an APK on the calling thread only |
 | -------- | -------------------------------------- |
