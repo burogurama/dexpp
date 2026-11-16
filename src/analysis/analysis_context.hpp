@@ -21,7 +21,8 @@ namespace detail {
 struct AnalysisContextImpl;
 } // namespace detail
 
-/** How an APK's DEX files are loaded by AnalysisContext::from_apk / from_apk_buffer. */
+/** How an APK's DEX files are loaded by AnalysisContext::from_apk / from_apk_buffer
+ *  and by apk::Apk::analysis. */
 struct ApkLoadOptions
 {
     /** Threads used to decompress and parse the DEX entries, and later to
@@ -30,8 +31,12 @@ struct ApkLoadOptions
      *  calling thread.  Loading only starts extra threads when at least 3 DEX
      *  entries are deflate-compressed; with fewer, starting them costs more
      *  than it saves.  Set this to 1 when the caller already analyses several
-     *  APKs in parallel, so the machine is not oversubscribed. */
+     *  APKs in parallel, so the machine is not oversubscribed, or when the
+     *  program cannot start threads at all (WebAssembly in a browser). */
     unsigned threads = 0;
+
+    /** Two option sets are equal when every member is equal. */
+    bool operator==(const ApkLoadOptions &) const = default;
 };
 
 /** The entry point for analysis.
