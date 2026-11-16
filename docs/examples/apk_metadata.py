@@ -29,17 +29,27 @@ print(launcher.intent_filters[0].actions)
 guarded_apk: dexpp.Apk = dexpp.Apk.open("tests/data/reachable.apk")
 guarded: dexpp.Manifest | None = guarded_apk.manifest
 assert guarded is not None
+print("<application> requires", guarded.application_permission)
 
 for component in guarded.components:
     if component.is_exported is True and component.is_reachable is False:
         permission: str | None = component.permission
         assert permission is not None
         level: int | None = guarded.declared_permission_protection_level(permission)
-        print(f"{component.name} is exported, but guarded by {permission} (level {level})")
+        source: str = "the application's" if component.permission_inherited else "its own"
+        guarded_name: str = component.name.rsplit(".", 1)[1]
+        print(f"{guarded_name} is guarded by {source} {permission} (level {level})")
 
 reachable: list[dexpp.Component] = [c for c in guarded.components if c.is_reachable is True]
 print(len(reachable), "of", len(guarded.components), "components are reachable")
 # --8<-- [end:reachable]
+
+# --8<-- [start:providers]
+for provider in guarded.components_of(dexpp.ComponentKind.PROVIDER):
+    provider_name: str = provider.name.rsplit(".", 1)[1]
+    print(f"{provider_name}: read {provider.read_permission}, write {provider.write_permission}")
+    print("  reachable:", provider.is_reachable)
+# --8<-- [end:providers]
 
 # --8<-- [start:resources]
 table: dexpp.ResourceTable | None = apk.resources
@@ -83,6 +93,14 @@ for component in refs.components:
         permission_name: str = component.permission or "none"
         print(f"{short_name}: {permission_name}, reachable: {component.is_reachable}")
 # --8<-- [end:text_references]
+
+# --8<-- [start:null_values]
+for null_name in ["NullActivity", "NullFilteredActivity", "ThemeActivity"]:
+    shown: dexpp.Component = next(c for c in refs.components if c.name.endswith("." + null_name))
+    has_reference: bool = shown.exported_reference is not None
+    print(f"{null_name}: exported {shown.exported}, reference {has_reference},", end=" ")
+    print(f"unknown {shown.exported_unknown}, is_exported {shown.is_exported}")
+# --8<-- [end:null_values]
 
 # --8<-- [start:signing]
 signed_apk: dexpp.Apk = dexpp.Apk.open("tests/data/signed.apk")

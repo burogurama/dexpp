@@ -1,3 +1,8 @@
-com.dexpp.reach.SigActivity is exported, but guarded by com.dexpp.reach.P_SIGNATURE (level 2)
-com.dexpp.reach.SigService is exported, but guarded by com.dexpp.reach.P_SIGNATURE (level 2)
-5 of 8 components are reachable
+<application> requires com.dexpp.reach.P_SIGNATURE
+InheritingActivity is guarded by the application's com.dexpp.reach.P_SIGNATURE (level 2)
+SigActivity is guarded by its own com.dexpp.reach.P_SIGNATURE (level 2)
+SigService is guarded by its own com.dexpp.reach.P_SIGNATURE (level 2)
+InheritingService is guarded by the application's com.dexpp.reach.P_SIGNATURE (level 2)
+InheritingReceiver is guarded by the application's com.dexpp.reach.P_SIGNATURE (level 2)
+InheritingProvider is guarded by the application's com.dexpp.reach.P_SIGNATURE (level 2)
+6 of 13 components are reachable

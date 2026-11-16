@@ -105,6 +105,9 @@ func ExampleComponent_reachable() {
 	if !ok {
 		log.Fatal("no manifest")
 	}
+	if guarded.ApplicationPermission != nil {
+		fmt.Println("<application> requires", *guarded.ApplicationPermission)
+	}
 
 	reachable := 0
 	for _, component := range guarded.Components {
@@ -113,16 +116,54 @@ func ExampleComponent_reachable() {
 		} else if component.IsExported && component.Permission != nil {
 			permission := *component.Permission
 			level, _ := guarded.DeclaredPermissionProtectionLevel(permission)
-			fmt.Printf("%s is exported, but guarded by %s (level %d)\n", component.Name, permission, level)
+			source := "its own"
+			if component.PermissionInherited {
+				source = "the application's"
+			}
+			name := component.Name[strings.LastIndex(component.Name, ".")+1:]
+			fmt.Printf("%s is guarded by %s %s (level %d)\n", name, source, permission, level)
 		}
 	}
 	fmt.Println(reachable, "of", len(guarded.Components), "components are reachable")
 	// --8<-- [end:reachable]
 
 	// Output:
-	// com.dexpp.reach.SigActivity is exported, but guarded by com.dexpp.reach.P_SIGNATURE (level 2)
-	// com.dexpp.reach.SigService is exported, but guarded by com.dexpp.reach.P_SIGNATURE (level 2)
-	// 5 of 8 components are reachable
+	// <application> requires com.dexpp.reach.P_SIGNATURE
+	// InheritingActivity is guarded by the application's com.dexpp.reach.P_SIGNATURE (level 2)
+	// SigActivity is guarded by its own com.dexpp.reach.P_SIGNATURE (level 2)
+	// SigService is guarded by its own com.dexpp.reach.P_SIGNATURE (level 2)
+	// InheritingService is guarded by the application's com.dexpp.reach.P_SIGNATURE (level 2)
+	// InheritingReceiver is guarded by the application's com.dexpp.reach.P_SIGNATURE (level 2)
+	// InheritingProvider is guarded by the application's com.dexpp.reach.P_SIGNATURE (level 2)
+	// 6 of 13 components are reachable
+}
+
+// Read the read and write permissions of the content providers.
+func ExampleComponent_providers() {
+	_, guarded := openManifest("../../../tests/data/reachable.apk")
+
+	// --8<-- [start:providers]
+	for _, provider := range guarded.ComponentsOf(dexpp.ComponentProvider) {
+		name := provider.Name[strings.LastIndex(provider.Name, ".")+1:]
+		read, write := "none", "none"
+		if provider.ReadPermission != nil {
+			read = *provider.ReadPermission
+		}
+		if provider.WritePermission != nil {
+			write = *provider.WritePermission
+		}
+		fmt.Printf("%s: read %s, write %s\n", name, read, write)
+		fmt.Println("  reachable:", provider.IsReachable)
+	}
+	// --8<-- [end:providers]
+
+	// Output:
+	// InheritingProvider: read com.dexpp.reach.P_SIGNATURE, write com.dexpp.reach.P_SIGNATURE
+	//   reachable: false
+	// ReadableProvider: read com.dexpp.reach.P_NORMAL, write com.dexpp.reach.P_SIGNATURE
+	//   reachable: true
+	// WritableProvider: read com.dexpp.reach.P_SIGNATURE, write com.dexpp.reach.P_DANGEROUS
+	//   reachable: true
 }
 
 // Look up a resource by name, and resolve its value.
@@ -225,6 +266,34 @@ func ExampleComponent_permissionReference() {
 	// PermissionByReferenceService: com.dexpp.refs.P_SIGNATURE, reachable: false
 	// LocalizedPermissionService: none, reachable: true
 	// PermissionOnV31Service: none, reachable: true
+	// NullPermissionService: none, reachable: true
+}
+
+// Tell a null value from an unknown one.
+func ExampleComponent_nullValues() {
+	refsAPK, refs := openManifest("../../../tests/data/refs.apk")
+	defer refsAPK.Close()
+
+	// --8<-- [start:null_values]
+	for _, name := range []string{"NullActivity", "NullFilteredActivity", "ThemeActivity"} {
+		for _, c := range refs.Components {
+			if c.Name != "com.dexpp.refs."+name {
+				continue
+			}
+			exported := "absent"
+			if c.Exported != nil {
+				exported = fmt.Sprint(*c.Exported)
+			}
+			fmt.Printf("%s: exported %s, reference %v, unknown %v, is exported %v\n",
+				name, exported, c.ExportedReference != nil, c.ExportedUnknown, c.IsExported)
+		}
+	}
+	// --8<-- [end:null_values]
+
+	// Output:
+	// NullActivity: exported absent, reference true, unknown false, is exported false
+	// NullFilteredActivity: exported absent, reference true, unknown false, is exported true
+	// ThemeActivity: exported absent, reference true, unknown true, is exported true
 }
 
 // Read the signature schemes and the certificates of a signed APK.

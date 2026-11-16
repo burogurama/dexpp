@@ -76,13 +76,17 @@ final class ApkMetadataExamples {
         // --8<-- [start:reachable]
         try (Apk guardedApk = Apk.open(Path.of("../../tests/data/reachable.apk"))) {
             Manifest guarded = guardedApk.manifest().orElseThrow();
+            System.out.println("<application> requires "
+                    + guarded.applicationPermission().orElse("nothing"));
 
             for (Component component : guarded.components()) {
                 if (component.isExported() && !component.isReachable()) {
                     String permission = component.permission().orElseThrow();
                     OptionalInt level = guarded.declaredPermissionProtectionLevel(permission);
-                    System.out.printf("%s is exported, but guarded by %s (level %d)%n",
-                            component.name(), permission, level.getAsInt());
+                    String source = component.permissionInherited() ? "the application's" : "its own";
+                    String name = component.name().substring(component.name().lastIndexOf('.') + 1);
+                    System.out.printf("%s is guarded by %s %s (level %d)%n",
+                            name, source, permission, level.getAsInt());
                 }
             }
 
@@ -91,6 +95,20 @@ final class ApkMetadataExamples {
                     + " components are reachable");
         }
         // --8<-- [end:reachable]
+    }
+
+    static void providers() throws IOException {
+        try (Apk guardedApk = Apk.open(Path.of("../../tests/data/reachable.apk"))) {
+            Manifest guarded = guardedApk.manifest().orElseThrow();
+            // --8<-- [start:providers]
+            for (Component provider : guarded.componentsOf(ComponentKind.PROVIDER)) {
+                String name = provider.name().substring(provider.name().lastIndexOf('.') + 1);
+                System.out.println(name + ": read " + provider.readPermission().orElse("none")
+                        + ", write " + provider.writePermission().orElse("none"));
+                System.out.println("  reachable: " + provider.isReachable());
+            }
+            // --8<-- [end:providers]
+        }
     }
 
     static void resources() throws IOException {
@@ -152,6 +170,25 @@ final class ApkMetadataExamples {
                         + ", reachable: " + component.isReachable());
             }
             // --8<-- [end:text_references]
+        }
+    }
+
+    static void nullValues() throws IOException {
+        try (Apk refsApk = Apk.open(Path.of("../../tests/data/refs.apk"))) {
+            Manifest refs = refsApk.manifest().orElseThrow();
+            // --8<-- [start:null_values]
+            for (String name : List.of("NullActivity", "NullFilteredActivity", "ThemeActivity")) {
+                Component c = refs.components().stream()
+                        .filter((Component each) -> each.name().equals("com.dexpp.refs." + name))
+                        .findFirst()
+                        .orElseThrow();
+                String exported = c.exported().map(String::valueOf).orElse("absent");
+                System.out.println(name + ": exported " + exported
+                        + ", reference " + c.exportedReference().isPresent()
+                        + ", unknown " + c.exportedUnknown()
+                        + ", isExported " + c.isExported());
+            }
+            // --8<-- [end:null_values]
         }
     }
 

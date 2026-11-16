@@ -105,18 +105,31 @@ The reference id itself is kept in a second attribute, whose name ends in
 | `name`, on a component | `name_reference` | `NameReference` | `nameReference()` |
 | `exported`, on a component | `exported_reference` | `ExportedReference` | `exportedReference()` |
 | `permission`, on a component | `permission_reference` | `PermissionReference` | `permissionReference()` |
+| `readPermission`, on a provider | `read_permission_reference` | `ReadPermissionReference` | `readPermissionReference()` |
+| `writePermission`, on a provider | `write_permission_reference` | `WritePermissionReference` | `writePermissionReference()` |
+| `permission`, on `<application>` | `application_permission_reference` | `ApplicationPermissionReference` | `applicationPermissionReference()` |
 
 The reference is absent for a plain value or a missing attribute.
 
 A reference can fail to resolve: the APK has no resource table, the table has
 no such id, the value has a type the attribute cannot use (a string where a
 number is expected), or the attribute names a theme attribute (`?attr/...`),
-whose value depends on the theme the app runs with. Then the value is absent,
-but the reference still holds the id. So the two cases stay apart:
+whose value depends on the theme the app runs with. Then dexpp cannot tell the
+value. The value is absent, the reference still holds the id, and a third
+attribute, whose name ends in `unknown`, is true. Each attribute in the table
+above has one: `exported_unknown`, `permission_unknown`, `debuggable_unknown`
+and so on (Go: `ExportedUnknown`, `PermissionUnknown`, `DebuggableUnknown`;
+Java: `exportedUnknown()`, `permissionUnknown()`, `debuggableUnknown()`).
+
+A reference can also lead to a value that Android reads as "not written" (see
+[Null values](#null-values)). Then the value is absent too, but `unknown` is
+false. So these cases stay apart:
 
 - value absent, reference absent: the attribute is not in the manifest;
-- value absent, reference set: the attribute is in the manifest, but its value
-  is unknown.
+- value absent, reference set, `unknown` false: the attribute is in the
+  manifest, and Android reads it as not written;
+- value absent, reference set, `unknown` true: the attribute is in the
+  manifest, but dexpp cannot tell its value.
 
 dexpp reads the `android:` attributes the way Android does: by their resource
 id, not by their name. In the binary manifest, each attribute name is a string,
@@ -145,7 +158,10 @@ configuration:
   value: `exported_varies` on a component, `debuggable_varies` and
   `allow_backup_varies` on the manifest (Go: `ExportedVaries`,
   `DebuggableVaries`, `AllowBackupVaries`; Java: `exportedVaries()`,
-  `debuggableVaries()`, `allowBackupVaries()`).
+  `debuggableVaries()`, `allowBackupVaries()`). A configuration whose value
+  is null counts as what Android does when the attribute is not written: the
+  intent filters decide for `exported`, and `debuggable` and `allowBackup` take
+  their default.
 - `is_exported` and `is_reachable` take the unsafe answer: a component whose
   `exported` varies counts as exported. For `debuggable` and `allowBackup`,
   treat a value that varies as possibly true.
@@ -167,18 +183,22 @@ The resource table lists the value of every configuration (see
 
 ### Text given by a reference
 
-Android reads `android:name`, `android:permission` and `android:versionName`
-in a way that ignores a string that changes with the configuration. If the
-string has a variant for a language, a screen or any other configuration except
-the Android version, Android uses no value at all. dexpp does the same: the
-value is absent and the reference is set. A string that changes only with the
+Android reads `android:name`, `android:permission`, `android:readPermission`,
+`android:writePermission` and `android:versionName` in a way that ignores a
+string that changes with the configuration. If the string has a variant for a
+language, a screen or any other configuration except the Android version,
+Android uses no value at all. dexpp does the same: the value is absent, the
+reference is set, and `unknown` is false. A string that changes only with the
 Android version is read by Android, but its value then depends on the device,
-so dexpp leaves the value absent too.
+so dexpp leaves the value absent and sets `unknown`.
 
 This matters most for `android:permission`. A component guarded by
 `@string/guard` is only protected when the string has one value. When it
 changes with the language, Android ignores it and the component has no
-permission of its own, so dexpp reports no permission and the component stays
+permission of its own. It then takes the permission of `<application>`, when
+there is one (see
+[Which components can another app reach](#which-components-can-another-app-reach)).
+In `refs.apk` there is none, so these components have no permission and stay
 reachable.
 
 <!-- example: apk_metadata.text_references -->
@@ -197,6 +217,38 @@ it is exactly `"1"`, `"true"` or `"TRUE"`. Any other text, such as `"True"` or
 `exported` and `debuggable`, true for `allowBackup`). dexpp follows the same
 rule, everywhere a boolean is read.
 
+### Null values
+
+A resource can hold a *null value*: `@null`, or `@empty`. An attribute can also
+be written as `@null` directly. Android reads a null value as if the attribute
+were not written at all. This holds in the manifest itself and at the end of a
+chain of references:
+
+- `exported`: not written, so the intent filters decide (see
+  [Components](#components)).
+- `debuggable` and `allowBackup`: not written, so Android uses their default:
+  false for `debuggable`, true for `allowBackup`.
+- A protection level: normal, as when the attribute is missing.
+- Text, such as `permission`: no value. A component whose own
+  `android:permission` is null takes the permission of `<application>`.
+
+`@null` and `@empty` mean the same thing here. Android only tells them apart
+in places that the package parser does not use for these attributes.
+
+dexpp follows the same rules. The value is absent, the reference is kept when
+the attribute is a reference, and `unknown` is false. `@null` written directly
+is not a reference to a resource (its id is 0), so it reads exactly like a
+missing attribute, without a reference.
+
+<!-- example: apk_metadata.null_values -->
+
+`NullActivity` refers to `@bool/nothing`, which is `@null`. So the attribute
+counts as not written, and the activity has no intent filter: it is not
+exported. `NullFilteredActivity` reaches `@null` through another reference,
+and it has an intent filter, so it is exported. `ThemeActivity` uses a theme
+attribute, whose value dexpp cannot know: `unknown` is true, and the component
+counts as possibly exported.
+
 ## Components
 
 A component is an activity, a service, a broadcast receiver or a content
@@ -208,23 +260,33 @@ as `.MainActivity` is completed with the package name.
 There are two ways to ask whether a component is exported:
 
 - `exported` (Go: `Exported`, Java: `exported()`) is what the manifest says:
-  true, false, or absent when the `android:exported` attribute is missing or
-  is a reference that could not be resolved. For a reference, it is the value
-  of the default configuration.
+  true, false, or absent when the `android:exported` attribute is missing, is
+  a null value, or has a value that dexpp cannot tell. For a reference, it is
+  the value of the default configuration.
 - `is_exported` (Go: `IsExported`, Java: `isExported()`) is the effective
-  answer. When the attribute is missing, a component with at least one intent
-  filter counts as exported. This is the rule Android applied before
-  Android 12. When the attribute is a reference that could not be resolved
-  (the value is absent and the reference is set), `is_exported` is true: the
-  developer set the flag, its value is unknown, and for triage "possibly
-  exported" is the safe answer. Guessing from the intent filters could hide an
-  exported component. When the attribute is a reference whose value varies
-  between configurations, `is_exported` is true too.
+  answer. When the attribute is missing or null, a component with at least one
+  intent filter counts as exported. This is the rule Android applied before
+  Android 12. When the attribute is a reference whose value dexpp cannot tell
+  (`exported_unknown` is true), `is_exported` is true: the developer set the
+  flag, its value is unknown, and for triage "possibly exported" is the safe
+  answer. Guessing from the intent filters could hide an exported component.
+  When the attribute is a reference whose value varies between
+  configurations, `is_exported` is true too.
 
 ## Which components can another app reach
 
 Exported is not the same as reachable. An exported component can still be
 protected by a permission that no other app can get.
+
+The permission that protects a component is `permission` (Go: `Permission`,
+Java: `permission()`), the one Android enforces. It is the component's own
+`android:permission`. When the component gives none, it is the
+`android:permission` of the `<application>` element: Android applies that one
+to every activity, service, broadcast receiver and content provider that does
+not set its own. `permission_inherited` (Go: `PermissionInherited`, Java:
+`permissionInherited()`) is true when the permission comes from
+`<application>`, and the manifest's `application_permission` (Go:
+`ApplicationPermission`, Java: `applicationPermission()`) gives it.
 
 `is_reachable` (Go: `IsReachable`, Java: `isReachable()`) is true when the
 component is exported **and** it is not guarded by a signature-level
@@ -234,15 +296,33 @@ same key, so a third-party app cannot hold it.
 
 <!-- example: apk_metadata.reachable -->
 
-Two cases stay reachable on purpose:
+In `reachable.apk`, `<application>` requires a signature permission. So the
+components that set no permission of their own are protected too, although
+they are exported. The reachable ones set a weaker permission of their own.
+
+### Content providers
+
+A content provider has two permissions: one to read from it and one to write
+to it. Android takes the read permission from `android:readPermission`, else
+from the provider's `android:permission`, else from the application's. It
+takes the write permission the same way, from `android:writePermission`
+first. They are `read_permission` and `write_permission` (Go:
+`ReadPermission`, `WritePermission`; Java: `readPermission()`,
+`writePermission()`); for the other kinds of component they are absent.
+Another app reaches a provider when it can read **or** write, so a provider
+counts as guarded only when both permissions are signature permissions.
+
+<!-- example: apk_metadata.providers -->
+
+Some cases stay reachable on purpose:
 
 - A component guarded by a `normal` or `dangerous` permission. Any app can
   request those.
 - A component guarded by a permission the manifest does not declare, such as a
   platform permission. dex++ cannot know its protection level from this APK
   alone, so it does not assume the component is protected.
-- A component whose `android:permission` is a reference without a single value
-  (see [Text given by a reference](#text-given-by-a-reference)), or whose
+- A component whose permission dexpp cannot tell (`permission_unknown`, see
+  [Text given by a reference](#text-given-by-a-reference)), or whose
   permission has a protection level that is below signature in some
   configuration.
 

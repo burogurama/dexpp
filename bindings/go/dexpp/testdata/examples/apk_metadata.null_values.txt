@@ -1,0 +1,3 @@
+NullActivity: exported absent, reference true, unknown false, is exported false
+NullFilteredActivity: exported absent, reference true, unknown false, is exported true
+ThemeActivity: exported absent, reference true, unknown true, is exported true

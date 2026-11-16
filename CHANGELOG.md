@@ -2,6 +2,73 @@
 
 ## Unreleased
 
+### Permissions and null values in the manifest
+
+- The `android:permission` of `<application>` now guards every activity,
+  service, receiver and provider that gives no permission of its own, as
+  Android's package parser does (`ParsingPackageUtils`, `ParsedActivityUtils`,
+  `ParsedServiceUtils`, `ParsedProviderUtils`). Before, it was ignored, so a
+  component guarded only by the application's signature permission was
+  reported as reachable.
+    - Breaking: a component's `permission` is now the permission Android
+      enforces: its own `android:permission`, or the application's when it
+      gives none. A component "gives none" when the attribute is missing or
+      Android reads it as not written (a null value, or a string that changes
+      with the configuration).
+    - New: where the permission comes from, and the application's
+      permission. C++ `Component::permission_inherited`,
+      `Manifest::application_permission()`,
+      `application_permission_reference()`, `application_permission_unknown()`;
+      Python and C `permission_inherited`, `application_permission`,
+      `application_permission_reference`, `application_permission_unknown`;
+      Go `PermissionInherited`, `ApplicationPermission`,
+      `ApplicationPermissionReference`, `ApplicationPermissionUnknown`; Java
+      `permissionInherited()`, `applicationPermission()`,
+      `applicationPermissionReference()`, `applicationPermissionUnknown()`.
+- A content provider now has a read and a write permission, as Android gives
+  it: `android:readPermission` (or `android:writePermission`), else the
+  provider's `android:permission`, else the application's. A provider counts
+  as guarded only when both are signature permissions, because an app that
+  can read or write reaches it. Before, only `android:permission` was read, so
+  a provider with a signature `android:permission` and a weaker read or write
+  permission was reported as not reachable.
+    - New: C++ `Component::read_permission`, `read_permission_reference`,
+      `read_permission_unknown`, `write_permission`,
+      `write_permission_reference`, `write_permission_unknown` (the same names
+      in Python and C; Go `ReadPermission`, `ReadPermissionReference`,
+      `ReadPermissionUnknown`, `WritePermission`, ...; Java
+      `readPermission()`, ...). They are absent for the other kinds of
+      component.
+- A null value now reads as an attribute that is not written, as on Android:
+  `@null` or `@empty` written in the manifest, or a reference whose resource
+  is `@null` or `@empty`, directly or through other references. Android's
+  attribute resolution turns `@null` into a null value, `TypedArray.hasValue`
+  is false for it, and the other `TypedArray` getters give their default.
+  Before, a reference to such a resource counted as unknown, so `is_exported`
+  was true. Now the intent filters decide `exported`, `debuggable` and
+  `allowBackup` take their default, a protection level is normal, and a
+  component's own permission falls back to the application's. The reference
+  id is kept; `@null` written directly (a reference to id 0) reads like a
+  missing attribute.
+    - Breaking: a value that is absent while its reference is set no longer
+      always means "unknown". A new member tells the two cases apart for every
+      attribute that has a reference member: C++ `Component::name_unknown`,
+      `exported_unknown`, `permission_unknown`, `read_permission_unknown`,
+      `write_permission_unknown`, `Manifest::version_code_unknown()`,
+      `version_name_unknown()`, `min_sdk_unknown()`, `target_sdk_unknown()`,
+      `debuggable_unknown()`, `allow_backup_unknown()`,
+      `application_permission_unknown()`; the same names in Python and C,
+      `...Unknown` in Go and `...Unknown()` in Java. `is_exported` uses
+      `exported_unknown` now, not the reference. A text value that differs
+      only between Android versions is unknown too.
+    - `exported_varies` is now true when the component is exported in some
+      configurations and not in others; a configuration whose value is null
+      uses the intent-filter rule. `debuggable_varies` and
+      `allow_backup_varies` count a null value as the attribute's default.
+- Breaking, C and Java: `DexppComponent` and `DexppManifest` have new
+  members, so their layout changed; the Java records `Component` and
+  `Manifest` have new components.
+
 ### Manifest values given indirectly
 
 - A resource can have a different value in each configuration (language,
