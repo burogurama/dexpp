@@ -93,10 +93,23 @@ struct AnalysisContextImpl : public std::enable_shared_from_this<AnalysisContext
     std::vector<raw::DexFile> dex_files_vec;
     std::vector<std::unique_ptr<DexSlot>> slots;
 
-    /** Threads the whole-program builders (the call graph) may use: 0 =
-     *  automatic, 1 = the calling thread only.  Set from
-     *  ApkLoadOptions::threads by the APK loader. */
+    /** Threads the whole-program builders (the call graph, the
+     *  cross-references) may use: 0 = automatic, 1 = the calling thread only.
+     *  Set from ApkLoadOptions::threads by the APK loader. */
     unsigned threads = 0;
+
+    /** `threads`, or the number of hardware threads when it is 0. */
+    std::size_t thread_budget() const;
+
+    /** Run fn(dex_idx) once for every loaded DEX file, on up to
+     *  thread_budget() threads with the calling thread among them, biggest
+     *  files first.  With the automatic thread count (`threads` 0) it stays
+     *  on the calling thread when the files besides the biggest hold less than
+     *  1 MiB: starting threads would cost more than the work.  An exception thrown by fn is
+     * rethrown here, after every thread has stopped.  fn must only touch per-DEX state or
+     * thread-safe impl accessors, and a builder must not let its result depend on the order in
+     * which the DEX files finish. */
+    void for_each_dex_parallel(const std::function<void(std::size_t)> &fn) const;
 
     /** Hashes a std::string key and a std::string_view query the same way,
      *  so class_index lookups do not copy the descriptor. */
@@ -146,6 +159,15 @@ struct AnalysisContextImpl : public std::enable_shared_from_this<AnalysisContext
 
     const raw::ClassDataItem *get_class_data(std::size_t dex_idx, uint32_t class_data_off) const;
     const raw::CodeItem *get_code_item(std::size_t dex_idx, uint32_t code_off) const;
+
+    /** The code item at @p code_off without adding it to the cache: the
+     *  cached one when an earlier get_code_item() call cached it, else one
+     *  parsed into @p scratch.  nullptr when @p code_off is 0 or the item does
+     *  not parse, exactly when get_code_item() returns nullptr.  For the
+     *  whole-program builders, which read every method once and must not keep
+     *  every code item alive for the context's lifetime. */
+    const raw::CodeItem *peek_code_item(std::size_t dex_idx, uint32_t code_off,
+                                        std::optional<raw::CodeItem> &scratch) const;
     std::span<const Instruction> get_instructions(std::size_t dex_idx, uint32_t code_off) const;
     const Cfg &get_cfg(std::size_t dex_idx, uint32_t code_off) const;
 

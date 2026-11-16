@@ -1765,7 +1765,8 @@ class AnalysisContext:
             threads: How many threads to use. 0 lets the library choose. 1 keeps all
                 work on the calling thread; use it when your program already analyses
                 several APKs in parallel. The threads are used to decompress the DEX
-                files of a large APK, and later to build the call graph.
+                files of a large APK, and later to build the call graph and the
+                cross-references.
 
         Raises:
             FileNotFoundError: The path does not exist.

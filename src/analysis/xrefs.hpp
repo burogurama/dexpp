@@ -139,8 +139,8 @@ class Xrefs
 
     bool empty() const
     {
-        return method_map_.empty() && field_map_.empty() && string_map_.empty() &&
-               type_map_.empty();
+        return method_sites_.empty() && field_sites_.empty() && string_sites_.empty() &&
+               type_sites_.empty();
     }
 
   private:
@@ -176,17 +176,33 @@ class Xrefs
         uint32_t code_off;
     };
 
-    using MethodMap = std::unordered_map<MethodId, std::vector<MethodXref>, MethodIdHash>;
+    /** Where the sites of one key are in the site array of its kind:
+     *  sites[begin, begin + count), in discovery order. */
+    struct Range
+    {
+        std::size_t begin = 0;
+        std::size_t count = 0;
+    };
+
+    using MethodMap = std::unordered_map<MethodId, Range, MethodIdHash>;
 
     std::vector<MethodId> referrer_ids_;
     std::vector<ReferrerRef> referrer_refs_; ///< parallel to referrer_ids_
+    /** Each kind keeps all its sites in one array, grouped by key; a map
+     *  gives each key its Range in that array.  One array per kind instead
+     *  of a vector per key saves an allocation and its slack for each of the
+     *  (on a large app, more than a million) keys. */
     MethodMap method_map_;
+    std::vector<MethodXref> method_sites_;
     /** Bare method name → entries of method_map_.  Keys view the map's own
      *  MethodId keys; node-based maps keep them stable across moves. */
     std::unordered_map<std::string_view, std::vector<const MethodMap::value_type *>> name_index_;
-    std::unordered_map<FieldId, std::vector<FieldXref>, FieldIdHash> field_map_;
-    std::unordered_map<std::string, std::vector<StringXref>, SvHash, SvEq> string_map_;
-    std::unordered_map<std::string, std::vector<TypeXref>, SvHash, SvEq> type_map_;
+    std::unordered_map<FieldId, Range, FieldIdHash> field_map_;
+    std::vector<FieldXref> field_sites_;
+    std::unordered_map<std::string, Range, SvHash, SvEq> string_map_;
+    std::vector<StringXref> string_sites_;
+    std::unordered_map<std::string, Range, SvHash, SvEq> type_map_;
+    std::vector<TypeXref> type_sites_;
     /** The context the index was built from.  The context owns the index, so
      *  it is alive whenever the index is; referrer_method() uses it to make
      *  Method handles.  Null only for a default-constructed, empty index. */

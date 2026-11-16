@@ -435,6 +435,38 @@ std::span<const uint8_t> AnalysisContextImpl::buffer_of(std::size_t dex_idx) con
     return slots[dex_idx]->buffer.bytes();
 }
 
+std::size_t AnalysisContextImpl::thread_budget() const
+{
+    // hardware_concurrency() reads system files on every call; ask once.
+    static const unsigned hardware_threads = std::max(1u, std::thread::hardware_concurrency());
+    return threads != 0 ? threads : hardware_threads;
+}
+
+void AnalysisContextImpl::for_each_dex_parallel(const std::function<void(std::size_t)> &fn) const
+{
+    const std::size_t dex_count = dex_files_vec.size();
+    // Biggest DEX files first, so a large one picked up last does not keep the
+    // other threads idle while it finishes.
+    std::vector<std::size_t> order(dex_count);
+    for (std::size_t i = 0; i < dex_count; ++i)
+        order[i] = i;
+    std::stable_sort(order.begin(), order.end(), [&](std::size_t a, std::size_t b) {
+        return buffer_of(a).size() > buffer_of(b).size();
+    });
+    // Threads only pay off when the DEX files besides the biggest hold real
+    // work: for a few small ones, starting a thread costs more than the whole
+    // job (measured for the call graph: ~10 µs serial vs ~80 µs threaded).  So
+    // the automatic setting stays on this thread for them; an explicit count
+    // is obeyed, which also lets the tests run this path on small fixtures.
+    constexpr std::size_t kMinParallelBytes = std::size_t{1} << 20;
+    std::size_t besides_biggest = 0;
+    for (std::size_t k = 1; k < dex_count; ++k)
+        besides_biggest += buffer_of(order[k]).size();
+    const bool worth_it = threads != 0 || besides_biggest >= kMinParallelBytes;
+    const std::size_t thread_count = worth_it ? std::min(thread_budget(), dex_count) : 1;
+    for_each_parallel(order, thread_count, fn);
+}
+
 std::string_view AnalysisContextImpl::string_of(std::size_t dex_idx, uint32_t string_idx) const
 {
     // Out-of-range indices reach here from bytecode (const-string), from
@@ -532,6 +564,28 @@ const raw::CodeItem *AnalysisContextImpl::get_code_item(std::size_t dex_idx,
 
     auto [ins_it, ok] = slot.code_item_cache.emplace(code_off, std::move(result.value()));
     return &ins_it->second;
+}
+
+const raw::CodeItem *
+AnalysisContextImpl::peek_code_item(std::size_t dex_idx, uint32_t code_off,
+                                    std::optional<raw::CodeItem> &scratch) const
+{
+    if (code_off == 0)
+        return nullptr;
+
+    auto &slot = *slots[dex_idx];
+    {
+        std::lock_guard<std::mutex> lock(slot.code_item_mutex);
+        auto it = slot.code_item_cache.find(code_off);
+        if (it != slot.code_item_cache.end())
+            return &it->second;
+    }
+
+    auto result = raw::parser::parse_code_item(slot.buffer.bytes(), code_off);
+    if (!result.has_value())
+        return nullptr;
+    scratch = std::move(*result);
+    return &*scratch;
 }
 
 std::span<const Instruction> AnalysisContextImpl::get_instructions(std::size_t dex_idx,

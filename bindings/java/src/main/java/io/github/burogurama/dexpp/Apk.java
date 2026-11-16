@@ -169,8 +169,8 @@ public final class Apk implements AutoCloseable {
      * graph and other structures are built once. A call with another count builds a second
      * analysis, which holds its own copy of the DEX files. So use one count in a program.
      *
-     * @param threads how many threads decompress the DEX entries and, later, build the call graph,
-     *     as for {@link AnalysisContext#fromApk(Path, int)}. 1 keeps all work on the calling
+     * @param threads how many threads decompress the DEX entries and, later, build the call graph
+     *     and the cross-references, as for {@link AnalysisContext#fromApk(Path, int)}. 1 keeps all work on the calling
      *     thread. 0 lets the library choose. A negative number counts as 0.
      * @return the analysis of the code
      * @throws InvalidApkException if the APK has no {@code classes.dex}, or an entry is damaged

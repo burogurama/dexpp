@@ -99,9 +99,10 @@ public final class AnalysisContext implements AutoCloseable {
      * Loads every top-level {@code classes*.dex} entry of an APK, with a given number of threads.
      *
      * @param path the APK file
-     * @param threads how many threads decompress the DEX entries and, later, build the call graph.
-     *     1 keeps all work on the calling thread; use it when the program already analyses several
-     *     APKs in parallel. 0 lets the library choose. A negative number counts as 0.
+     * @param threads how many threads decompress the DEX entries and, later, build the call graph
+     *     and the cross-references. 1 keeps all work on the calling thread; use it when the program
+     *     already analyses several APKs in parallel. 0 lets the library choose. A negative number
+     *     counts as 0.
      * @return the analysis of the APK's code
      * @throws java.nio.file.NoSuchFileException if the file does not exist
      * @throws IOException if the file exists but cannot be read

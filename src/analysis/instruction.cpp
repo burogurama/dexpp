@@ -1,6 +1,6 @@
 #include "instruction.hpp"
 
-#include "invoke_sites.hpp"
+#include "code_scan.hpp"
 #include "raw/opcodes.hpp"
 
 #include <algorithm>
@@ -652,11 +652,14 @@ std::vector<Instruction> decode_instructions(std::span<const uint16_t> insns)
     return result;
 }
 
-void detail::find_invokes(std::span<const uint16_t> insns, std::vector<InvokeSite> &out)
+namespace {
+
+// Call at(pos, op) for every instruction of `insns`, in order, with the same
+// boundary walk as decode_instructions(): skip payloads, advance every other
+// opcode by its format width.  The scanners below use it, so what they report
+// is exactly what Method::instructions() holds.
+template <typename Fn> void for_each_insn(std::span<const uint16_t> insns, Fn &&at)
 {
-    // Same boundary walk as decode_instructions(): skip payloads, advance every
-    // other opcode by its format width.  The call graph's call sites must be
-    // exactly the invokes Method::instructions() reports.
     uint32_t pos = 0;
     while (pos < static_cast<uint32_t>(insns.size())) {
         uint8_t op = static_cast<uint8_t>(insns[pos] & 0xff);
@@ -665,15 +668,44 @@ void detail::find_invokes(std::span<const uint16_t> insns, std::vector<InvokeSit
             pos += payload_size(insns, pos);
             continue;
         }
+        at(pos, op);
+        pos += raw::opcode_info(op).units;
+    }
+}
+
+// Code unit `k` of the instruction at `pos`, or 0 past the end of the code, as
+// decode_instructions() reads it.  Only for k < the opcode's width.
+uint16_t unit_at(std::span<const uint16_t> insns, uint32_t pos, uint32_t k)
+{
+    return static_cast<std::size_t>(pos) + k < insns.size() ? insns[pos + k] : 0;
+}
+
+} // namespace
+
+void detail::find_invokes(std::span<const uint16_t> insns, std::vector<InvokeSite> &out)
+{
+    for_each_insn(insns, [&](uint32_t pos, uint8_t op) {
         if ((op >= 0x6e && op <= 0x72) || (op >= 0x74 && op <= 0x78) ||
             (op >= 0xfa && op <= 0xfd)) {
             // Every invoke format is wider than one unit, so the decoder reads
             // the index from unit 1 whenever it exists.
-            uint16_t index = pos + 1 < insns.size() ? insns[pos + 1] : 0;
-            out.push_back(InvokeSite{pos, op, index});
+            out.push_back(InvokeSite{pos, op, unit_at(insns, pos, 1)});
         }
-        pos += raw::opcode_info(op).units;
-    }
+    });
+}
+
+void detail::find_refs(std::span<const uint16_t> insns, std::vector<RefSite> &out)
+{
+    for_each_insn(insns, [&](uint32_t pos, uint8_t op) {
+        if (!is_ref_opcode(op))
+            return;
+        // Every one of these formats is at least two units wide, with the pool
+        // index in unit 1; const-string/jumbo (31c) adds the high half in unit 2.
+        uint32_t index = unit_at(insns, pos, 1);
+        if (op == 0x1b)
+            index |= static_cast<uint32_t>(unit_at(insns, pos, 2)) << 16;
+        out.push_back(RefSite{pos, index, op});
+    });
 }
 
 } // namespace dex

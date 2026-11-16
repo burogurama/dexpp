@@ -411,8 +411,9 @@ DEXPP_C_API DexppContext *dexpp_context_from_dex_files(const char *const *paths,
 
 /** Load every top-level classes*.dex of an APK, in multidex order. `threads`
  *  is the number of threads for decompressing and, later, for building the
- *  call graph: 0 lets the library choose, 1 keeps all work on the calling
- *  thread. Errors: FILE_NOT_FOUND, CANNOT_READ, INVALID_APK, INVALID_DEX. */
+ *  call graph and the cross-references: 0 lets the library choose, 1 keeps
+ *  all work on the calling thread. Errors: FILE_NOT_FOUND, CANNOT_READ,
+ *  INVALID_APK, INVALID_DEX. */
 DEXPP_C_API DexppContext *dexpp_context_from_apk(const char *path, uint32_t threads,
                                                  DexppError **err);
 

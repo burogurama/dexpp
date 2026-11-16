@@ -752,10 +752,10 @@ func applyLoadOptions(opts []LoadOption) loadOptions {
 }
 
 // WithThreads sets how many threads FromAPK or Apk.Analysis uses to
-// decompress the DEX files and, later, to build the call graph. 1 keeps all
-// work on the calling thread; use it when the program already analyses several
-// APKs in parallel. 0, the default, lets the library choose. A negative number
-// counts as 0.
+// decompress the DEX files and, later, to build the call graph and the
+// cross-references. 1 keeps all work on the calling thread; use it when the
+// program already analyses several APKs in parallel. 0, the default, lets the
+// library choose. A negative number counts as 0.
 func WithThreads(n int) LoadOption {
 	return func(o *loadOptions) {
 		if n < 0 {
