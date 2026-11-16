@@ -3,7 +3,7 @@
 Fast static analysis of Android APK / DEX files — a C++23 core with Python, C,
 Go and Java bindings.
 
-The current release is **0.3.0** (alpha): the API may still change between
+The current release is **0.3.1** (alpha): the API may still change between
 0.x releases. See [CHANGELOG.md](https://github.com/burogurama/dexpp/blob/main/CHANGELOG.md).
 
 **Documentation: <https://burogurama.github.io/dexpp/>** — guides with
