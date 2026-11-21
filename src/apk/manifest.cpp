@@ -32,11 +32,17 @@ constexpr FrameworkAttribute kWritePermission{"writePermission", 0x01010008};
 constexpr FrameworkAttribute kProtectionLevel{"protectionLevel", 0x01010009};
 constexpr FrameworkAttribute kDebuggable{"debuggable", 0x0101000f};
 constexpr FrameworkAttribute kExported{"exported", 0x01010010};
+constexpr FrameworkAttribute kPath{"path", 0x0101002a};
+constexpr FrameworkAttribute kPathPrefix{"pathPrefix", 0x0101002b};
+constexpr FrameworkAttribute kPathPattern{"pathPattern", 0x0101002c};
+constexpr FrameworkAttribute kTargetActivity{"targetActivity", 0x01010202};
 constexpr FrameworkAttribute kMinSdkVersion{"minSdkVersion", 0x0101020c};
 constexpr FrameworkAttribute kVersionCode{"versionCode", 0x0101021b};
 constexpr FrameworkAttribute kVersionName{"versionName", 0x0101021c};
 constexpr FrameworkAttribute kTargetSdkVersion{"targetSdkVersion", 0x01010270};
 constexpr FrameworkAttribute kAllowBackup{"allowBackup", 0x01010280};
+constexpr FrameworkAttribute kPathSuffix{"pathSuffix", 0x0101061e};
+constexpr FrameworkAttribute kPathAdvancedPattern{"pathAdvancedPattern", 0x01010620};
 } // namespace framework
 
 constexpr std::string_view kAndroidNamespace = "http://schemas.android.com/apk/res/android";
@@ -93,14 +99,14 @@ template <typename T> struct AttributeRead
     }
     /** True when Android reads different values in different
      *  configurations; a null reading counts as @p if_null, what Android
-     *  uses when the attribute is not written, and an unknown one as one
-     *  more answer. */
-    bool varies(const T &if_null) const
+     *  uses when the attribute is not written (unknown when nullopt), and an
+     *  unknown one as one more answer. */
+    bool varies(const std::optional<T> &if_null) const
     {
         std::vector<Reading<T>> seen;
         for (Reading<T> r : all) {
             if (r.kind == Reading<T>::Kind::Null)
-                r = Reading<T>::of(if_null);
+                r = if_null.has_value() ? Reading<T>::of(*if_null) : Reading<T>::unknown();
             if (std::find(seen.begin(), seen.end(), r) == seen.end())
                 seen.push_back(r);
         }
@@ -161,9 +167,11 @@ class AttributeLookup
      *  @p android_default): a literal value, or a reference resolved through
      *  the resource table in every configuration.  A null value reads as
      *  Null: TypedArray.hasValue() is false for it, and getBoolean() gives
-     *  the default. */
+     *  the default.  With no @p android_default, a value that gives the
+     *  default (empty text) reads as Null too: the caller decides what the
+     *  default is. */
     AttributeRead<bool> boolean(const axml::XmlNode &node, const FrameworkAttribute &attribute,
-                                bool android_default) const
+                                std::optional<bool> android_default) const
     {
         auto outcome = [&](uint8_t type, uint32_t data,
                            std::optional<std::string_view> text) -> Reading<bool> {
@@ -172,8 +180,12 @@ class AttributeLookup
             // A theme attribute: its value depends on the theme.
             if (type == detail::kTypeAttribute || type == detail::kTypeDynamicAttribute)
                 return Reading<bool>::unknown();
-            return Reading<bool>::of(
-                detail::boolean_value(type, data, text).value_or(android_default));
+            const std::optional<bool> value = detail::boolean_value(type, data, text);
+            if (value.has_value())
+                return Reading<bool>::of(*value);
+            if (android_default.has_value())
+                return Reading<bool>::of(*android_default);
+            return Reading<bool>::null();
         };
         auto literal = [&](const axml::XmlAttribute &a) {
             std::optional<std::string_view> text;
@@ -429,69 +441,224 @@ struct Permission
     bool gives_something() const { return value.has_value() || unknown; }
 };
 
+/** The `<path-permission>` elements of a provider, read like
+ *  ParsedProviderUtils.parsePathPermission. */
+std::vector<PathPermission> path_permissions(const AttributeLookup &attrs,
+                                             const axml::XmlNode &provider)
+{
+    // The path attributes in the order Android tries them: the first that
+    // gives a value is the path.
+    struct PathAttribute
+    {
+        const FrameworkAttribute &attribute;
+        PathPermission::Match match;
+    };
+    const PathAttribute kPathAttributes[] = {
+        {framework::kPathAdvancedPattern, PathPermission::Match::AdvancedPattern},
+        {framework::kPathPattern, PathPermission::Match::Pattern},
+        {framework::kPathPrefix, PathPermission::Match::Prefix},
+        {framework::kPathSuffix, PathPermission::Match::Suffix},
+        {framework::kPath, PathPermission::Match::Literal},
+    };
+
+    std::vector<PathPermission> out;
+    for (const auto *node : provider.children_named("path-permission")) {
+        // readPermission, else the element's permission; the same for
+        // writePermission.  They never fall back to the provider's.
+        const Permission own =
+            Permission::of(attrs.text(*node, framework::kPermission), Permission{});
+        const Permission read = Permission::of(attrs.text(*node, framework::kReadPermission), own);
+        const Permission write =
+            Permission::of(attrs.text(*node, framework::kWritePermission), own);
+        // "No readPermission or writePermission for <path-permission>":
+        // Android drops the element.
+        if (!read.gives_something() && !write.gives_something())
+            continue;
+
+        PathPermission pp;
+        bool has_path = false;
+        for (const PathAttribute &candidate : kPathAttributes) {
+            auto path = attrs.text(*node, candidate.attribute);
+            if (path.gives_nothing())
+                continue;
+            pp.match = candidate.match;
+            pp.path = path.value().value_or(std::string());
+            pp.path_unknown = path.unknown();
+            has_path = true;
+            break;
+        }
+        // "No path, pathPrefix, or pathPattern for <path-permission>":
+        // Android drops the element.
+        if (!has_path)
+            continue;
+
+        pp.read_permission = read.value;
+        pp.read_permission_unknown = read.unknown;
+        pp.write_permission = write.value;
+        pp.write_permission_unknown = write.unknown;
+        out.push_back(std::move(pp));
+    }
+    return out;
+}
+
+/** The value of android:exported for a provider that does not write it:
+ *  ParsedProviderUtils.parseProvider reads the attribute with
+ *  getBoolean(exported, targetSdkVersion < JELLY_BEAN_MR1), where
+ *  targetSdkVersion is the package's at the time `<application>` is parsed.
+ *
+ *  ParsingPackageUtils.parseBaseApkTags reads the children of `<manifest>`
+ *  in order, and parseUsesSdk sets the target SDK.  So only a `<uses-sdk>`
+ *  before `<application>` counts (aapt2's ManifestFixer inserts the one it
+ *  adds before `<application>` for this reason), and the last one wins.
+ *  Without one, the target SDK is ParsingUtils.DEFAULT_TARGET_SDK_VERSION,
+ *  0.  In parseUsesSdk, a targetSdkVersion that peekValue() gives no value
+ *  for (missing, or a null value) is the minSdkVersion, which is
+ *  DEFAULT_MIN_SDK_VERSION, 1, when it gives no value either.  A codename
+ *  (text) becomes the development version or fails the install; dexpp reads
+ *  it as unknown.
+ *
+ *  nullopt when dexpp cannot tell, or when the answer is not the same in
+ *  every configuration of a referenced value. */
+std::optional<bool> provider_exported_default(const AttributeLookup &attrs,
+                                              const axml::XmlNode &root)
+{
+    constexpr int64_t kJellyBeanMr1 = 17;
+    const axml::XmlNode *uses_sdk = nullptr;
+    for (const auto &child : root.children) {
+        if (child.name == "application")
+            break;
+        if (child.name == "uses-sdk")
+            uses_sdk = &child;
+    }
+    if (uses_sdk == nullptr)
+        return true; // target SDK 0
+
+    // Every reading of an attribute; a missing one reads as Null.
+    auto readings = [](const AttributeRead<int64_t> &read) {
+        return read.present ? read.all : std::vector{Reading<int64_t>::null()};
+    };
+    // Every target SDK the parser can end with.
+    std::vector<Reading<int64_t>> targets;
+    for (const Reading<int64_t> &target :
+         readings(attrs.integer(*uses_sdk, framework::kTargetSdkVersion))) {
+        if (target.kind != Reading<int64_t>::Kind::Null) {
+            targets.push_back(target);
+            continue;
+        }
+        for (const Reading<int64_t> &min_sdk :
+             readings(attrs.integer(*uses_sdk, framework::kMinSdkVersion)))
+            targets.push_back(min_sdk.kind == Reading<int64_t>::Kind::Null ? Reading<int64_t>::of(1)
+                                                                           : min_sdk);
+    }
+
+    std::optional<bool> answer;
+    for (const Reading<int64_t> &r : targets) {
+        if (r.kind != Reading<int64_t>::Kind::Value)
+            return std::nullopt;
+        const bool exported = r.value < kJellyBeanMr1;
+        if (answer.has_value() && *answer != exported)
+            return std::nullopt;
+        answer = exported;
+    }
+    return answer;
+}
+
+/** Read one component: activity, `<activity-alias>`, service, receiver or
+ *  provider. */
+Component read_component(const AttributeLookup &attrs, const axml::XmlNode &node,
+                         Component::Kind kind, std::string_view package,
+                         const Permission &app_permission, std::optional<bool> provider_default)
+{
+    const bool is_alias = node.name == "activity-alias";
+    const bool is_provider = kind == Component::Kind::Provider;
+    Component c;
+    c.kind = kind;
+    auto name = attrs.text(node, framework::kName);
+    c.name = qualify(name.value().value_or(std::string()), package);
+    c.name_reference = name.reference;
+    c.name_unknown = name.unknown();
+    if (is_alias) {
+        // ParsedActivityUtils.parseActivityAlias:
+        // getNonConfigurationString(targetActivity, NATIVE_CONFIG_VERSION),
+        // qualified with ParsingUtils.buildClassName.
+        c.target_activity = qualify(
+            attrs.text(node, framework::kTargetActivity).value().value_or(std::string()), package);
+    }
+    for (const auto *filter : node.children_named("intent-filter"))
+        c.intent_filters.push_back(parse_filter(attrs, *filter));
+
+    // Activities, aliases, services and receivers: the parser reads
+    // android:exported only when it has a value (TypedArray.hasValue), and
+    // then with getBoolean(attr, false); without a value, the intent filters
+    // decide.  An alias does not take its target's (ParsedActivityImpl.
+    // makeAlias does not copy it).  Providers: getBoolean(attr, default),
+    // where the default depends on the target SDK (see
+    // provider_exported_default).
+    c.exported_default =
+        is_provider ? provider_default : std::optional<bool>(!c.intent_filters.empty());
+    auto exported = attrs.boolean(node, framework::kExported,
+                                  is_provider ? std::nullopt : std::optional<bool>(false));
+    c.exported = exported.value();
+    c.exported_reference = exported.reference;
+    c.exported_unknown = exported.unknown();
+    c.exported_varies = exported.varies(c.exported_default);
+
+    // ParsedActivityUtils (activities and receivers) and ParsedServiceUtils:
+    // getNonConfigurationString(permission, 0), and the application's
+    // permission when that returns null.  An alias keeps only its own
+    // ("An alias will override permissions to allow referencing an Activity
+    // through its alias without needing the original permission").
+    auto own = attrs.text(node, framework::kPermission);
+    const Permission inherited = is_alias ? Permission{} : app_permission;
+    const Permission permission = Permission::of(own, inherited);
+    c.permission = permission.value;
+    c.permission_unknown = permission.unknown;
+    c.permission_reference = own.reference;
+    c.permission_inherited = own.gives_nothing() && inherited.gives_something();
+
+    if (is_provider) {
+        // ParsedProviderUtils: readPermission, else permission, else the
+        // application's; the same for writePermission.
+        auto read = attrs.text(node, framework::kReadPermission);
+        const Permission read_permission = Permission::of(read, permission);
+        c.read_permission = read_permission.value;
+        c.read_permission_unknown = read_permission.unknown;
+        c.read_permission_reference = read.reference;
+        auto write = attrs.text(node, framework::kWritePermission);
+        const Permission write_permission = Permission::of(write, permission);
+        c.write_permission = write_permission.value;
+        c.write_permission_unknown = write_permission.unknown;
+        c.write_permission_reference = write.reference;
+        c.path_permissions = path_permissions(attrs, node);
+    }
+    return c;
+}
+
 void collect_components(const AttributeLookup &attrs, const axml::XmlNode &app,
                         std::string_view package, const Permission &app_permission,
-                        std::vector<Component> &out)
+                        std::optional<bool> provider_default, std::vector<Component> &out)
 {
+    // Activities and aliases first, in manifest order: Android keeps both in
+    // the package's activity list (ParsingPackageUtils.parseBaseApplication).
+    for (const auto &node : app.children)
+        if (node.name == "activity" || node.name == "activity-alias")
+            out.push_back(read_component(attrs, node, Component::Kind::Activity, package,
+                                         app_permission, provider_default));
+
     struct Tag
     {
         const char *tag;
         Component::Kind kind;
     };
     constexpr Tag kinds[] = {
-        {"activity", Component::Kind::Activity},
         {"service", Component::Kind::Service},
         {"receiver", Component::Kind::Receiver},
         {"provider", Component::Kind::Provider},
     };
-
-    for (const auto &tag : kinds) {
-        for (const auto *node : app.children_named(tag.tag)) {
-            Component c;
-            c.kind = tag.kind;
-            auto name = attrs.text(*node, framework::kName);
-            c.name = qualify(name.value().value_or(std::string()), package);
-            c.name_reference = name.reference;
-            c.name_unknown = name.unknown();
-            for (const auto *filter : node->children_named("intent-filter"))
-                c.intent_filters.push_back(parse_filter(attrs, *filter));
-
-            // The parser reads android:exported only when it has a value
-            // (TypedArray.hasValue), and then with getBoolean(attr, false).
-            // Without a value, the intent filters decide.
-            auto exported = attrs.boolean(*node, framework::kExported, false);
-            c.exported = exported.value();
-            c.exported_reference = exported.reference;
-            c.exported_unknown = exported.unknown();
-            c.exported_varies = exported.varies(!c.intent_filters.empty());
-
-            // ParsedActivityUtils (activities and receivers) and
-            // ParsedServiceUtils: getNonConfigurationString(permission, 0),
-            // and the application's permission when that returns null.
-            auto own = attrs.text(*node, framework::kPermission);
-            const Permission permission = Permission::of(own, app_permission);
-            c.permission = permission.value;
-            c.permission_unknown = permission.unknown;
-            c.permission_reference = own.reference;
-            c.permission_inherited = own.gives_nothing() && app_permission.gives_something();
-
-            if (tag.kind == Component::Kind::Provider) {
-                // ParsedProviderUtils: readPermission, else permission, else
-                // the application's; the same for writePermission.
-                auto read = attrs.text(*node, framework::kReadPermission);
-                const Permission read_permission = Permission::of(read, permission);
-                c.read_permission = read_permission.value;
-                c.read_permission_unknown = read_permission.unknown;
-                c.read_permission_reference = read.reference;
-                auto write = attrs.text(*node, framework::kWritePermission);
-                const Permission write_permission = Permission::of(write, permission);
-                c.write_permission = write_permission.value;
-                c.write_permission_unknown = write_permission.unknown;
-                c.write_permission_reference = write.reference;
-            }
-            out.push_back(std::move(c));
-        }
-    }
+    for (const auto &tag : kinds)
+        for (const auto *node : app.children_named(tag.tag))
+            out.push_back(
+                read_component(attrs, *node, tag.kind, package, app_permission, provider_default));
 }
 
 } // namespace
@@ -594,7 +761,8 @@ Manifest::Manifest(axml::XmlDocument doc, const ResourceTable *resources) : doc_
         application_permission_reference_ = permission.reference;
         application_permission_unknown_ = permission.unknown();
         const Permission app_permission = Permission::of(permission, Permission{});
-        collect_components(attrs, *app, package_, app_permission, components_);
+        collect_components(attrs, *app, package_, app_permission,
+                           provider_exported_default(attrs, root), components_);
     }
 
     // Resolve each component's guard against the app-declared permission
@@ -606,14 +774,27 @@ Manifest::Manifest(axml::XmlDocument doc, const ResourceTable *resources) : doc_
         auto it = declared_permission_levels_.find(*permission);
         return it != declared_permission_levels_.end() && it->second.always_signature;
     };
+    // A path permission that is absent gives no access; one that is unknown
+    // might give any.
+    auto path_guards = [&](const std::optional<std::string> &permission, bool unknown) {
+        if (unknown)
+            return false;
+        return !permission.has_value() || guards(permission);
+    };
     for (auto &c : components_) {
-        // A provider is reached by reading or by writing, so both must be
-        // guarded.
-        if (c.kind == Component::Kind::Provider)
-            c.guarded_by_signature_permission =
-                guards(c.read_permission) && guards(c.write_permission);
-        else
+        if (c.kind != Component::Kind::Provider) {
             c.guarded_by_signature_permission = guards(c.permission);
+            continue;
+        }
+        // A provider is reached by reading or by writing, and through the
+        // permissions of its paths, which the activity manager and
+        // ContentProvider accept in place of the provider's own: all of them
+        // must be guarded.
+        bool guarded = guards(c.read_permission) && guards(c.write_permission);
+        for (const PathPermission &pp : c.path_permissions)
+            guarded = guarded && path_guards(pp.read_permission, pp.read_permission_unknown) &&
+                      path_guards(pp.write_permission, pp.write_permission_unknown);
+        c.guarded_by_signature_permission = guarded;
     }
 }
 

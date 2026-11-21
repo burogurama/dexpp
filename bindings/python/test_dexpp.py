@@ -716,9 +716,10 @@ def test_reachability():
     assert not by_name["HiddenActivity"].is_exported
     assert not by_name["HiddenActivity"].is_reachable
 
+    # Two of the eight activities are aliases.
     activities = m.components_of(dexpp.ComponentKind.ACTIVITY)
-    assert sum(c.is_exported for c in activities) == 5
-    assert sum(c.is_reachable for c in activities) == 3
+    assert sum(c.is_exported for c in activities) == 7
+    assert sum(c.is_reachable for c in activities) == 4
 
 
 def test_application_permission():

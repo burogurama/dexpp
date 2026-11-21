@@ -166,7 +166,9 @@ TEST(ManifestTest, ApplicationFlags)
 // every protection level and guards exported components with them, exercising
 // Component::is_reachable and the declared-permission protectionLevel lookup.
 // Its <application> requires the signature permission, so every component
-// without a permission of its own inherits it.  It was built with the Android
+// without a permission of its own inherits it.  It also has two
+// <activity-alias> elements, providers with <path-permission> elements, and a
+// provider without android:exported.  It was built with the Android
 // SDK's aapt2 (build-tools 36.0.0), without a classes.dex:
 //
 //   aapt2 link -o reachable.apk -I android.jar --manifest ReachableManifest.xml
@@ -245,14 +247,140 @@ TEST(ManifestTest, Reachability)
     EXPECT_FALSE(exported("HiddenActivity"));
     EXPECT_FALSE(reachable("HiddenActivity"));
 
-    // Counts: 5 of 6 activities exported, 3 reachable.
+    // Counts: 7 of 8 activities (two of them aliases) exported, 4 reachable.
     int act_exported = 0, act_reachable = 0;
     for (const auto *c : m->components_of(Component::Kind::Activity)) {
         act_exported += c->is_exported();
         act_reachable += c->is_reachable();
     }
-    EXPECT_EQ(act_exported, 5);
-    EXPECT_EQ(act_reachable, 3);
+    EXPECT_EQ(act_exported, 7);
+    EXPECT_EQ(act_reachable, 4);
+}
+
+TEST(ManifestTest, ActivityAliases)
+{
+    // An <activity-alias> is listed with the activities, in manifest order.
+    // Android gives it only its own permission: not its target's
+    // (ParsedActivityImpl.makeAlias does not copy it), and not the
+    // application's (ParsedActivityUtils.parseActivityOrAlias).
+    auto apk = Apk::open("tests/data/reachable.apk");
+    ASSERT_TRUE(apk.has_value()) << (apk ? "" : apk.error().message);
+    const Manifest *m = apk->manifest();
+    ASSERT_NE(m, nullptr);
+
+    std::vector<std::string> activities;
+    for (const auto *c : m->components_of(Component::Kind::Activity))
+        activities.push_back(c->name);
+    EXPECT_EQ(activities, (std::vector<std::string>{
+                              "com.dexpp.reach.InheritingActivity",
+                              "com.dexpp.reach.NormalActivity",
+                              "com.dexpp.reach.DangerousActivity",
+                              "com.dexpp.reach.SigActivity",
+                              "com.dexpp.reach.HiddenActivity",
+                              "com.dexpp.reach.PlatformPermActivity",
+                              "com.dexpp.reach.OpenAlias",
+                              "com.dexpp.reach.GuardedAlias",
+                          }));
+
+    // The alias of a guarded activity, without a permission of its own, is
+    // open to every app.
+    const Component *open = find_component(*m, "com.dexpp.reach.OpenAlias");
+    ASSERT_NE(open, nullptr);
+    EXPECT_EQ(open->kind, Component::Kind::Activity);
+    EXPECT_EQ(open->target_activity, std::optional<std::string>("com.dexpp.reach.SigActivity"));
+    EXPECT_EQ(open->permission, std::nullopt);
+    EXPECT_FALSE(open->permission_inherited);
+    EXPECT_FALSE(open->permission_unknown);
+    EXPECT_FALSE(open->guarded_by_signature_permission);
+    EXPECT_TRUE(open->is_reachable());
+
+    const Component *guarded = find_component(*m, "com.dexpp.reach.GuardedAlias");
+    ASSERT_NE(guarded, nullptr);
+    EXPECT_EQ(guarded->target_activity,
+              std::optional<std::string>("com.dexpp.reach.InheritingActivity"));
+    EXPECT_EQ(guarded->permission, std::optional<std::string>("com.dexpp.reach.P_SIGNATURE"));
+    EXPECT_FALSE(guarded->permission_inherited);
+    EXPECT_TRUE(guarded->guarded_by_signature_permission);
+    EXPECT_FALSE(guarded->is_reachable());
+
+    // Only aliases have a target.
+    for (const Component &c : m->components()) {
+        if (c.name.find("Alias") == std::string::npos) {
+            EXPECT_EQ(c.target_activity, std::nullopt) << c.name;
+        }
+    }
+}
+
+TEST(ManifestTest, ProviderPathPermissions)
+{
+    // A <path-permission> lets a caller that holds its permission reach the
+    // matching paths, even without the provider's own permission
+    // (ContentProvider.enforceReadPermissionInner,
+    // ContentProviderHelper.checkContentProviderPermission).
+    auto apk = Apk::open("tests/data/reachable.apk");
+    ASSERT_TRUE(apk.has_value()) << (apk ? "" : apk.error().message);
+    const Manifest *m = apk->manifest();
+    ASSERT_NE(m, nullptr);
+    const std::optional<std::string> signature("com.dexpp.reach.P_SIGNATURE");
+
+    // Its own permissions come from the application, but the path /public
+    // is readable with a normal permission.
+    const Component *path = find_component(*m, "com.dexpp.reach.PathProvider");
+    ASSERT_NE(path, nullptr);
+    EXPECT_EQ(path->read_permission, signature);
+    EXPECT_EQ(path->write_permission, signature);
+    ASSERT_EQ(path->path_permissions.size(), 1u);
+    const PathPermission &prefix = path->path_permissions[0];
+    EXPECT_EQ(prefix.path, "/public");
+    EXPECT_EQ(prefix.match, PathPermission::Match::Prefix);
+    EXPECT_FALSE(prefix.path_unknown);
+    EXPECT_EQ(prefix.read_permission, std::optional<std::string>("com.dexpp.reach.P_NORMAL"));
+    EXPECT_FALSE(prefix.read_permission_unknown);
+    EXPECT_EQ(prefix.write_permission, std::nullopt);
+    EXPECT_FALSE(prefix.write_permission_unknown);
+    EXPECT_FALSE(path->guarded_by_signature_permission);
+    EXPECT_TRUE(path->is_reachable());
+
+    // A signature path permission keeps the provider guarded.  Android drops
+    // the element without a permission and the one without a path.
+    const Component *sig = find_component(*m, "com.dexpp.reach.SigPathProvider");
+    ASSERT_NE(sig, nullptr);
+    ASSERT_EQ(sig->path_permissions.size(), 1u);
+    EXPECT_EQ(sig->path_permissions[0].path, "/items/.*");
+    EXPECT_EQ(sig->path_permissions[0].match, PathPermission::Match::Pattern);
+    EXPECT_EQ(sig->path_permissions[0].read_permission, signature);
+    EXPECT_EQ(sig->path_permissions[0].write_permission, signature);
+    EXPECT_TRUE(sig->guarded_by_signature_permission);
+    EXPECT_FALSE(sig->is_reachable());
+
+    // The other kinds have no path permissions.
+    for (const Component &c : m->components()) {
+        if (c.kind != Component::Kind::Provider) {
+            EXPECT_TRUE(c.path_permissions.empty()) << c.name;
+        }
+    }
+}
+
+TEST(ManifestTest, AProviderIsNotExportedByDefaultFromApi17)
+{
+    // reachable.apk targets API 34: a provider without android:exported is
+    // not exported, whatever its intent filters (ParsedProviderUtils).
+    auto apk = Apk::open("tests/data/reachable.apk");
+    ASSERT_TRUE(apk.has_value()) << (apk ? "" : apk.error().message);
+    const Manifest *m = apk->manifest();
+    ASSERT_NE(m, nullptr);
+    const Component *c = find_component(*m, "com.dexpp.reach.DefaultProvider");
+    ASSERT_NE(c, nullptr);
+    EXPECT_EQ(c->intent_filters.size(), 1u);
+    EXPECT_EQ(c->exported, std::nullopt);
+    EXPECT_EQ(c->exported_default, std::optional<bool>(false));
+    EXPECT_FALSE(c->is_exported());
+    EXPECT_FALSE(c->is_reachable());
+
+    // The other kinds take the intent-filter rule.
+    const Component *activity = find_component(*m, "com.dexpp.reach.HiddenActivity");
+    ASSERT_NE(activity, nullptr);
+    EXPECT_EQ(activity->exported_default, std::optional<bool>(false));
 }
 
 TEST(ManifestTest, TheApplicationPermission)
@@ -1783,4 +1911,490 @@ TEST(ManifestApplicationPermission, ProviderReadAndWritePermissions)
     EXPECT_TRUE(unknown.write_permission_unknown);
     EXPECT_FALSE(unknown.guarded_by_signature_permission);
     EXPECT_TRUE(unknown.is_reachable());
+}
+
+// ===== providers exported by default, activity aliases, path permissions =====
+//
+// ParsedProviderUtils.parseProvider reads a provider's android:exported with
+// getBoolean(exported, targetSdkVersion < JELLY_BEAN_MR1): its intent filters
+// do not matter.  The target SDK is the one ParsingPackageUtils has when it
+// reaches <application>, so only a <uses-sdk> before it counts.
+// ParsedActivityUtils.parseActivityAlias gives an <activity-alias> its own
+// permission, exported flag and intent filters only.  parsePathPermission
+// reads a provider's <path-permission> elements.
+
+namespace {
+
+constexpr uint32_t kMinSdkId = 0x0101020c;
+constexpr uint32_t kTargetSdkId = 0x01010270;
+constexpr uint32_t kTargetActivityId = 0x01010202;
+constexpr uint32_t kPathId = 0x0101002a;
+constexpr uint32_t kPathPrefixId = 0x0101002b;
+constexpr uint32_t kPathPatternId = 0x0101002c;
+constexpr uint32_t kPathSuffixId = 0x0101061e;
+constexpr uint32_t kPathAdvancedPatternId = 0x01010620;
+
+TestAttr int_attr(std::string name, uint32_t id, uint32_t value)
+{
+    return typed_attr(std::move(name), id, kTypeIntDec, value);
+}
+
+TestElement uses_sdk(std::vector<TestAttr> attrs) { return {"uses-sdk", std::move(attrs), {}}; }
+
+TestElement element(std::string tag, std::string name, std::vector<TestAttr> attrs = {},
+                    std::vector<TestElement> children = {})
+{
+    TestElement e{std::move(tag), {literal_name(std::move(name))}, std::move(children)};
+    for (TestAttr &a : attrs)
+        e.attrs.push_back(std::move(a));
+    return e;
+}
+
+TestElement path_permission(std::vector<TestAttr> attrs)
+{
+    return {"path-permission", std::move(attrs), {}};
+}
+
+/** A manifest that declares com.test.SIG (signature) and com.test.NORMAL
+ *  (normal), then has @p before, an `<application>` with @p app_attrs and
+ *  @p components, and @p after.  Read with the resource table @p table_bytes,
+ *  or without one when it is null. */
+Manifest sdk_manifest(std::vector<TestElement> before, std::vector<TestAttr> app_attrs,
+                      std::vector<TestElement> components, std::vector<TestElement> after = {},
+                      const std::vector<uint8_t> *table_bytes = nullptr)
+{
+    TestElement root{"manifest", {{"", "package", 0, "com.test"}}, {}};
+    root.children.push_back({"permission",
+                             {literal_name("com.test.SIG"),
+                              typed_attr("protectionLevel", kProtectionLevelId, kTypeIntHex, 2)},
+                             {}});
+    root.children.push_back({"permission",
+                             {literal_name("com.test.NORMAL"),
+                              typed_attr("protectionLevel", kProtectionLevelId, kTypeIntHex, 0)},
+                             {}});
+    for (TestElement &e : before)
+        root.children.push_back(std::move(e));
+    root.children.push_back({"application", std::move(app_attrs), std::move(components)});
+    for (TestElement &e : after)
+        root.children.push_back(std::move(e));
+    auto doc = axml::parse(AxmlWriter().write(root, ResourceMap::BeforeTheElements));
+    EXPECT_TRUE(doc.has_value());
+    std::optional<ResourceTable> table;
+    if (table_bytes != nullptr) {
+        auto parsed = ResourceTable::parse(*table_bytes);
+        EXPECT_TRUE(parsed.has_value());
+        if (parsed)
+            table = std::move(*parsed);
+    }
+    return Manifest(doc ? std::move(*doc) : axml::XmlDocument{}, table ? &*table : nullptr);
+}
+
+/** The provider com.test.P (without android:exported) in a manifest with
+ *  @p before and @p after around the application. */
+const Component provider_with(std::vector<TestElement> before, std::vector<TestElement> after = {},
+                              const std::vector<uint8_t> *table = nullptr)
+{
+    Manifest m =
+        sdk_manifest(std::move(before), {}, {element("provider", ".P")}, std::move(after), table);
+    return named(m, "com.test.P");
+}
+
+} // namespace
+
+TEST(ManifestProviderExported, WithoutUsesSdkTheTargetIsZero)
+{
+    Manifest m = sdk_manifest({}, {}, {element("provider", ".P"), element("activity", ".A")});
+    const Component &provider = named(m, "com.test.P");
+    EXPECT_EQ(provider.exported, std::nullopt);
+    EXPECT_EQ(provider.exported_default, std::optional<bool>(true));
+    EXPECT_TRUE(provider.is_exported());
+    // An activity without a filter is not exported, whatever the target.
+    const Component &activity = named(m, "com.test.A");
+    EXPECT_EQ(activity.exported_default, std::optional<bool>(false));
+    EXPECT_FALSE(activity.is_exported());
+}
+
+TEST(ManifestProviderExported, TheTargetSdkDecides)
+{
+    for (uint32_t target : {1u, 16u, 17u, 34u}) {
+        const Component c =
+            provider_with({uses_sdk({int_attr("targetSdkVersion", kTargetSdkId, target)})});
+        EXPECT_EQ(c.exported_default, std::optional<bool>(target < 17)) << target;
+        EXPECT_EQ(c.is_exported(), target < 17) << target;
+        EXPECT_EQ(c.is_reachable(), target < 17) << target;
+    }
+
+    // An explicit value wins over the default.
+    Manifest old_app = sdk_manifest(
+        {uses_sdk({int_attr("targetSdkVersion", kTargetSdkId, 16)})}, {},
+        {element("provider", ".P",
+                 {TestAttr{kAndroidNs, "exported", kExportedId, std::nullopt, false}})});
+    EXPECT_FALSE(named(old_app, "com.test.P").is_exported());
+    Manifest new_app = sdk_manifest({uses_sdk({int_attr("targetSdkVersion", kTargetSdkId, 34)})},
+                                    {}, {exported_component("provider", ".P")});
+    EXPECT_TRUE(named(new_app, "com.test.P").is_exported());
+}
+
+TEST(ManifestProviderExported, IntentFiltersDoNotMatterForAProvider)
+{
+    Manifest m = sdk_manifest({uses_sdk({int_attr("targetSdkVersion", kTargetSdkId, 34)})}, {},
+                              {element("provider", ".P", {}, {intent_filter()}),
+                               element("activity", ".A", {}, {intent_filter()})});
+    EXPECT_EQ(named(m, "com.test.P").exported_default, std::optional<bool>(false));
+    EXPECT_FALSE(named(m, "com.test.P").is_exported());
+    EXPECT_EQ(named(m, "com.test.A").exported_default, std::optional<bool>(true));
+    EXPECT_TRUE(named(m, "com.test.A").is_exported());
+}
+
+TEST(ManifestProviderExported, WithoutTargetSdkTheMinSdkCounts)
+{
+    // ParsingPackageUtils.parseUsesSdk: no targetSdkVersion (or a null one)
+    // means the minSdkVersion, which is 1 when missing too.
+    EXPECT_EQ(
+        provider_with({uses_sdk({int_attr("minSdkVersion", kMinSdkId, 10)})}).exported_default,
+        std::optional<bool>(true));
+    EXPECT_EQ(
+        provider_with({uses_sdk({int_attr("minSdkVersion", kMinSdkId, 21)})}).exported_default,
+        std::optional<bool>(false));
+    EXPECT_EQ(provider_with({uses_sdk({})}).exported_default, std::optional<bool>(true));
+    // targetSdkVersion="@empty": no value, so the minSdkVersion.
+    EXPECT_EQ(provider_with({uses_sdk({typed_attr("targetSdkVersion", kTargetSdkId, kTypeNull, 1),
+                                       int_attr("minSdkVersion", kMinSdkId, 21)})})
+                  .exported_default,
+              std::optional<bool>(false));
+}
+
+TEST(ManifestProviderExported, OnlyAUsesSdkBeforeTheApplicationCounts)
+{
+    // After <application>: the parser has read the providers already, with
+    // the target SDK 0.
+    Manifest late = sdk_manifest({}, {}, {element("provider", ".P")},
+                                 {uses_sdk({int_attr("targetSdkVersion", kTargetSdkId, 34)})});
+    EXPECT_EQ(named(late, "com.test.P").exported_default, std::optional<bool>(true));
+    EXPECT_TRUE(named(late, "com.test.P").is_exported());
+
+    // Two before it: the last one wins.
+    auto target = [](uint32_t v) {
+        return uses_sdk({int_attr("targetSdkVersion", kTargetSdkId, v)});
+    };
+    EXPECT_EQ(provider_with({target(10), target(34)}).exported_default, std::optional<bool>(false));
+    EXPECT_EQ(provider_with({target(34), target(10)}).exported_default, std::optional<bool>(true));
+}
+
+TEST(ManifestProviderExported, AnUnknownTargetSdkCountsAsExported)
+{
+    // A codename: the development version, or no install at all.
+    const Component codename =
+        provider_with({uses_sdk({string_attr("targetSdkVersion", kTargetSdkId, "Baklava")})});
+    EXPECT_EQ(codename.exported_default, std::nullopt);
+    EXPECT_TRUE(codename.is_exported());
+
+    // A reference without a resource table.
+    const Component no_table = provider_with(
+        {uses_sdk({reference_attr("targetSdkVersion", kTargetSdkId, ArscBuilder::id(0))})});
+    EXPECT_EQ(no_table.exported_default, std::nullopt);
+    EXPECT_TRUE(no_table.is_exported());
+    EXPECT_TRUE(no_table.is_reachable());
+
+    // No targetSdkVersion, and a minSdkVersion dexpp cannot read.
+    const Component min_unknown =
+        provider_with({uses_sdk({reference_attr("minSdkVersion", kMinSdkId, ArscBuilder::id(0))})});
+    EXPECT_EQ(min_unknown.exported_default, std::nullopt);
+
+    // e0 is 16 in the default configuration and 34 from Android 12: the
+    // answer depends on the device.  e1 is 34 everywhere.
+    ArscBuilder b;
+    b.value(0, ArscConfig(), ArscBuilder::kIntDec, 16);
+    b.value(0, ArscConfig().sdk(31), ArscBuilder::kIntDec, 34);
+    b.value(1, ArscConfig(), ArscBuilder::kIntDec, 34);
+    b.value(1, ArscConfig().sdk(31), ArscBuilder::kIntDec, 34);
+    const std::vector<uint8_t> table = b.build();
+    const Component varies = provider_with(
+        {uses_sdk({reference_attr("targetSdkVersion", kTargetSdkId, ArscBuilder::id(0))})}, {},
+        &table);
+    EXPECT_EQ(varies.exported_default, std::nullopt);
+    EXPECT_TRUE(varies.is_exported());
+    const Component same = provider_with(
+        {uses_sdk({reference_attr("targetSdkVersion", kTargetSdkId, ArscBuilder::id(1))})}, {},
+        &table);
+    EXPECT_EQ(same.exported_default, std::optional<bool>(false));
+    EXPECT_FALSE(same.is_exported());
+}
+
+TEST(ManifestProviderExported, EmptyTextAndNullValuesGiveTheDefault)
+{
+    // getBoolean(exported, default) gives the default for empty text and for
+    // a null value.
+    for (uint32_t target : {10u, 34u}) {
+        Manifest m = sdk_manifest(
+            {uses_sdk({int_attr("targetSdkVersion", kTargetSdkId, target)})}, {},
+            {element("provider", ".Empty", {string_attr("exported", kExportedId, "")}),
+             element("provider", ".Null", {typed_attr("exported", kExportedId, kTypeNull, 1)}),
+             element("provider", ".Text", {string_attr("exported", kExportedId, "yes")})});
+        for (const char *name : {"com.test.Empty", "com.test.Null"}) {
+            const Component &c = named(m, name);
+            EXPECT_EQ(c.exported, std::nullopt) << name << " " << target;
+            EXPECT_FALSE(c.exported_unknown) << name;
+            EXPECT_EQ(c.is_exported(), target < 17) << name << " " << target;
+        }
+        // Text other than "1", "true" or "TRUE" is false.
+        EXPECT_EQ(named(m, "com.test.Text").exported, std::optional<bool>(false));
+        EXPECT_FALSE(named(m, "com.test.Text").is_exported());
+    }
+}
+
+TEST(ManifestProviderExported, AVaryingExportedUsesTheDefault)
+{
+    // e0 is @null in the default configuration and true from Android 12.
+    ArscBuilder b;
+    b.value(0, ArscConfig(), ArscBuilder::kReference, 0);
+    b.value(0, ArscConfig().sdk(31), ArscBuilder::kBoolean, 1);
+    const std::vector<uint8_t> table = b.build();
+    auto provider = [&](uint32_t target) {
+        Manifest m =
+            sdk_manifest({uses_sdk({int_attr("targetSdkVersion", kTargetSdkId, target)})}, {},
+                         {element("provider", ".P",
+                                  {reference_attr("exported", kExportedId, ArscBuilder::id(0))})},
+                         {}, &table);
+        return named(m, "com.test.P");
+    };
+    // Targets 34: null means false, so it varies.
+    const Component recent = provider(34);
+    EXPECT_EQ(recent.exported, std::nullopt);
+    EXPECT_TRUE(recent.exported_varies);
+    EXPECT_TRUE(recent.is_exported());
+    // Targets 10: null means true, the same as Android 12's value.
+    const Component old = provider(10);
+    EXPECT_FALSE(old.exported_varies);
+    EXPECT_TRUE(old.is_exported());
+}
+
+TEST(ManifestActivityAlias, AnAliasTakesOnlyItsOwnAttributes)
+{
+    // The target is private and needs the signature permission; the alias,
+    // with an intent filter and nothing else, is exported and open.
+    Manifest m = sdk_manifest(
+        {}, {string_attr("permission", kPermissionId, "com.test.SIG")},
+        {element("activity", ".Target",
+                 {TestAttr{kAndroidNs, "exported", kExportedId, std::nullopt, false},
+                  string_attr("permission", kPermissionId, "com.test.SIG")}),
+         element("activity-alias", ".Alias",
+                 {string_attr("targetActivity", kTargetActivityId, ".Target")}, {intent_filter()}),
+         element("activity-alias", ".Quiet",
+                 {string_attr("targetActivity", kTargetActivityId, ".Target")})});
+    const Component &target = named(m, "com.test.Target");
+    EXPECT_FALSE(target.is_exported());
+    EXPECT_EQ(target.target_activity, std::nullopt);
+
+    const Component &alias = named(m, "com.test.Alias");
+    EXPECT_EQ(alias.kind, Component::Kind::Activity);
+    EXPECT_EQ(alias.target_activity, std::optional<std::string>("com.test.Target"));
+    EXPECT_EQ(alias.exported, std::nullopt);
+    EXPECT_EQ(alias.exported_default, std::optional<bool>(true));
+    EXPECT_TRUE(alias.is_exported());
+    EXPECT_EQ(alias.permission, std::nullopt);
+    EXPECT_FALSE(alias.permission_inherited);
+    EXPECT_FALSE(alias.guarded_by_signature_permission);
+    EXPECT_TRUE(alias.is_reachable());
+
+    // No filter, no android:exported: not exported.
+    EXPECT_FALSE(named(m, "com.test.Quiet").is_exported());
+}
+
+TEST(ManifestActivityAlias, AnAliasPermissionThatGivesNothingIsNoPermission)
+{
+    // @null, or a missing id: the alias does not fall back to the
+    // application's permission.
+    Manifest m =
+        sdk_manifest({}, {string_attr("permission", kPermissionId, "com.test.SIG")},
+                     {element("activity", ".T"),
+                      element("activity-alias", ".Null",
+                              {string_attr("targetActivity", kTargetActivityId, ".T"),
+                               TestAttr{kAndroidNs, "exported", kExportedId, std::nullopt, true},
+                               typed_attr("permission", kPermissionId, kTypeNull, 1)}),
+                      element("activity-alias", ".Unknown",
+                              {string_attr("targetActivity", kTargetActivityId, ".T"),
+                               TestAttr{kAndroidNs, "exported", kExportedId, std::nullopt, true},
+                               reference_attr("permission", kPermissionId, ArscBuilder::id(3))}),
+                      element("activity-alias", ".Signature",
+                              {string_attr("targetActivity", kTargetActivityId, ".T"),
+                               TestAttr{kAndroidNs, "exported", kExportedId, std::nullopt, true},
+                               string_attr("permission", kPermissionId, "com.test.SIG")})});
+    const Component &null_alias = named(m, "com.test.Null");
+    EXPECT_EQ(null_alias.permission, std::nullopt);
+    EXPECT_FALSE(null_alias.permission_unknown);
+    EXPECT_FALSE(null_alias.permission_inherited);
+    EXPECT_TRUE(null_alias.is_reachable());
+
+    const Component &unknown = named(m, "com.test.Unknown");
+    EXPECT_EQ(unknown.permission, std::nullopt);
+    EXPECT_TRUE(unknown.permission_unknown);
+    EXPECT_FALSE(unknown.permission_inherited);
+    EXPECT_TRUE(unknown.is_reachable());
+
+    const Component &signature = named(m, "com.test.Signature");
+    EXPECT_FALSE(signature.permission_inherited);
+    EXPECT_TRUE(signature.guarded_by_signature_permission);
+    EXPECT_FALSE(signature.is_reachable());
+}
+
+TEST(ManifestActivityAlias, TheTargetName)
+{
+    Manifest m = sdk_manifest(
+        {}, {},
+        {element("activity-alias", ".Short",
+                 {string_attr("targetActivity", kTargetActivityId, "T")}),
+         element("activity-alias", ".Full",
+                 {string_attr("targetActivity", kTargetActivityId, "org.other.T")}),
+         element("activity-alias", ".Missing"),
+         element("activity-alias", ".Unknown",
+                 {reference_attr("targetActivity", kTargetActivityId, ArscBuilder::id(0))})});
+    EXPECT_EQ(named(m, "com.test.Short").target_activity, std::optional<std::string>("com.test.T"));
+    EXPECT_EQ(named(m, "com.test.Full").target_activity, std::optional<std::string>("org.other.T"));
+    // Android refuses to install these; dexpp lists them with an empty target.
+    EXPECT_EQ(named(m, "com.test.Missing").target_activity, std::optional<std::string>(""));
+    EXPECT_EQ(named(m, "com.test.Unknown").target_activity, std::optional<std::string>(""));
+}
+
+TEST(ManifestActivityAlias, AliasesKeepTheirPlaceAndCanBeTheLauncher)
+{
+    TestElement launcher_filter{
+        "intent-filter",
+        {},
+        {{"action", {literal_name("android.intent.action.MAIN")}, {}},
+         {"category", {literal_name("android.intent.category.LAUNCHER")}, {}}}};
+    Manifest m =
+        sdk_manifest({}, {},
+                     {element("service", ".S"), element("activity", ".A"),
+                      element("activity-alias", ".Launcher",
+                              {string_attr("targetActivity", kTargetActivityId, ".A"),
+                               TestAttr{kAndroidNs, "exported", kExportedId, std::nullopt, true}},
+                              {launcher_filter}),
+                      element("activity", ".C")});
+    std::vector<std::string> names;
+    for (const Component &c : m.components())
+        names.push_back(c.name);
+    EXPECT_EQ(names, (std::vector<std::string>{"com.test.A", "com.test.Launcher", "com.test.C",
+                                               "com.test.S"}));
+    EXPECT_EQ(m.launcher_activity(), std::optional<std::string_view>("com.test.Launcher"));
+}
+
+TEST(ManifestPathPermission, ThePathAttributesInAndroidsOrder)
+{
+    const std::vector<std::pair<std::vector<TestAttr>, PathPermission::Match>> cases = {
+        {{string_attr("path", kPathId, "/l"), string_attr("pathSuffix", kPathSuffixId, "/s"),
+          string_attr("pathPrefix", kPathPrefixId, "/p"),
+          string_attr("pathPattern", kPathPatternId, "/g"),
+          string_attr("pathAdvancedPattern", kPathAdvancedPatternId, "/a")},
+         PathPermission::Match::AdvancedPattern},
+        {{string_attr("path", kPathId, "/l"), string_attr("pathSuffix", kPathSuffixId, "/s"),
+          string_attr("pathPrefix", kPathPrefixId, "/p"),
+          string_attr("pathPattern", kPathPatternId, "/g")},
+         PathPermission::Match::Pattern},
+        {{string_attr("path", kPathId, "/l"), string_attr("pathSuffix", kPathSuffixId, "/s"),
+          string_attr("pathPrefix", kPathPrefixId, "/p")},
+         PathPermission::Match::Prefix},
+        {{string_attr("path", kPathId, "/l"), string_attr("pathSuffix", kPathSuffixId, "/s")},
+         PathPermission::Match::Suffix},
+        {{string_attr("path", kPathId, "/l")}, PathPermission::Match::Literal},
+        // A null value gives nothing, so the next attribute counts.
+        {{string_attr("path", kPathId, "/l"),
+          typed_attr("pathPattern", kPathPatternId, kTypeNull, 1)},
+         PathPermission::Match::Literal},
+    };
+    const std::map<PathPermission::Match, std::string> paths = {
+        {PathPermission::Match::Literal, "/l"},         {PathPermission::Match::Prefix, "/p"},
+        {PathPermission::Match::Pattern, "/g"},         {PathPermission::Match::Suffix, "/s"},
+        {PathPermission::Match::AdvancedPattern, "/a"},
+    };
+    for (const auto &[attrs, match] : cases) {
+        std::vector<TestAttr> all = attrs;
+        all.push_back(string_attr("readPermission", kReadPermissionId, "com.test.SIG"));
+        Manifest m = sdk_manifest({}, {}, {element("provider", ".P", {}, {path_permission(all)})});
+        const Component &c = named(m, "com.test.P");
+        ASSERT_EQ(c.path_permissions.size(), 1u);
+        EXPECT_EQ(c.path_permissions[0].match, match);
+        EXPECT_EQ(c.path_permissions[0].path, paths.at(match));
+        EXPECT_FALSE(c.path_permissions[0].path_unknown);
+    }
+}
+
+TEST(ManifestPathPermission, AnUnknownPathIsKept)
+{
+    // pathPattern is a reference dexpp cannot read (no resource table): it
+    // comes before android:path, so the path is unknown.
+    Manifest m = sdk_manifest(
+        {}, {},
+        {element(
+            "provider", ".P", {string_attr("permission", kPermissionId, "com.test.SIG")},
+            {path_permission({reference_attr("pathPattern", kPathPatternId, ArscBuilder::id(0)),
+                              string_attr("path", kPathId, "/l"),
+                              string_attr("permission", kPermissionId, "com.test.NORMAL")})})});
+    const Component &c = named(m, "com.test.P");
+    ASSERT_EQ(c.path_permissions.size(), 1u);
+    EXPECT_TRUE(c.path_permissions[0].path_unknown);
+    EXPECT_EQ(c.path_permissions[0].match, PathPermission::Match::Pattern);
+    EXPECT_EQ(c.path_permissions[0].path, "");
+    EXPECT_FALSE(c.guarded_by_signature_permission);
+}
+
+TEST(ManifestPathPermission, PermissionsAndDroppedElements)
+{
+    Manifest m = sdk_manifest(
+        {}, {string_attr("permission", kPermissionId, "com.test.SIG")},
+        {element("provider", ".P", {},
+                 {// read from android:permission, write given apart
+                  path_permission(
+                      {string_attr("path", kPathId, "/a"),
+                       string_attr("permission", kPermissionId, "com.test.SIG"),
+                       string_attr("writePermission", kWritePermissionId, "com.test.NORMAL")}),
+                  // no permission: the provider's do not count, Android drops it
+                  path_permission({string_attr("path", kPathId, "/b")}),
+                  // a null permission is no permission
+                  path_permission({string_attr("path", kPathId, "/c"),
+                                   typed_attr("permission", kPermissionId, kTypeNull, 1)}),
+                  // no path
+                  path_permission({string_attr("permission", kPermissionId, "com.test.SIG")})})});
+    const Component &c = named(m, "com.test.P");
+    ASSERT_EQ(c.path_permissions.size(), 1u);
+    const PathPermission &pp = c.path_permissions[0];
+    EXPECT_EQ(pp.path, "/a");
+    EXPECT_EQ(pp.read_permission, std::optional<std::string>("com.test.SIG"));
+    EXPECT_EQ(pp.write_permission, std::optional<std::string>("com.test.NORMAL"));
+    // The provider's own permissions are signature ones, but /a is writable
+    // with a normal permission.
+    EXPECT_EQ(c.read_permission, std::optional<std::string>("com.test.SIG"));
+    EXPECT_EQ(c.write_permission, std::optional<std::string>("com.test.SIG"));
+    EXPECT_FALSE(c.guarded_by_signature_permission);
+    EXPECT_TRUE(c.is_reachable());
+}
+
+TEST(ManifestPathPermission, WhenAPathPermissionKeepsTheGuard)
+{
+    auto provider = [](std::vector<TestAttr> provider_attrs, std::vector<TestAttr> path_attrs) {
+        path_attrs.push_back(string_attr("pathPrefix", kPathPrefixId, "/x"));
+        Manifest m = sdk_manifest({}, {},
+                                  {element("provider", ".P", std::move(provider_attrs),
+                                           {path_permission(std::move(path_attrs))})});
+        return named(m, "com.test.P");
+    };
+    const TestAttr sig = string_attr("permission", kPermissionId, "com.test.SIG");
+
+    // Only a signature read permission: writing the path needs the
+    // provider's permission.
+    EXPECT_TRUE(provider({sig}, {string_attr("readPermission", kReadPermissionId, "com.test.SIG")})
+                    .guarded_by_signature_permission);
+    // A normal write permission opens the path.
+    EXPECT_FALSE(
+        provider({sig}, {string_attr("writePermission", kWritePermissionId, "com.test.NORMAL")})
+            .guarded_by_signature_permission);
+    // An unknown permission may be any permission.
+    const Component unknown =
+        provider({sig}, {reference_attr("readPermission", kReadPermissionId, ArscBuilder::id(0))});
+    ASSERT_EQ(unknown.path_permissions.size(), 1u);
+    EXPECT_TRUE(unknown.path_permissions[0].read_permission_unknown);
+    EXPECT_EQ(unknown.path_permissions[0].read_permission, std::nullopt);
+    EXPECT_FALSE(unknown.guarded_by_signature_permission);
+    // A provider without a permission: the paths outside /x stay open.
+    EXPECT_FALSE(provider({}, {sig}).guarded_by_signature_permission);
 }

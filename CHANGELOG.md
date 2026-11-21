@@ -2,6 +2,46 @@
 
 ## Unreleased
 
+### Exported providers, path permissions and activity aliases
+
+- A content provider without `android:exported` is now exported when the app
+  targets Android 4.1 (API 16) or older, whatever its intent filters, as
+  Android's package parser does (`ParsedProviderUtils.parseProvider`:
+  `targetSdkVersion < JELLY_BEAN_MR1`). Before, the intent-filter rule of the
+  other components was used, so a provider of an old app with no intent
+  filter was reported as not exported, and a provider of a recent app with an
+  intent filter as exported. The target SDK is the one Android has when it
+  reads `<application>`: only a `<uses-sdk>` before `<application>` counts,
+  a missing `targetSdkVersion` means the `minSdkVersion` (or 1), and no
+  `<uses-sdk>` means 0. When dexpp cannot tell the target SDK, the provider
+  counts as possibly exported.
+    - New: C++ `Component::exported_default`, what Android uses when
+      `android:exported` gives no value (for the other kinds, whether the
+      component has an intent filter). `is_exported()` uses it, and
+      `exported_varies` counts a null value as it.
+- A provider's `<path-permission>` elements are now read. A caller that holds
+  a path's permission reaches the matching paths without the provider's own
+  permission, so a provider now counts as guarded only when its read and
+  write permissions and every read and write permission of its paths are
+  signature permissions. Before, a provider guarded by a signature permission
+  but open on some path through a weaker one was reported as not reachable.
+    - New: C++ `Component::path_permissions`, a list of `PathPermission`
+      (`path`, `match`, `path_unknown`, `read_permission`,
+      `read_permission_unknown`, `write_permission`,
+      `write_permission_unknown`). Elements Android drops (no permission, or
+      no path) are left out.
+- `<activity-alias>` elements are now listed with the activities, in manifest
+  order. Android gives an alias only its own `android:permission` (not its
+  target's, and not the application's), its own `android:exported` and its
+  own intent filters, so an alias can open a guarded activity to every app.
+  Before, aliases were missing from `components()`.
+    - New: C++ `Component::target_activity`, the activity an alias starts
+      (unset for every other component).
+    - Breaking: `components_of(Activity)` and `components()` now include
+      aliases, whose `name` is not a class, and `launcher_activity()` can be
+      an alias's name.
+- The test fixture `reachable.apk` has two aliases and three more providers.
+
 ### Permissions and null values in the manifest
 
 - The `android:permission` of `<application>` now guards every activity,

@@ -234,7 +234,7 @@ TEST(CApiApk, SeparatesExportedFromReachable)
     EXPECT_EQ(levels["com.dexpp.reach.P_DANGEROUS"], 1);
     EXPECT_EQ(levels["com.dexpp.reach.P_SIGNATURE"], 2);
 
-    ASSERT_EQ(m.component_count, 13u);
+    ASSERT_EQ(m.component_count, 18u);
     size_t exported = 0;
     size_t reachable = 0;
     for (size_t i = 0; i < m.component_count; ++i) {
@@ -267,8 +267,8 @@ TEST(CApiApk, SeparatesExportedFromReachable)
             EXPECT_EQ(c.is_reachable, 1);
         }
     }
-    EXPECT_EQ(exported, 12u);
-    EXPECT_EQ(reachable, 6u);
+    EXPECT_EQ(exported, 16u);
+    EXPECT_EQ(reachable, 8u);
     ASSERT_NE(m.application_permission, nullptr);
     EXPECT_STREQ(m.application_permission, "com.dexpp.reach.P_SIGNATURE");
     EXPECT_EQ(m.application_permission_reference, 0u);

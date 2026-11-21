@@ -4,3 +4,9 @@ ReadableProvider: read com.dexpp.reach.P_NORMAL, write com.dexpp.reach.P_SIGNATU
   reachable: True
 WritableProvider: read com.dexpp.reach.P_SIGNATURE, write com.dexpp.reach.P_DANGEROUS
   reachable: True
+PathProvider: read com.dexpp.reach.P_SIGNATURE, write com.dexpp.reach.P_SIGNATURE
+  reachable: True
+SigPathProvider: read com.dexpp.reach.P_SIGNATURE, write com.dexpp.reach.P_SIGNATURE
+  reachable: False
+DefaultProvider: read com.dexpp.reach.P_SIGNATURE, write com.dexpp.reach.P_SIGNATURE
+  reachable: False

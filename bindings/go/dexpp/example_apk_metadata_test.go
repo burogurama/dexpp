@@ -131,11 +131,13 @@ func ExampleComponent_reachable() {
 	// <application> requires com.dexpp.reach.P_SIGNATURE
 	// InheritingActivity is guarded by the application's com.dexpp.reach.P_SIGNATURE (level 2)
 	// SigActivity is guarded by its own com.dexpp.reach.P_SIGNATURE (level 2)
+	// GuardedAlias is guarded by its own com.dexpp.reach.P_SIGNATURE (level 2)
 	// SigService is guarded by its own com.dexpp.reach.P_SIGNATURE (level 2)
 	// InheritingService is guarded by the application's com.dexpp.reach.P_SIGNATURE (level 2)
 	// InheritingReceiver is guarded by the application's com.dexpp.reach.P_SIGNATURE (level 2)
 	// InheritingProvider is guarded by the application's com.dexpp.reach.P_SIGNATURE (level 2)
-	// 6 of 13 components are reachable
+	// SigPathProvider is guarded by the application's com.dexpp.reach.P_SIGNATURE (level 2)
+	// 8 of 18 components are reachable
 }
 
 // Read the read and write permissions of the content providers.
@@ -164,6 +166,12 @@ func ExampleComponent_providers() {
 	//   reachable: true
 	// WritableProvider: read com.dexpp.reach.P_SIGNATURE, write com.dexpp.reach.P_DANGEROUS
 	//   reachable: true
+	// PathProvider: read com.dexpp.reach.P_SIGNATURE, write com.dexpp.reach.P_SIGNATURE
+	//   reachable: true
+	// SigPathProvider: read com.dexpp.reach.P_SIGNATURE, write com.dexpp.reach.P_SIGNATURE
+	//   reachable: false
+	// DefaultProvider: read com.dexpp.reach.P_SIGNATURE, write com.dexpp.reach.P_SIGNATURE
+	//   reachable: false
 }
 
 // Look up a resource by name, and resolve its value.

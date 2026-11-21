@@ -4,6 +4,10 @@
      signature permission, so a component that gives no permission of its own
      takes that one; a provider takes it for reading and for writing unless
      it sets android:readPermission or android:writePermission.
+     An activity-alias takes neither the application's permission nor its
+     target's: only its own. A path-permission lets a caller that holds its
+     permission reach the matching paths of a provider. A provider without
+     android:exported is not exported, as the app targets API 17 or newer.
      tests/apk/manifest_test.cc says how the APK was built. -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.dexpp.reach"
@@ -19,6 +23,9 @@
         <activity android:name=".SigActivity" android:exported="true" android:permission="com.dexpp.reach.P_SIGNATURE"/>
         <activity android:name=".HiddenActivity" android:exported="false"/>
         <activity android:name=".PlatformPermActivity" android:exported="true" android:permission="android.permission.DUMP"/>
+        <activity-alias android:name=".OpenAlias" android:targetActivity=".SigActivity" android:exported="true"/>
+        <activity-alias android:name=".GuardedAlias" android:targetActivity=".InheritingActivity"
+            android:exported="true" android:permission="com.dexpp.reach.P_SIGNATURE"/>
         <service android:name=".SigService" android:exported="true" android:permission="com.dexpp.reach.P_SIGNATURE"/>
         <service android:name=".InheritingService" android:exported="true"/>
         <receiver android:name=".InheritingReceiver" android:exported="true"/>
@@ -30,5 +37,21 @@
         <provider android:name=".WritableProvider" android:authorities="com.dexpp.reach.writable"
             android:exported="true" android:permission="com.dexpp.reach.P_SIGNATURE"
             android:writePermission="com.dexpp.reach.P_DANGEROUS"/>
+        <provider android:name=".PathProvider" android:authorities="com.dexpp.reach.path"
+            android:exported="true">
+            <path-permission android:pathPrefix="/public" android:readPermission="com.dexpp.reach.P_NORMAL"/>
+        </provider>
+        <provider android:name=".SigPathProvider" android:authorities="com.dexpp.reach.sigpath"
+            android:exported="true">
+            <path-permission android:pathPattern="/items/.*" android:permission="com.dexpp.reach.P_SIGNATURE"/>
+            <!-- Android drops these two: no permission, and no path. -->
+            <path-permission android:path="/open"/>
+            <path-permission android:readPermission="com.dexpp.reach.P_NORMAL"/>
+        </provider>
+        <provider android:name=".DefaultProvider" android:authorities="com.dexpp.reach.default">
+            <intent-filter>
+                <action android:name="com.dexpp.reach.QUERY"/>
+            </intent-filter>
+        </provider>
     </application>
 </manifest>

@@ -57,7 +57,8 @@
  *  - Integers (versionCode, minSdkVersion, targetSdkVersion) hold the default
  *    configuration's value.
  *  - Text (android:name, android:permission, android:readPermission,
- *    android:writePermission, android:versionName) is read with
+ *    android:writePermission, android:versionName, android:targetActivity
+ *    and the path attributes of `<path-permission>`) is read with
  *    TypedArray.getNonConfigurationString, which returns null for a string
  *    resource that changes with the locale, the screen or any other
  *    configuration except the Android version.  So such a reference reads
@@ -69,7 +70,12 @@
  *
  *  The permission of a component is the one Android enforces: its own
  *  android:permission, or the application's when it gives none (see
- *  Component::permission). */
+ *  Component::permission).
+ *
+ *  An `<activity-alias>` is listed as an activity whose target_activity is
+ *  set.  Android gives it only what the alias element itself says about
+ *  access: its own android:permission (never the target's or the
+ *  application's), its own android:exported and its own intent filters. */
 
 #include <cstdint>
 #include <optional>
@@ -107,7 +113,64 @@ struct IntentFilter
     }
 };
 
-/** One of activity / service / receiver / provider. */
+/** A `<path-permission>` of a provider: the permissions that also give
+ *  access to the provider's paths that match.
+ *
+ *  Android reads it in ParsedProviderUtils.parsePathPermission, and checks
+ *  it in ContentProvider (enforceReadPermissionInner,
+ *  enforceWritePermissionInner) and in the activity manager
+ *  (ContentProviderHelper.checkContentProviderPermission).  A caller that
+ *  holds the path's read or write permission reads or writes the matching
+ *  paths even without the provider's own permission.  So a path permission
+ *  only widens access to a provider that has a permission of its own.
+ *  (When the provider has none, a path permission does close its paths to
+ *  callers without it, but every other path stays open.)
+ *
+ *  Android drops a `<path-permission>` that gives neither a read nor a write
+ *  permission, or no path; dexpp drops those too.  The text attributes are
+ *  read like the provider's (see the comment at the top of this file). */
+struct PathPermission
+{
+    /** Which attribute gives the path, which says how Android matches it
+     *  (PatternMatcher). */
+    enum class Match : uint8_t {
+        Literal,         ///< android:path: the whole path.
+        Prefix,          ///< android:pathPrefix: the start of the path.
+        Pattern,         ///< android:pathPattern: a simple glob.
+        Suffix,          ///< android:pathSuffix: the end of the path.
+        AdvancedPattern, ///< android:pathAdvancedPattern: an advanced glob.
+    };
+
+    /** The path, or the pattern.  Empty when path_unknown is true. */
+    std::string path;
+    /** The attribute Android takes the path from: the first that gives a
+     *  value, in the order android:pathAdvancedPattern, pathPattern,
+     *  pathPrefix, pathSuffix, path. */
+    Match match = Match::Literal;
+    /** True when dexpp cannot tell the path: going through those attributes
+     *  in that order, one whose value dexpp cannot tell comes before any
+     *  that gives a value.  `match` is then that attribute.  (Android might
+     *  drop such an element; dexpp keeps it, which is the safe side, as a
+     *  path permission only widens access.) */
+    bool path_unknown = false;
+    /** The permission that lets a caller read the matching paths:
+     *  android:readPermission, or the element's android:permission when that
+     *  gives none.  It does not fall back to the provider's permissions.
+     *  nullopt when neither gives one, or when it is unknown
+     *  (read_permission_unknown). */
+    std::optional<std::string> read_permission;
+    /** True when dexpp cannot tell read_permission. */
+    bool read_permission_unknown = false;
+    /** The permission that lets a caller write the matching paths:
+     *  android:writePermission, or android:permission.  Same rules as
+     *  read_permission. */
+    std::optional<std::string> write_permission;
+    /** True when dexpp cannot tell write_permission. */
+    bool write_permission_unknown = false;
+};
+
+/** One of activity / service / receiver / provider.  An `<activity-alias>`
+ *  is an activity with target_activity set. */
 struct Component
 {
     enum class Kind : uint8_t { Activity, Service, Receiver, Provider };
@@ -124,6 +187,16 @@ struct Component
     /** True when android:name is a reference whose string dexpp cannot tell
      *  (see the comment at the top of this file). */
     bool name_unknown = false;
+    /** For an `<activity-alias>`: android:targetActivity, the activity the
+     *  alias starts, normalized to a fully-qualified class like `name`.
+     *  Empty when the attribute is missing or gives no value.  nullopt for
+     *  every component that is not an alias.
+     *
+     *  The alias's `name` is not a class; this is.  Android refuses to
+     *  install a package whose alias does not name an activity declared
+     *  before it (ParsedActivityUtils.parseActivityAlias); dexpp does not
+     *  check this. */
+    std::optional<std::string> target_activity;
     /** android:exported: the value written, or the value of the resource it
      *  refers to, in the default configuration.  nullopt when the attribute
      *  is absent, when it is a null value (Android reads it as not written),
@@ -139,14 +212,34 @@ struct Component
     /** True when android:exported is a reference that makes the component
      *  exported in some configurations and not in others: for example false
      *  in res/values and true in res/values-v31, so the component is exported
-     *  on Android 12 and newer.  A configuration whose value is null uses the
-     *  intent-filter rule, and one whose value is unknown counts as another
+     *  on Android 12 and newer.  A configuration whose value is null uses
+     *  exported_default, and one whose value is unknown counts as another
      *  answer.  `exported` holds the default configuration's value. */
     bool exported_varies = false;
+    /** What Android uses when android:exported gives no value (missing, or
+     *  a null value).
+     *
+     *  - Activity, alias, service, receiver: true when the component has an
+     *    intent filter (ParsedActivityUtils, ParsedServiceUtils).
+     *  - Provider: true when the app targets Android 4.1 (API 16) or older,
+     *    whatever its intent filters (ParsedProviderUtils.parseProvider:
+     *    targetSdkVersion < JELLY_BEAN_MR1).  The target SDK is the one the
+     *    package parser has when it reads `<application>`: that of the last
+     *    `<uses-sdk>` before `<application>`; android:minSdkVersion (or 1)
+     *    when android:targetSdkVersion is not written; 0 when no `<uses-sdk>`
+     *    comes before `<application>`.  For a provider, empty text in
+     *    android:exported also gives this default.
+     *
+     *  nullopt when dexpp cannot tell: the target SDK is a reference dexpp
+     *  cannot read, a codename, or a value that gives a different answer in
+     *  another configuration. */
+    std::optional<bool> exported_default;
     /** The permission a caller needs, as Android enforces it
      *  (ActivityInfo.permission, ServiceInfo.permission): the component's
      *  android:permission, or, when the component gives none, the
      *  application's android:permission (then permission_inherited is true).
+     *  An `<activity-alias>` never takes the application's permission, nor
+     *  its target's: only its own counts (ParsedActivityUtils).
      *  "Gives none" means the attribute is missing, or Android reads it as
      *  not written: a null value, or a string that changes with the
      *  configuration (see the comment at the top of this file).  nullopt
@@ -191,24 +284,31 @@ struct Component
     std::optional<uint32_t> write_permission_reference;
     /** True when dexpp cannot tell write_permission. */
     bool write_permission_unknown = false;
+    /** For a provider: its `<path-permission>` elements, in manifest order,
+     *  without those Android drops.  Empty for the other kinds. */
+    std::vector<PathPermission> path_permissions;
     std::vector<IntentFilter> intent_filters;
 
     /** Resolved at parse time: true when the permission Android enforces
      *  names a permission the app itself declares with a signature /
      *  signatureOrSystem protection level, one a third-party app cannot
      *  obtain.  For an activity, a service or a receiver that is
-     *  `permission`; for a provider, both read_permission and
-     *  write_permission must be such a permission, as an app that can read
-     *  or write reaches it.  Permissions whose protection level the manifest
+     *  `permission`; for a provider, read_permission, write_permission and
+     *  every read and write permission of its path_permissions must be such
+     *  a permission, as an app that holds any of them reaches it.  An
+     *  unknown path permission leaves this false too.  Permissions whose
+     *  protection level the manifest
      *  does not declare (platform permissions like android.permission.DUMP)
      *  leave this false, and so do an unknown permission and a level given
      *  by a reference that is below signature in some configuration, or
      *  cannot be resolved. */
     bool guarded_by_signature_permission = false;
 
-    /** Effective exported state: the explicit flag if present, else inferred —
-     *  a component with at least one intent filter defaults to exported.  A
-     *  null value counts as not written, so it is inferred too.
+    /** Effective exported state: the explicit flag if present, else
+     *  exported_default (a component with at least one intent filter; a
+     *  provider of an app that targets API 16 or older).  A null value
+     *  counts as not written, so it takes the default too.  When the default
+     *  is unknown, this is true.
      *
      *  When android:exported is a reference whose value differs between
      *  configurations (exported_varies), this is true: the component is
@@ -227,7 +327,7 @@ struct Component
             return *exported;
         if (exported_unknown)
             return true;
-        return !intent_filters.empty();
+        return exported_default.value_or(true);
     }
 
     /** Reachable by a third-party app: exported and not gated behind a
@@ -341,7 +441,10 @@ class Manifest
     const std::vector<Component> &components() const { return components_; }
     std::vector<const Component *> components_of(Component::Kind kind) const;
 
-    /** The launcher activity's name, if any (MAIN + LAUNCHER intent filter). */
+    /** The launcher activity's name, if any (MAIN + LAUNCHER intent filter):
+     *  the first activity or `<activity-alias>` that has one.  For an alias
+     *  this is the alias's name; its Component gives the class
+     *  (target_activity). */
     std::optional<std::string_view> launcher_activity() const;
 
     /** application android:debuggable, if explicitly set and known.  nullopt

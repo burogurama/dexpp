@@ -148,8 +148,9 @@ class ApkTest {
                     m.componentsOf(ComponentKind.ACTIVITY).stream()
                             .filter(Component::isReachable)
                             .count();
-            assertEquals(5, exported);
-            assertEquals(3, reachable);
+            // Two of the eight activities are aliases.
+            assertEquals(7, exported);
+            assertEquals(4, reachable);
         }
     }
 

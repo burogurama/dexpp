@@ -153,8 +153,9 @@ func TestReachability(t *testing.T) {
 			reachable++
 		}
 	}
-	if exported != 5 || reachable != 3 {
-		t.Errorf("%d exported and %d reachable activities, want 5 and 3", exported, reachable)
+	// Two of the eight activities are aliases.
+	if exported != 7 || reachable != 4 {
+		t.Errorf("%d exported and %d reachable activities, want 7 and 4", exported, reachable)
 	}
 }
 
