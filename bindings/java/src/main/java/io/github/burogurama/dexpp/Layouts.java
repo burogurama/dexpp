@@ -382,16 +382,30 @@ final class Layouts {
         static final StructLayout LAYOUT = B.build("DexppIntentFilter");
     }
 
+    static final class PathPermission {
+        private static final Builder B = new Builder();
+        static final long PATH = B.ptr("path");
+        static final long MATCH = B.i32("match");
+        static final long PATH_UNKNOWN = B.i32("path_unknown");
+        static final long READ_PERMISSION = B.ptr("read_permission");
+        static final long READ_PERMISSION_UNKNOWN = B.i32("read_permission_unknown");
+        static final long WRITE_PERMISSION = B.ptr("write_permission");
+        static final long WRITE_PERMISSION_UNKNOWN = B.i32("write_permission_unknown");
+        static final StructLayout LAYOUT = B.build("DexppPathPermission");
+    }
+
     static final class Component {
         private static final Builder B = new Builder();
         static final long NAME = B.ptr("name");
         static final long NAME_REFERENCE = B.i32("name_reference");
         static final long NAME_UNKNOWN = B.i32("name_unknown");
+        static final long TARGET_ACTIVITY = B.ptr("target_activity");
         static final long KIND = B.i32("kind");
         static final long EXPORTED = B.i32("exported");
         static final long EXPORTED_REFERENCE = B.i32("exported_reference");
         static final long EXPORTED_UNKNOWN = B.i32("exported_unknown");
         static final long EXPORTED_VARIES = B.i32("exported_varies");
+        static final long EXPORTED_DEFAULT = B.i32("exported_default");
         static final long PERMISSION = B.ptr("permission");
         static final long PERMISSION_REFERENCE = B.i32("permission_reference");
         static final long PERMISSION_UNKNOWN = B.i32("permission_unknown");
@@ -402,6 +416,8 @@ final class Layouts {
         static final long WRITE_PERMISSION = B.ptr("write_permission");
         static final long WRITE_PERMISSION_REFERENCE = B.i32("write_permission_reference");
         static final long WRITE_PERMISSION_UNKNOWN = B.i32("write_permission_unknown");
+        static final long PATH_PERMISSIONS = B.ptr("path_permissions");
+        static final long PATH_PERMISSION_COUNT = B.size("path_permission_count");
         static final long INTENT_FILTERS = B.ptr("intent_filters");
         static final long INTENT_FILTER_COUNT = B.size("intent_filter_count");
         static final long GUARDED_BY_SIGNATURE_PERMISSION =
@@ -568,6 +584,7 @@ final class Layouts {
             TypeXref.LAYOUT,
             MethodRefGroup.LAYOUT,
             IntentFilter.LAYOUT,
+            PathPermission.LAYOUT,
             Component.LAYOUT,
             DeclaredPermission.LAYOUT,
             Manifest.LAYOUT,

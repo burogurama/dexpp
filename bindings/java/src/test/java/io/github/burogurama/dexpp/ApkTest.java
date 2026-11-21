@@ -205,6 +205,65 @@ class ApkTest {
     }
 
     /**
+     * reachable.apk has two {@code <activity-alias>} elements, providers with {@code
+     * <path-permission>} elements, and a provider without {@code android:exported}.
+     */
+    @Test
+    void aliasesPathPermissionsAndExportDefaults() throws IOException {
+        try (Apk apk = apk("reachable.apk")) {
+            Manifest m = apk.manifest().orElseThrow();
+            Map<String, Component> byName = new HashMap<>();
+            for (Component c : m.components()) {
+                byName.put(c.name().substring(c.name().lastIndexOf('.') + 1), c);
+            }
+
+            // An alias takes only its own permission: not its target's, not the application's.
+            Component open = byName.get("OpenAlias");
+            assertEquals(ComponentKind.ACTIVITY, open.kind());
+            assertEquals(Optional.of("com.dexpp.reach.SigActivity"), open.targetActivity());
+            assertEquals(Optional.empty(), open.permission());
+            assertFalse(open.permissionInherited());
+            assertTrue(open.isReachable());
+            Component guarded = byName.get("GuardedAlias");
+            assertEquals(Optional.of("com.dexpp.reach.P_SIGNATURE"), guarded.permission());
+            assertFalse(guarded.isReachable());
+            assertEquals(Optional.empty(), byName.get("SigActivity").targetActivity());
+
+            // /public is readable with a normal permission.
+            Component path = byName.get("PathProvider");
+            assertEquals(
+                    List.of(
+                            new PathPermission(
+                                    "/public",
+                                    PathMatch.PREFIX,
+                                    false,
+                                    Optional.of("com.dexpp.reach.P_NORMAL"),
+                                    false,
+                                    Optional.empty(),
+                                    false)),
+                    path.pathPermissions());
+            assertFalse(path.guardedBySignaturePermission());
+            assertTrue(path.isReachable());
+            Component sigPath = byName.get("SigPathProvider");
+            assertEquals(1, sigPath.pathPermissions().size());
+            assertEquals(PathMatch.PATTERN, sigPath.pathPermissions().get(0).match());
+            assertFalse(sigPath.isReachable());
+            assertEquals(List.of(), open.pathPermissions());
+            assertEquals(PathMatch.ADVANCED_PATTERN, PathMatch.of(4));
+            assertThrows(IllegalArgumentException.class, () -> PathMatch.of(5));
+
+            // The app targets API 34: a provider without android:exported is not exported,
+            // although it has an intent filter.
+            Component def = byName.get("DefaultProvider");
+            assertEquals(Optional.empty(), def.exported());
+            assertEquals(Optional.of(false), def.exportedDefault());
+            assertEquals(1, def.intentFilters().size());
+            assertFalse(def.isExported());
+            assertEquals(Optional.of(false), byName.get("HiddenActivity").exportedDefault());
+        }
+    }
+
+    /**
      * refs.apk: {@code @bool/nothing} is {@code @null}, {@code @bool/same_as_nothing} refers to it,
      * and {@code @string/no_permission} is {@code @null}. Android reads them as not written.
      */

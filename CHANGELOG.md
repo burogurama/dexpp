@@ -41,6 +41,17 @@
       aliases, whose `name` is not a class, and `launcher_activity()` can be
       an alias's name.
 - The test fixture `reachable.apk` has two aliases and three more providers.
+- The bindings have the new members: Python `Component.exported_default`,
+  `target_activity`, `path_permissions` and the classes `PathPermission` and
+  `PathMatch`; C `DexppComponent.exported_default`, `target_activity`,
+  `path_permissions`, `path_permission_count`, the struct
+  `DexppPathPermission` and the enum `DexppPathMatch`; Go
+  `Component.ExportedDefault`, `TargetActivity`, `PathPermissions`, the type
+  `PathPermission` and `PathMatch` with its constants; Java
+  `Component.exportedDefault()`, `targetActivity()`, `pathPermissions()`, the
+  record `PathPermission` and the enum `PathMatch`.
+    - Breaking, C and Java: `DexppComponent` has new members, so its layout
+      changed; the Java record `Component` has new components.
 
 ### Permissions and null values in the manifest
 

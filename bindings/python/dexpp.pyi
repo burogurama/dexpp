@@ -296,6 +296,22 @@ class ComponentKind(Enum):
     PROVIDER = 3
     """A `<provider>`: a content provider."""
 
+class PathMatch(Enum):
+    """How a provider's path permission matches a path. Each member names the
+    attribute of `<path-permission>` that gives the path.
+    """
+
+    LITERAL = 0
+    """`android:path`: the whole path."""
+    PREFIX = 1
+    """`android:pathPrefix`: the start of the path."""
+    PATTERN = 2
+    """`android:pathPattern`: a simple glob."""
+    SUFFIX = 3
+    """`android:pathSuffix`: the end of the path."""
+    ADVANCED_PATTERN = 4
+    """`android:pathAdvancedPattern`: an advanced glob."""
+
 # ===== identities =====
 
 class MethodId:
@@ -1871,9 +1887,65 @@ class IntentFilter:
         `android.intent.category.LAUNCHER`.
         """
 
+class PathPermission:
+    """A `<path-permission>` of a content provider: permissions that also give access
+    to the provider's paths that match.
+
+    A caller that holds the path's read or write permission can read or write the
+    matching paths, even without the provider's own permission. So a path permission
+    widens access to a provider that has a permission of its own. (When the provider
+    has none, a path permission closes the matching paths to callers without it, but
+    every other path stays open.)
+
+    Android drops a `<path-permission>` that gives neither a read nor a write
+    permission, or no path. dexpp leaves those out too.
+    """
+
+    @property
+    def path(self) -> str:
+        """The path or the pattern. Empty when `path_unknown` is true."""
+    @property
+    def match(self) -> PathMatch:
+        """The attribute the path comes from, which says how Android matches it.
+
+        Android takes the first attribute that gives a value, in this order:
+        `android:pathAdvancedPattern`, `pathPattern`, `pathPrefix`, `pathSuffix`,
+        `path`.
+        """
+    @property
+    def path_unknown(self) -> bool:
+        """True when dexpp cannot tell the path: in that order, an attribute whose
+        value dexpp cannot tell comes before any that gives a value. `match` is then
+        that attribute.
+        """
+    @property
+    def read_permission(self) -> Optional[str]:
+        """The permission that lets a caller read the matching paths:
+        `android:readPermission`, or the element's `android:permission` when that
+        gives none. It never falls back to the provider's permissions. `None` when
+        neither gives one, or when it is unknown (`read_permission_unknown`).
+        """
+    @property
+    def read_permission_unknown(self) -> bool:
+        """True when dexpp cannot tell `read_permission`."""
+    @property
+    def write_permission(self) -> Optional[str]:
+        """The permission that lets a caller write the matching paths:
+        `android:writePermission`, or the element's `android:permission`. The same
+        rules as `read_permission`.
+        """
+    @property
+    def write_permission_unknown(self) -> bool:
+        """True when dexpp cannot tell `write_permission`."""
+
 class Component:
     """An activity, a service, a broadcast receiver or a content provider declared in
     the manifest.
+
+    An `<activity-alias>` is an activity whose `target_activity` is set. Android gives
+    an alias only what the alias element itself says about access: its own
+    `android:permission` (never its target's or the application's), its own
+    `android:exported` and its own intent filters.
     """
 
     @property
@@ -1898,6 +1970,17 @@ class Component:
     def name_unknown(self) -> bool:
         """True when `android:name` is a reference whose string dexpp cannot tell:
         it cannot be resolved, or the string differs between Android versions.
+        """
+    @property
+    def target_activity(self) -> Optional[str]:
+        """For an `<activity-alias>`, the activity the alias starts
+        (`android:targetActivity`), completed with the app's package like `name`.
+        Empty when the attribute is missing or gives no value. `None` for every
+        component that is not an alias.
+
+        The alias's `name` is not a class; this one is. Android refuses to install a
+        package whose alias does not name an activity declared before the alias;
+        dexpp does not check this.
         """
     @property
     def exported(self) -> Optional[bool]:
@@ -1931,9 +2014,27 @@ class Component:
         in `res/values` and true in `res/values-v31`, so the component is exported on
         Android 12 and newer.
 
-        A configuration whose value is null uses the intent-filter rule, as Android
-        does when the attribute is not written. `exported` holds the default
+        A configuration whose value is null uses `exported_default`, as Android does
+        when the attribute is not written. `exported` holds the default
         configuration's value, and `is_exported` is true.
+        """
+    @property
+    def exported_default(self) -> Optional[bool]:
+        """What Android uses when `android:exported` gives no value (the attribute is
+        missing, or it is a null value).
+
+        For an activity, an alias, a service or a receiver, it is true when the
+        component has an intent filter. For a provider, it is true when the app
+        targets Android 4.1 (API 16) or older, whatever the provider's intent
+        filters. The target SDK is the one Android has when it reads `<application>`:
+        that of the last `<uses-sdk>` before `<application>`; the
+        `android:minSdkVersion` (or 1) when `android:targetSdkVersion` is not
+        written; 0 when no `<uses-sdk>` comes before `<application>`. For a provider,
+        empty text in `android:exported` gives this default too.
+
+        `None` when dexpp cannot tell: the target SDK is a reference dexpp cannot
+        read, a codename, or a value that gives another answer in another
+        configuration. `is_exported` then counts the provider as exported.
         """
     @property
     def permission(self) -> Optional[str]:
@@ -2003,6 +2104,11 @@ class Component:
     def write_permission_unknown(self) -> bool:
         """True when dexpp cannot tell `write_permission`."""
     @property
+    def path_permissions(self) -> list[PathPermission]:
+        """For a provider, its `<path-permission>` elements, in manifest order,
+        without those Android drops. Empty for the other kinds of component.
+        """
+    @property
     def intent_filters(self) -> list[IntentFilter]:
         """The component's intent filters."""
     @property
@@ -2011,13 +2117,15 @@ class Component:
         with the `signature` or `signatureOrSystem` protection level. Only apps signed
         with the same key can hold such a permission.
 
-        For a provider, both `read_permission` and `write_permission` must be such a
-        permission, because an app that can read or write reaches the provider.
+        For a provider, `read_permission`, `write_permission` and every read and write
+        permission of its `path_permissions` must be such a permission, because an
+        app that holds any of them reaches the provider. An unknown path permission
+        leaves this false.
         """
     @property
     def is_exported(self) -> bool:
         """Whether other apps can address the component: the `exported` attribute when
-        the manifest sets it, otherwise true when the component has an intent filter.
+        the manifest sets it, otherwise `exported_default` (true when it is unknown).
         A null value counts as not set.
 
         When the attribute is a reference whose value differs between configurations
@@ -2150,6 +2258,10 @@ class Manifest:
     @property
     def launcher_activity(self) -> Optional[str]:
         """The name of the activity the launcher starts, or `None` when there is none.
+
+        It is the first activity or `<activity-alias>` with a `MAIN` + `LAUNCHER` intent
+        filter. For an alias, this is the alias's name; its component's
+        `target_activity` gives the class.
         """
     @property
     def debuggable(self) -> Optional[bool]:

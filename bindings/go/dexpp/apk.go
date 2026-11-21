@@ -169,8 +169,47 @@ func (f IntentFilter) HasAction(name string) bool {
 	return false
 }
 
+// PathPermission is a <path-permission> of a content provider: permissions
+// that also give access to the provider's paths that match.
+//
+// A caller that holds the path's read or write permission can read or write
+// the matching paths, even without the provider's own permission. So a path
+// permission widens access to a provider that has a permission of its own.
+// (When the provider has none, a path permission closes the matching paths to
+// callers without it, but every other path stays open.) Android drops a
+// <path-permission> that gives neither a read nor a write permission, or no
+// path; dexpp leaves those out too.
+type PathPermission struct {
+	// Path is the path or the pattern. It is empty when PathUnknown is true.
+	Path string
+	// Match is the attribute the path comes from, which says how Android
+	// matches it: the first that gives a value, in the order
+	// android:pathAdvancedPattern, pathPattern, pathPrefix, pathSuffix, path.
+	Match PathMatch
+	// PathUnknown is true when dexpp cannot tell the path: in that order, an
+	// attribute whose value dexpp cannot tell comes before any that gives a
+	// value. Match is then that attribute.
+	PathUnknown bool
+	// ReadPermission is the permission that lets a caller read the matching
+	// paths: android:readPermission, or the element's android:permission
+	// when that gives none. It never falls back to the provider's
+	// permissions. It is nil when neither gives one, or when it is unknown
+	// (ReadPermissionUnknown).
+	ReadPermission *string
+	// ReadPermissionUnknown is true when dexpp cannot tell ReadPermission.
+	ReadPermissionUnknown bool
+	// WritePermission is the permission that lets a caller write the
+	// matching paths: android:writePermission, or the element's
+	// android:permission. The same rules as ReadPermission.
+	WritePermission *string
+	// WritePermissionUnknown is true when dexpp cannot tell WritePermission.
+	WritePermissionUnknown bool
+}
+
 // Component is an activity, a service, a broadcast receiver or a content
-// provider declared in the manifest.
+// provider declared in the manifest. An <activity-alias> is an activity whose
+// TargetActivity is set; Android gives it only its own permission, its own
+// exported flag and its own intent filters.
 //
 // A ...Reference field holds the resource id when the attribute is written as
 // a reference, and is nil for a plain value or a missing attribute. When the
@@ -193,7 +232,15 @@ type Component struct {
 	// NameUnknown is true when android:name is a reference whose string
 	// dexpp cannot tell.
 	NameUnknown bool
-	Kind        ComponentKind
+	// TargetActivity is, for an <activity-alias>, the activity the alias
+	// starts (android:targetActivity), completed with the app's package like
+	// Name. It is empty when the attribute is missing or gives no value, and
+	// nil for every component that is not an alias. The alias's Name is not
+	// a class; this one is. Android refuses to install a package whose alias
+	// does not name an activity declared before the alias; dexpp does not
+	// check this.
+	TargetActivity *string
+	Kind           ComponentKind
 	// Exported is the android:exported attribute: the value the manifest
 	// writes, or the value of the resource it refers to in the default
 	// configuration. Text reads as Android reads it: only "1", "true" and
@@ -214,9 +261,22 @@ type Component struct {
 	// the component exported in some resource configurations and not in
 	// others: for example false in res/values and true in res/values-v31,
 	// so the component is exported on Android 12 and newer. A configuration
-	// whose value is null uses the intent-filter rule. Exported holds the
-	// default configuration's value, and IsExported is true.
+	// whose value is null uses ExportedDefault. Exported holds the default
+	// configuration's value, and IsExported is true.
 	ExportedVaries bool
+	// ExportedDefault is what Android uses when android:exported gives no
+	// value (missing, or a null value). For an activity, an alias, a service
+	// or a receiver, it is true when the component has an intent filter. For
+	// a provider, it is true when the app targets Android 4.1 (API 16) or
+	// older, whatever its intent filters. The target SDK is the one Android
+	// has when it reads <application>: that of the last <uses-sdk> before
+	// <application>; android:minSdkVersion (or 1) when
+	// android:targetSdkVersion is not written; 0 when no <uses-sdk> comes
+	// before <application>. For a provider, empty text in android:exported
+	// gives this default too. It is nil when dexpp cannot tell: the target
+	// SDK is a reference dexpp cannot read, a codename, or a value that gives
+	// another answer in another configuration.
+	ExportedDefault *bool
 	// Permission is the permission a caller must hold to use the component,
 	// as Android enforces it: the component's android:permission, or, when
 	// the component gives none, the android:permission of <application>
@@ -260,16 +320,20 @@ type Component struct {
 	WritePermissionReference *uint32
 	// WritePermissionUnknown is true when dexpp cannot tell WritePermission.
 	WritePermissionUnknown bool
-	IntentFilters          []IntentFilter
+	// PathPermissions are, for a provider, its <path-permission> elements in
+	// manifest order, without those Android drops. Nil for the other kinds.
+	PathPermissions []PathPermission
+	IntentFilters   []IntentFilter
 	// GuardedBySignaturePermission is true when the permission Android
 	// enforces is a permission this app declares with the signature or
 	// signatureOrSystem protection level. Only apps signed with the same key
-	// can hold such a permission. For a provider, both ReadPermission and
-	// WritePermission must be such a permission.
+	// can hold such a permission. For a provider, ReadPermission,
+	// WritePermission and every permission of its PathPermissions must be
+	// such a permission; an unknown path permission leaves this false.
 	GuardedBySignaturePermission bool
 	// IsExported says whether other apps can address the component: the
-	// Exported attribute when the manifest sets it, otherwise true when the
-	// component has an intent filter. A null value counts as not set. When
+	// Exported attribute when the manifest sets it, otherwise ExportedDefault
+	// (true when that is nil). A null value counts as not set. When
 	// the attribute is a reference whose value differs between
 	// configurations (ExportedVaries), IsExported is true. When the
 	// attribute is a reference whose value is unknown (ExportedUnknown),
@@ -343,7 +407,10 @@ type Manifest struct {
 	// Components are every activity, service, receiver and provider, in
 	// manifest order.
 	Components []Component
-	// LauncherActivity is the name of the activity the launcher starts.
+	// LauncherActivity is the name of the activity the launcher starts: the
+	// first activity or <activity-alias> with a MAIN + LAUNCHER intent
+	// filter. For an alias, it is the alias's name; its component's
+	// TargetActivity gives the class.
 	LauncherActivity *string
 	// Debuggable is android:debuggable of <application>. A null value counts
 	// as not set: Android then uses false.
@@ -448,11 +515,13 @@ func goComponent(c *C.DexppComponent) Component {
 		Name:                         C.GoString(c.name),
 		NameReference:                optReference(c.name_reference),
 		NameUnknown:                  c.name_unknown != 0,
+		TargetActivity:               goOptString(c.target_activity),
 		Kind:                         ComponentKind(c.kind),
 		Exported:                     optBool(c.exported),
 		ExportedReference:            optReference(c.exported_reference),
 		ExportedUnknown:              c.exported_unknown != 0,
 		ExportedVaries:               c.exported_varies != 0,
+		ExportedDefault:              optBool(c.exported_default),
 		Permission:                   goOptString(c.permission),
 		PermissionReference:          optReference(c.permission_reference),
 		PermissionUnknown:            c.permission_unknown != 0,
@@ -466,6 +535,22 @@ func goComponent(c *C.DexppComponent) Component {
 		GuardedBySignaturePermission: c.guarded_by_signature_permission != 0,
 		IsExported:                   c.is_exported != 0,
 		IsReachable:                  c.is_reachable != 0,
+	}
+	if c.path_permissions != nil && c.path_permission_count > 0 {
+		paths := unsafe.Slice(c.path_permissions, int(c.path_permission_count))
+		out.PathPermissions = make([]PathPermission, len(paths))
+		for i := range paths {
+			p := &paths[i]
+			out.PathPermissions[i] = PathPermission{
+				Path:                   C.GoString(p.path),
+				Match:                  PathMatch(p.match),
+				PathUnknown:            p.path_unknown != 0,
+				ReadPermission:         goOptString(p.read_permission),
+				ReadPermissionUnknown:  p.read_permission_unknown != 0,
+				WritePermission:        goOptString(p.write_permission),
+				WritePermissionUnknown: p.write_permission_unknown != 0,
+			}
+		}
 	}
 	if c.intent_filters != nil && c.intent_filter_count > 0 {
 		filters := unsafe.Slice(c.intent_filters, int(c.intent_filter_count))

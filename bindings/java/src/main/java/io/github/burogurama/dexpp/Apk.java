@@ -287,6 +287,17 @@ public final class Apk implements AutoCloseable {
         return id == 0 ? OptionalInt.empty() : OptionalInt.of(id);
     }
 
+    private static PathPermission pathPermission(MemorySegment p, long b) {
+        return new PathPermission(
+                Mem.string(p, b + Layouts.PathPermission.PATH),
+                PathMatch.of(Mem.i32(p, b + Layouts.PathPermission.MATCH)),
+                Mem.bool(p, b + Layouts.PathPermission.PATH_UNKNOWN),
+                Mem.optString(p, b + Layouts.PathPermission.READ_PERMISSION),
+                Mem.bool(p, b + Layouts.PathPermission.READ_PERMISSION_UNKNOWN),
+                Mem.optString(p, b + Layouts.PathPermission.WRITE_PERMISSION),
+                Mem.bool(p, b + Layouts.PathPermission.WRITE_PERMISSION_UNKNOWN));
+    }
+
     private static Component component(MemorySegment c, long b) {
         List<IntentFilter> filters =
                 Mem.array(
@@ -305,15 +316,23 @@ public final class Apk implements AutoCloseable {
                                                         f,
                                                         at + Layouts.IntentFilter.CATEGORY_COUNT)),
                                         Mem.bool(f, at + Layouts.IntentFilter.IS_LAUNCHER)));
+        List<PathPermission> paths =
+                Mem.array(
+                        Mem.pointer(c, b + Layouts.Component.PATH_PERMISSIONS),
+                        Mem.i64(c, b + Layouts.Component.PATH_PERMISSION_COUNT),
+                        Layouts.PathPermission.LAYOUT,
+                        Apk::pathPermission);
         return new Component(
                 Mem.string(c, b + Layouts.Component.NAME),
                 optReference(c, b + Layouts.Component.NAME_REFERENCE),
                 Mem.bool(c, b + Layouts.Component.NAME_UNKNOWN),
+                Mem.optString(c, b + Layouts.Component.TARGET_ACTIVITY),
                 ComponentKind.of(Mem.i32(c, b + Layouts.Component.KIND)),
                 Mem.triState(c, b + Layouts.Component.EXPORTED),
                 optReference(c, b + Layouts.Component.EXPORTED_REFERENCE),
                 Mem.bool(c, b + Layouts.Component.EXPORTED_UNKNOWN),
                 Mem.bool(c, b + Layouts.Component.EXPORTED_VARIES),
+                Mem.triState(c, b + Layouts.Component.EXPORTED_DEFAULT),
                 Mem.optString(c, b + Layouts.Component.PERMISSION),
                 optReference(c, b + Layouts.Component.PERMISSION_REFERENCE),
                 Mem.bool(c, b + Layouts.Component.PERMISSION_UNKNOWN),
@@ -324,6 +343,7 @@ public final class Apk implements AutoCloseable {
                 Mem.optString(c, b + Layouts.Component.WRITE_PERMISSION),
                 optReference(c, b + Layouts.Component.WRITE_PERMISSION_REFERENCE),
                 Mem.bool(c, b + Layouts.Component.WRITE_PERMISSION_UNKNOWN),
+                paths,
                 filters,
                 Mem.bool(c, b + Layouts.Component.GUARDED_BY_SIGNATURE_PERMISSION),
                 Mem.bool(c, b + Layouts.Component.IS_EXPORTED),

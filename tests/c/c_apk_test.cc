@@ -286,6 +286,67 @@ TEST(CApiApk, SeparatesExportedFromReachable)
     dexpp_apk_free(apk);
 }
 
+TEST(CApiApk, AliasesPathPermissionsAndExportDefaults)
+{
+    DexppApk *apk = open_apk("tests/data/reachable.apk");
+    ASSERT_NE(apk, nullptr);
+    DexppManifest m{};
+    ASSERT_EQ(dexpp_apk_manifest(apk, &m), 1);
+    std::map<std::string, const DexppComponent *> by_name;
+    for (size_t i = 0; i < m.component_count; ++i)
+        by_name[m.components[i].name] = &m.components[i];
+
+    // An alias of a guarded activity, without a permission of its own.
+    const DexppComponent *alias = by_name["com.dexpp.reach.OpenAlias"];
+    ASSERT_NE(alias, nullptr);
+    EXPECT_EQ(alias->kind, DEXPP_COMPONENT_ACTIVITY);
+    EXPECT_STREQ(alias->target_activity, "com.dexpp.reach.SigActivity");
+    EXPECT_EQ(alias->permission, nullptr);
+    EXPECT_EQ(alias->permission_inherited, 0);
+    EXPECT_EQ(alias->is_reachable, 1);
+    EXPECT_EQ(by_name["com.dexpp.reach.SigActivity"]->target_activity, nullptr);
+
+    // A provider readable on /public with a normal permission.
+    const DexppComponent *path = by_name["com.dexpp.reach.PathProvider"];
+    ASSERT_NE(path, nullptr);
+    ASSERT_EQ(path->path_permission_count, 1u);
+    const DexppPathPermission &pp = path->path_permissions[0];
+    EXPECT_STREQ(pp.path, "/public");
+    EXPECT_EQ(pp.match, DEXPP_PATH_MATCH_PREFIX);
+    EXPECT_EQ(pp.path_unknown, 0);
+    EXPECT_STREQ(pp.read_permission, "com.dexpp.reach.P_NORMAL");
+    EXPECT_EQ(pp.read_permission_unknown, 0);
+    EXPECT_EQ(pp.write_permission, nullptr);
+    EXPECT_EQ(pp.write_permission_unknown, 0);
+    EXPECT_EQ(path->guarded_by_signature_permission, 0);
+    EXPECT_EQ(path->is_reachable, 1);
+
+    const DexppComponent *sig = by_name["com.dexpp.reach.SigPathProvider"];
+    ASSERT_NE(sig, nullptr);
+    ASSERT_EQ(sig->path_permission_count, 1u);
+    EXPECT_EQ(sig->path_permissions[0].match, DEXPP_PATH_MATCH_PATTERN);
+    EXPECT_STREQ(sig->path_permissions[0].write_permission, "com.dexpp.reach.P_SIGNATURE");
+    EXPECT_EQ(sig->is_reachable, 0);
+
+    // Not a provider: no path permissions.
+    EXPECT_EQ(alias->path_permissions, nullptr);
+    EXPECT_EQ(alias->path_permission_count, 0u);
+
+    // The app targets API 34: a provider without android:exported is not
+    // exported, although it has an intent filter.
+    const DexppComponent *def = by_name["com.dexpp.reach.DefaultProvider"];
+    ASSERT_NE(def, nullptr);
+    EXPECT_EQ(def->exported, -1);
+    EXPECT_EQ(def->exported_default, 0);
+    EXPECT_EQ(def->intent_filter_count, 1u);
+    EXPECT_EQ(def->is_exported, 0);
+    EXPECT_EQ(by_name["com.dexpp.reach.HiddenActivity"]->exported_default, 0);
+
+    dexpp_manifest_clear(&m);
+    EXPECT_EQ(m.components, nullptr);
+    dexpp_apk_free(apk);
+}
+
 TEST(CApiApk, AnApkWithoutAManifestOrResources)
 {
     DexppApk *apk = open_apk("tests/data/app.apk");

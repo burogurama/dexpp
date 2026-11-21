@@ -44,7 +44,9 @@ import java.util.OptionalLong;
  * @param permissions the permissions the app asks for: the name of each {@code <uses-permission>}
  * @param declaredPermissions the permissions the app itself declares, in manifest order
  * @param components every activity, service, receiver and provider, in manifest order
- * @param launcherActivity the name of the activity the launcher starts
+ * @param launcherActivity the name of the activity the launcher starts: the first activity or
+ *     {@code <activity-alias>} with a {@code MAIN} + {@code LAUNCHER} intent filter. For an alias,
+ *     it is the alias's name; its component's {@code targetActivity} gives the class.
  * @param debuggable {@code android:debuggable} of {@code <application>}. A null value counts as
  *     not set: Android then uses false.
  * @param debuggableReference the reference id of {@code android:debuggable}

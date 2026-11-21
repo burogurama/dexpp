@@ -265,6 +265,16 @@ typedef enum DexppComponentKind {
     DEXPP_COMPONENT_PROVIDER = 3
 } DexppComponentKind;
 
+/** How a provider's path permission matches a path: which attribute of
+ *  `<path-permission>` gives the path. */
+typedef enum DexppPathMatch {
+    DEXPP_PATH_MATCH_LITERAL = 0,         /**< android:path: the whole path. */
+    DEXPP_PATH_MATCH_PREFIX = 1,          /**< android:pathPrefix: the start of the path. */
+    DEXPP_PATH_MATCH_PATTERN = 2,         /**< android:pathPattern: a simple glob. */
+    DEXPP_PATH_MATCH_SUFFIX = 3,          /**< android:pathSuffix: the end of the path. */
+    DEXPP_PATH_MATCH_ADVANCED_PATTERN = 4 /**< android:pathAdvancedPattern: an advanced glob. */
+} DexppPathMatch;
+
 /** @} */
 
 /* ======================================================================== */
@@ -1211,7 +1221,34 @@ typedef struct DexppIntentFilter
     int is_launcher;       /**< 1 for action MAIN with category LAUNCHER. */
 } DexppIntentFilter;
 
-/** An activity, service, receiver or provider declared in the manifest.
+/** A `<path-permission>` of a provider: permissions that also give access to
+ *  the provider's paths that match. A caller that holds the path's read or
+ *  write permission reads or writes the matching paths even without the
+ *  provider's own permission. Android drops a `<path-permission>` that gives
+ *  neither a read nor a write permission, or no path; dexpp leaves those out
+ *  too. */
+typedef struct DexppPathPermission
+{
+    char *path;                   /**< The path or the pattern. Empty when `path_unknown` is
+                                       1. */
+    DexppPathMatch match;         /**< The attribute the path comes from: the first that gives a
+                                       value, in the order android:pathAdvancedPattern,
+                                       pathPattern, pathPrefix, pathSuffix, path. */
+    int path_unknown;             /**< 1 when dexpp cannot tell the path: in that order, an
+                                       attribute whose value dexpp cannot tell comes before any
+                                       that gives a value (`match` is that attribute). */
+    char *read_permission;        /**< android:readPermission, else the element's
+                                       android:permission; never the provider's. NULL when
+                                       neither gives one, or when it is unknown. */
+    int read_permission_unknown;  /**< 1 when dexpp cannot tell `read_permission`. */
+    char *write_permission;       /**< android:writePermission, else the element's
+                                       android:permission. NULL as for `read_permission`. */
+    int write_permission_unknown; /**< 1 when dexpp cannot tell `write_permission`. */
+} DexppPathPermission;
+
+/** An activity, service, receiver or provider declared in the manifest. An
+ *  `<activity-alias>` is an activity whose `target_activity` is not NULL; it
+ *  takes only its own permission, exported flag and intent filters.
  *
  *  A member that holds a reference id is 0 for a plain value or a missing
  *  attribute. When the value is absent (-1 or NULL) and the reference is set,
@@ -1228,6 +1265,10 @@ typedef struct DexppComponent
                                   resolved or not; else 0. */
     int name_unknown;        /**< 1 when android:name is a reference whose string dexpp cannot
                                   tell. */
+    char *target_activity;   /**< For an `<activity-alias>`: android:targetActivity, the
+                                  activity the alias starts, as a full class name; empty when
+                                  the attribute is missing or gives no value. NULL for every
+                                  component that is not an alias. */
     DexppComponentKind kind; /**< The kind of component. */
     int exported; /**< android:exported: 1 or 0 as written, or as the resource it refers to
                        says in the default configuration; -1 when absent, when it is a null
@@ -1242,9 +1283,19 @@ typedef struct DexppComponent
     int exported_varies;                /**< 1 when android:exported is a reference that makes the
                                              component exported in some resource configurations
                                              and not in others (for example false in res/values,
-                                             true in res/values-v31); a null value uses the
-                                             intent-filter rule. `exported` holds the default
+                                             true in res/values-v31); a null value uses
+                                             `exported_default`. `exported` holds the default
                                              configuration's value. */
+    int exported_default;               /**< What Android uses when android:exported gives no
+                                             value: 1 or 0, or -1 when dexpp cannot tell. For an
+                                             activity, alias, service or receiver, 1 when it has
+                                             an intent filter. For a provider, 1 when the app
+                                             targets API 16 or older (the target SDK of the last
+                                             `<uses-sdk>` before `<application>`, its
+                                             minSdkVersion or 1 when targetSdkVersion is not
+                                             written, 0 without such a `<uses-sdk>`); -1 when the
+                                             target SDK is unknown or differs between
+                                             configurations. */
     char *permission;                   /**< The permission a caller needs, as Android enforces it:
                                              the component's android:permission, or the
                                              application's when the component gives none (see
@@ -1268,18 +1319,23 @@ typedef struct DexppComponent
     char *write_permission; /**< For a provider: the permission a caller needs to write to
                                  it: android:writePermission, else `permission`. NULL as for
                                  `read_permission`. */
-    uint32_t write_permission_reference; /**< The reference id of android:writePermission, or
-                                              0. */
-    int write_permission_unknown;        /**< 1 when dexpp cannot tell `write_permission`. */
-    DexppIntentFilter *intent_filters;   /**< The intent filters. */
-    size_t intent_filter_count;          /**< Number of intent filters. */
-    int guarded_by_signature_permission; /**< 1 when guarded by an app-declared signature
-                                              permission, signature in every configuration;
-                                              for a provider, both the read and the write
-                                              permission must be one. */
-    int is_exported;  /**< The effective answer: explicit, or inferred from filters; 1 when
-                           the value varies between configurations or is unknown (possibly
-                           exported). */
+    uint32_t write_permission_reference;   /**< The reference id of android:writePermission, or
+                                                0. */
+    int write_permission_unknown;          /**< 1 when dexpp cannot tell `write_permission`. */
+    DexppPathPermission *path_permissions; /**< For a provider: its `<path-permission>`
+                                                elements, in manifest order, without those
+                                                Android drops. NULL for the other kinds. */
+    size_t path_permission_count;          /**< Number of path permissions. */
+    DexppIntentFilter *intent_filters;     /**< The intent filters. */
+    size_t intent_filter_count;            /**< Number of intent filters. */
+    int guarded_by_signature_permission;   /**< 1 when guarded by an app-declared signature
+                                                permission, signature in every configuration;
+                                                for a provider, the read and the write
+                                                permission and every permission of its path
+                                                permissions must be one. */
+    int is_exported;  /**< The effective answer: explicit, or `exported_default`; 1 when
+                           the value varies between configurations or is unknown, or the
+                           default is unknown (possibly exported). */
     int is_reachable; /**< Exported and not guarded by a signature permission. */
 } DexppComponent;
 
@@ -1345,7 +1401,8 @@ typedef struct DexppManifest
     size_t declared_permission_count;              /**< Number of declared permissions. */
     DexppComponent *components;                    /**< Every component, in manifest order. */
     size_t component_count;                        /**< Number of components. */
-    char *launcher_activity;                       /**< The launcher activity's name, or NULL. */
+    char *launcher_activity;         /**< The launcher activity's name (an activity or an
+                                        `<activity-alias>`), or NULL. */
     int debuggable;                  /**< android:debuggable: 1, 0, or -1 when absent, null (Android
                                           then uses false) or unknown. */
     uint32_t debuggable_reference;   /**< The reference id of android:debuggable, or 0. */

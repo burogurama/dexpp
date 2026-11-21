@@ -639,6 +639,24 @@ func (k ComponentKind) String() string {
 	return enumName(int(k), "activity", "service", "receiver", "provider")
 }
 
+// PathMatch says how a provider's path permission matches a path. Each value
+// names the attribute of <path-permission> that gives the path.
+type PathMatch int
+
+// The ways a path permission matches a path.
+const (
+	PathMatchLiteral         PathMatch = C.DEXPP_PATH_MATCH_LITERAL          // android:path: the whole path
+	PathMatchPrefix          PathMatch = C.DEXPP_PATH_MATCH_PREFIX           // android:pathPrefix: the start of the path
+	PathMatchPattern         PathMatch = C.DEXPP_PATH_MATCH_PATTERN          // android:pathPattern: a simple glob
+	PathMatchSuffix          PathMatch = C.DEXPP_PATH_MATCH_SUFFIX           // android:pathSuffix: the end of the path
+	PathMatchAdvancedPattern PathMatch = C.DEXPP_PATH_MATCH_ADVANCED_PATTERN // android:pathAdvancedPattern: an advanced glob
+)
+
+// String names the way, such as "prefix".
+func (m PathMatch) String() string {
+	return enumName(int(m), "literal", "prefix", "pattern", "suffix", "advanced pattern")
+}
+
 func enumName(v int, names ...string) string {
 	if v >= 0 && v < len(names) {
 		return names[v]

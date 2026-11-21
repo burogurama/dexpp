@@ -205,6 +205,65 @@ func TestApplicationPermission(t *testing.T) {
 	}
 }
 
+// reachable.apk has two <activity-alias> elements, providers with
+// <path-permission> elements, and a provider without android:exported.
+func TestAliasesPathPermissionsAndExportDefaults(t *testing.T) {
+	m := mustManifest(t, mustAPK(t, "reachable.apk"))
+	byName := map[string]Component{}
+	for _, c := range m.Components {
+		byName[c.Name[strings.LastIndex(c.Name, ".")+1:]] = c
+	}
+
+	// An alias takes only its own permission: not its target's, not the
+	// application's.
+	open := byName["OpenAlias"]
+	if open.Kind != ComponentActivity || open.TargetActivity == nil ||
+		*open.TargetActivity != "com.dexpp.reach.SigActivity" || open.Permission != nil ||
+		open.PermissionInherited || !open.IsReachable {
+		t.Errorf("OpenAlias = %+v", open)
+	}
+	guarded := byName["GuardedAlias"]
+	if guarded.Permission == nil || *guarded.Permission != "com.dexpp.reach.P_SIGNATURE" ||
+		guarded.PermissionInherited || guarded.IsReachable {
+		t.Errorf("GuardedAlias = %+v", guarded)
+	}
+	if sig := byName["SigActivity"]; sig.TargetActivity != nil {
+		t.Errorf("SigActivity has a target: %q", *sig.TargetActivity)
+	}
+
+	// /public is readable with a normal permission.
+	path := byName["PathProvider"]
+	want := PathPermission{Path: "/public", Match: PathMatchPrefix}
+	normal := "com.dexpp.reach.P_NORMAL"
+	want.ReadPermission = &normal
+	if len(path.PathPermissions) != 1 || !reflect.DeepEqual(path.PathPermissions[0], want) ||
+		path.GuardedBySignaturePermission || !path.IsReachable {
+		t.Errorf("PathProvider = %+v", path)
+	}
+	sigPath := byName["SigPathProvider"]
+	if len(sigPath.PathPermissions) != 1 || sigPath.PathPermissions[0].Match != PathMatchPattern ||
+		sigPath.PathPermissions[0].Path != "/items/.*" || sigPath.IsReachable {
+		t.Errorf("SigPathProvider = %+v", sigPath)
+	}
+	if open.PathPermissions != nil {
+		t.Errorf("OpenAlias has path permissions: %+v", open.PathPermissions)
+	}
+	if got := PathMatchAdvancedPattern.String(); got != "advanced pattern" {
+		t.Errorf("PathMatchAdvancedPattern.String() = %q", got)
+	}
+
+	// The app targets API 34: a provider without android:exported is not
+	// exported, although it has an intent filter.
+	def := byName["DefaultProvider"]
+	if def.Exported != nil || def.ExportedDefault == nil || *def.ExportedDefault ||
+		len(def.IntentFilters) != 1 || def.IsExported {
+		t.Errorf("DefaultProvider = %+v", def)
+	}
+	if hidden := byName["HiddenActivity"]; hidden.ExportedDefault == nil || *hidden.ExportedDefault {
+		t.Errorf("HiddenActivity.ExportedDefault = %v", hidden.ExportedDefault)
+	}
+}
+
 // refs.apk: @bool/nothing is @null, @bool/same_as_nothing refers to it, and
 // @string/no_permission is @null. Android reads them as not written.
 func TestManifestNullValues(t *testing.T) {

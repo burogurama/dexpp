@@ -6,7 +6,9 @@ import java.util.Optional;
 import java.util.OptionalInt;
 
 /**
- * An activity, a service, a broadcast receiver or a content provider declared in the manifest.
+ * An activity, a service, a broadcast receiver or a content provider declared in the manifest. An
+ * {@code <activity-alias>} is an activity whose {@code targetActivity} is set; Android gives it
+ * only its own permission, its own exported flag and its own intent filters.
  *
  * <p>A {@code ...Reference} component holds the resource id when the attribute is written as a
  * reference, and is empty for a plain value or a missing attribute. When the value is empty and the
@@ -23,6 +25,12 @@ import java.util.OptionalInt;
  *     as {@code "@string/main_activity"}, whether it was resolved or not. It is empty for a plain
  *     value or a missing attribute.
  * @param nameUnknown true when {@code android:name} is a reference whose string dexpp cannot tell
+ * @param targetActivity for an {@code <activity-alias>}, the activity the alias starts ({@code
+ *     android:targetActivity}), completed with the app's package like {@code name}. It is an empty
+ *     string when the attribute is missing or gives no value, and empty for every component that is
+ *     not an alias. The alias's {@code name} is not a class; this one is. Android refuses to install
+ *     a package whose alias does not name an activity declared before the alias; dexpp does not
+ *     check this.
  * @param kind the kind of component
  * @param exported the {@code android:exported} attribute: the value the manifest writes, or the
  *     value of the resource it refers to in the default configuration. Text reads as Android reads
@@ -38,8 +46,18 @@ import java.util.OptionalInt;
  * @param exportedVaries true when {@code android:exported} is a reference that makes the component
  *     exported in some resource configurations and not in others: for example false in {@code
  *     res/values} and true in {@code res/values-v31}, so the component is exported on Android 12
- *     and newer. A configuration whose value is null uses the intent-filter rule. {@code exported}
- *     holds the default configuration's value, and {@code isExported} is true.
+ *     and newer. A configuration whose value is null uses {@code exportedDefault}. {@code
+ *     exported} holds the default configuration's value, and {@code isExported} is true.
+ * @param exportedDefault what Android uses when {@code android:exported} gives no value (missing,
+ *     or a null value). For an activity, an alias, a service or a receiver, it is true when the
+ *     component has an intent filter. For a provider, it is true when the app targets Android 4.1
+ *     (API 16) or older, whatever its intent filters. The target SDK is the one Android has when it
+ *     reads {@code <application>}: that of the last {@code <uses-sdk>} before {@code
+ *     <application>}; {@code android:minSdkVersion} (or 1) when {@code android:targetSdkVersion} is
+ *     not written; 0 when no {@code <uses-sdk>} comes before {@code <application>}. For a provider,
+ *     empty text in {@code android:exported} gives this default too. It is empty when dexpp cannot
+ *     tell: the target SDK is a reference dexpp cannot read, a codename, or a value that gives
+ *     another answer in another configuration.
  * @param permission the permission a caller must hold to use the component, as Android enforces
  *     it: the component's {@code android:permission}, or, when the component gives none, the {@code
  *     android:permission} of {@code <application>} (then {@code permissionInherited} is true). The
@@ -70,13 +88,16 @@ import java.util.OptionalInt;
  * @param writePermissionReference the resource id when the provider's {@code
  *     android:writePermission} is written as a reference
  * @param writePermissionUnknown true when dexpp cannot tell {@code writePermission}
+ * @param pathPermissions for a provider, its {@code <path-permission>} elements in manifest order,
+ *     without those Android drops; an empty list for the other kinds
  * @param intentFilters the intent filters
  * @param guardedBySignaturePermission true when the permission Android enforces is a permission
  *     this app declares with the {@code signature} or {@code signatureOrSystem} protection level.
- *     Only apps signed with the same key can hold such a permission. For a provider, both {@code
- *     readPermission} and {@code writePermission} must be such a permission.
+ *     Only apps signed with the same key can hold such a permission. For a provider, {@code
+ *     readPermission}, {@code writePermission} and every permission of its {@code pathPermissions}
+ *     must be such a permission; an unknown path permission leaves this false.
  * @param isExported whether other apps can address the component: the {@code exported} attribute
- *     when the manifest sets it, otherwise true when the component has an intent filter. A null
+ *     when the manifest sets it, otherwise {@code exportedDefault} (true when that is empty). A null
  *     value counts as not set. When the attribute is a reference whose value differs between
  *     configurations ({@code exportedVaries}), this is true. When the attribute is a reference
  *     whose value is unknown ({@code exportedUnknown}), this is true: the component may be
@@ -91,11 +112,13 @@ public record Component(
         String name,
         OptionalInt nameReference,
         boolean nameUnknown,
+        Optional<String> targetActivity,
         ComponentKind kind,
         Optional<Boolean> exported,
         OptionalInt exportedReference,
         boolean exportedUnknown,
         boolean exportedVaries,
+        Optional<Boolean> exportedDefault,
         Optional<String> permission,
         OptionalInt permissionReference,
         boolean permissionUnknown,
@@ -106,23 +129,27 @@ public record Component(
         Optional<String> writePermission,
         OptionalInt writePermissionReference,
         boolean writePermissionUnknown,
+        List<PathPermission> pathPermissions,
         List<IntentFilter> intentFilters,
         boolean guardedBySignaturePermission,
         boolean isExported,
         boolean isReachable) {
-    /** Checks the parts, and copies the filters into an immutable list. */
+    /** Checks the parts, and copies the lists into immutable lists. */
     public Component {
         Objects.requireNonNull(name, "name");
         Objects.requireNonNull(nameReference, "nameReference");
+        Objects.requireNonNull(targetActivity, "targetActivity");
         Objects.requireNonNull(kind, "kind");
         Objects.requireNonNull(exported, "exported");
         Objects.requireNonNull(exportedReference, "exportedReference");
+        Objects.requireNonNull(exportedDefault, "exportedDefault");
         Objects.requireNonNull(permission, "permission");
         Objects.requireNonNull(permissionReference, "permissionReference");
         Objects.requireNonNull(readPermission, "readPermission");
         Objects.requireNonNull(readPermissionReference, "readPermissionReference");
         Objects.requireNonNull(writePermission, "writePermission");
         Objects.requireNonNull(writePermissionReference, "writePermissionReference");
+        pathPermissions = List.copyOf(pathPermissions);
         intentFilters = List.copyOf(intentFilters);
     }
 }

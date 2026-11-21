@@ -37,11 +37,13 @@ DexppComponent component(const dex::apk::Component &c)
     out.name = cstr(c.name);
     out.name_reference = c.name_reference.value_or(0);
     out.name_unknown = c.name_unknown ? 1 : 0;
+    out.target_activity = c.target_activity ? cstr(*c.target_activity) : nullptr;
     out.kind = component_kind(c.kind);
     out.exported = tri_state(c.exported);
     out.exported_reference = c.exported_reference.value_or(0);
     out.exported_unknown = c.exported_unknown ? 1 : 0;
     out.exported_varies = c.exported_varies ? 1 : 0;
+    out.exported_default = tri_state(c.exported_default);
     out.permission = c.permission ? cstr(*c.permission) : nullptr;
     out.permission_reference = c.permission_reference.value_or(0);
     out.permission_unknown = c.permission_unknown ? 1 : 0;
@@ -52,6 +54,19 @@ DexppComponent component(const dex::apk::Component &c)
     out.write_permission = c.write_permission ? cstr(*c.write_permission) : nullptr;
     out.write_permission_reference = c.write_permission_reference.value_or(0);
     out.write_permission_unknown = c.write_permission_unknown ? 1 : 0;
+    out.path_permission_count = c.path_permissions.size();
+    out.path_permissions = alloc_array<DexppPathPermission>(c.path_permissions.size());
+    for (std::size_t i = 0; i < c.path_permissions.size(); ++i) {
+        const dex::apk::PathPermission &p = c.path_permissions[i];
+        DexppPathPermission &o = out.path_permissions[i];
+        o.path = cstr(p.path);
+        o.match = path_match(p.match);
+        o.path_unknown = p.path_unknown ? 1 : 0;
+        o.read_permission = p.read_permission ? cstr(*p.read_permission) : nullptr;
+        o.read_permission_unknown = p.read_permission_unknown ? 1 : 0;
+        o.write_permission = p.write_permission ? cstr(*p.write_permission) : nullptr;
+        o.write_permission_unknown = p.write_permission_unknown ? 1 : 0;
+    }
     out.guarded_by_signature_permission = c.guarded_by_signature_permission ? 1 : 0;
     out.is_exported = c.is_exported() ? 1 : 0;
     out.is_reachable = c.is_reachable() ? 1 : 0;
@@ -70,6 +85,7 @@ DexppComponent component(const dex::apk::Component &c)
 void clear(DexppComponent &c)
 {
     std::free(c.name);
+    std::free(c.target_activity);
     std::free(c.permission);
     std::free(c.read_permission);
     std::free(c.write_permission);
@@ -78,6 +94,12 @@ void clear(DexppComponent &c)
         dexpp_string_array_free(c.intent_filters[i].categories, c.intent_filters[i].category_count);
     }
     std::free(c.intent_filters);
+    for (std::size_t i = 0; c.path_permissions != nullptr && i < c.path_permission_count; ++i) {
+        std::free(c.path_permissions[i].path);
+        std::free(c.path_permissions[i].read_permission);
+        std::free(c.path_permissions[i].write_permission);
+    }
+    std::free(c.path_permissions);
     c = DexppComponent{};
 }
 

@@ -722,6 +722,83 @@ def test_reachability():
     assert sum(c.is_reachable for c in activities) == 4
 
 
+def test_activity_aliases():
+    # An <activity-alias> is an activity with a target. It takes only its own
+    # permission: not its target's, not the application's.
+    m = dexpp.Apk.open("tests/data/reachable.apk").manifest
+    assert m is not None
+    by_name = {c.name.split(".")[-1]: c for c in m.components}
+
+    open_alias = by_name["OpenAlias"]
+    assert open_alias.kind == dexpp.ComponentKind.ACTIVITY
+    assert open_alias.target_activity == "com.dexpp.reach.SigActivity"
+    assert open_alias.permission is None
+    assert not open_alias.permission_inherited
+    assert open_alias.is_reachable
+
+    guarded = by_name["GuardedAlias"]
+    assert guarded.target_activity == "com.dexpp.reach.InheritingActivity"
+    assert guarded.permission == "com.dexpp.reach.P_SIGNATURE"
+    assert guarded.guarded_by_signature_permission and not guarded.is_reachable
+
+    assert by_name["SigActivity"].target_activity is None
+    names = [c.name.split(".")[-1] for c in m.components_of(dexpp.ComponentKind.ACTIVITY)]
+    assert names[-2:] == ["OpenAlias", "GuardedAlias"]
+
+
+def test_path_permissions():
+    m = dexpp.Apk.open("tests/data/reachable.apk").manifest
+    assert m is not None
+    by_name = {c.name.split(".")[-1]: c for c in m.components}
+
+    # /public is readable with a normal permission: the provider is reachable,
+    # although its own permissions are signature ones.
+    path = by_name["PathProvider"]
+    assert len(path.path_permissions) == 1
+    pp = path.path_permissions[0]
+    assert isinstance(pp, dexpp.PathPermission)
+    assert pp.path == "/public"
+    assert pp.match == dexpp.PathMatch.PREFIX
+    assert not pp.path_unknown
+    assert pp.read_permission == "com.dexpp.reach.P_NORMAL"
+    assert not pp.read_permission_unknown
+    assert pp.write_permission is None and not pp.write_permission_unknown
+    assert path.read_permission == "com.dexpp.reach.P_SIGNATURE"
+    assert not path.guarded_by_signature_permission and path.is_reachable
+    assert repr(pp) == "PathPermission(/public)"
+
+    # Two of its three elements are dropped, as Android drops them.
+    sig = by_name["SigPathProvider"]
+    assert [(p.path, p.match) for p in sig.path_permissions] == [
+        ("/items/.*", dexpp.PathMatch.PATTERN)
+    ]
+    assert sig.guarded_by_signature_permission and not sig.is_reachable
+
+    assert by_name["SigActivity"].path_permissions == []
+    assert [k.name for k in dexpp.PathMatch] == [
+        "LITERAL", "PREFIX", "PATTERN", "SUFFIX", "ADVANCED_PATTERN"
+    ]
+
+
+def test_provider_exported_default():
+    # reachable.apk targets API 34: a provider without android:exported is
+    # not exported, whatever its intent filters.
+    m = dexpp.Apk.open("tests/data/reachable.apk").manifest
+    assert m is not None
+    by_name = {c.name.split(".")[-1]: c for c in m.components}
+    provider = by_name["DefaultProvider"]
+    assert provider.intent_filters
+    assert provider.exported is None
+    assert provider.exported_default is False
+    assert not provider.is_exported
+    # The other kinds: true when there is an intent filter.
+    assert by_name["HiddenActivity"].exported_default is False
+    sample = dexpp.Apk.open("tests/data/sample.apk").manifest
+    assert sample is not None
+    launcher = sample.components_of(dexpp.ComponentKind.ACTIVITY)[0]
+    assert launcher.exported_default is True
+
+
 def test_application_permission():
     # reachable.apk's <application> requires its signature permission, and the
     # components without a permission of their own take it.

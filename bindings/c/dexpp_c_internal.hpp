@@ -347,6 +347,23 @@ inline DexppComponentKind component_kind(dex::apk::Component::Kind k)
     return DEXPP_COMPONENT_ACTIVITY;
 }
 
+inline DexppPathMatch path_match(dex::apk::PathPermission::Match m)
+{
+    switch (m) {
+    case dex::apk::PathPermission::Match::Literal:
+        return DEXPP_PATH_MATCH_LITERAL;
+    case dex::apk::PathPermission::Match::Prefix:
+        return DEXPP_PATH_MATCH_PREFIX;
+    case dex::apk::PathPermission::Match::Pattern:
+        return DEXPP_PATH_MATCH_PATTERN;
+    case dex::apk::PathPermission::Match::Suffix:
+        return DEXPP_PATH_MATCH_SUFFIX;
+    case dex::apk::PathPermission::Match::AdvancedPattern:
+        return DEXPP_PATH_MATCH_ADVANCED_PATTERN;
+    }
+    return DEXPP_PATH_MATCH_LITERAL;
+}
+
 // ===== errors ================================================================
 
 inline DexppErrorCode error_code(dex::ErrorCode c)

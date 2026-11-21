@@ -126,6 +126,16 @@ class ComponentKind(_enum.Enum):
     PROVIDER = 3
 
 
+class PathMatch(_enum.Enum):
+    """How a provider's path permission matches a path: which attribute gives it."""
+
+    LITERAL = 0
+    PREFIX = 1
+    PATTERN = 2
+    SUFFIX = 3
+    ADVANCED_PATTERN = 4
+
+
 del _enum
 )py",
              m.attr("__dict__"));
@@ -178,6 +188,11 @@ static_assert(static_cast<int>(dex::apk::Component::Kind::Activity) == 0 &&
               static_cast<int>(dex::apk::Component::Kind::Service) == 1 &&
               static_cast<int>(dex::apk::Component::Kind::Receiver) == 2 &&
               static_cast<int>(dex::apk::Component::Kind::Provider) == 3);
+static_assert(static_cast<int>(dex::apk::PathPermission::Match::Literal) == 0 &&
+              static_cast<int>(dex::apk::PathPermission::Match::Prefix) == 1 &&
+              static_cast<int>(dex::apk::PathPermission::Match::Pattern) == 2 &&
+              static_cast<int>(dex::apk::PathPermission::Match::Suffix) == 3 &&
+              static_cast<int>(dex::apk::PathPermission::Match::AdvancedPattern) == 4);
 
 /** The Python name of each C++ enum: `name` for the lookup in the module,
  *  `signature` for the function signatures pybind11 writes in docstrings. */
@@ -199,6 +214,7 @@ DEXPP_PY_ENUM(dex::MethodHandleKind, "MethodHandleKind");
 DEXPP_PY_ENUM(dex::OperandWidth, "OperandWidth");
 DEXPP_PY_ENUM(dex::AnnotationVisibility, "AnnotationVisibility");
 DEXPP_PY_ENUM(dex::apk::Component::Kind, "ComponentKind");
+DEXPP_PY_ENUM(dex::apk::PathPermission::Match, "PathMatch");
 
 #undef DEXPP_PY_ENUM
 
@@ -292,6 +308,11 @@ class type_caster<dex::AnnotationVisibility>
 template <>
 class type_caster<dex::apk::Component::Kind>
     : public dexpp_py::EnumCaster<dex::apk::Component::Kind>
+{
+};
+template <>
+class type_caster<dex::apk::PathPermission::Match>
+    : public dexpp_py::EnumCaster<dex::apk::PathPermission::Match>
 {
 };
 
