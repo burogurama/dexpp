@@ -9,6 +9,7 @@ import io.github.burogurama.dexpp.DeclaredPermission;
 import io.github.burogurama.dexpp.DexClass;
 import io.github.burogurama.dexpp.InvalidApkException;
 import io.github.burogurama.dexpp.Manifest;
+import io.github.burogurama.dexpp.PathPermission;
 import io.github.burogurama.dexpp.ResourceName;
 import io.github.burogurama.dexpp.ResourceTable;
 import io.github.burogurama.dexpp.ResourceValue;
@@ -108,6 +109,62 @@ final class ApkMetadataExamples {
                 System.out.println("  reachable: " + provider.isReachable());
             }
             // --8<-- [end:providers]
+        }
+    }
+
+    static void pathPermissions() throws IOException {
+        try (Apk guardedApk = Apk.open(Path.of("../../tests/data/reachable.apk"))) {
+            Manifest guarded = guardedApk.manifest().orElseThrow();
+            // --8<-- [start:path_permissions]
+            for (Component provider : guarded.componentsOf(ComponentKind.PROVIDER)) {
+                String name = provider.name().substring(provider.name().lastIndexOf('.') + 1);
+                for (PathPermission rule : provider.pathPermissions()) {
+                    System.out.println(name + ": " + rule.match() + " " + rule.path());
+                    System.out.println("  read " + rule.readPermission().orElse("none")
+                            + ", write " + rule.writePermission().orElse("none"));
+                }
+                if (!provider.pathPermissions().isEmpty()) {
+                    System.out.println("  reachable: " + provider.isReachable());
+                }
+            }
+            // --8<-- [end:path_permissions]
+        }
+    }
+
+    static void providerDefault() throws IOException {
+        try (Apk guardedApk = Apk.open(Path.of("../../tests/data/reachable.apk"))) {
+            Manifest guarded = guardedApk.manifest().orElseThrow();
+            // --8<-- [start:provider_default]
+            System.out.println("targets API " + guarded.targetSdk().orElseThrow());
+            for (Component provider : guarded.componentsOf(ComponentKind.PROVIDER)) {
+                if (!provider.name().equals("com.dexpp.reach.DefaultProvider")) {
+                    continue;
+                }
+                System.out.println("intent filters: " + provider.intentFilters().size());
+                System.out.println("exported: " + provider.exported()
+                        + ", default: " + provider.exportedDefault());
+                System.out.println("isExported: " + provider.isExported());
+            }
+            // --8<-- [end:provider_default]
+        }
+    }
+
+    static void aliases() throws IOException {
+        try (Apk guardedApk = Apk.open(Path.of("../../tests/data/reachable.apk"))) {
+            Manifest guarded = guardedApk.manifest().orElseThrow();
+            // --8<-- [start:aliases]
+            for (Component activity : guarded.componentsOf(ComponentKind.ACTIVITY)) {
+                if (activity.targetActivity().isEmpty()) {
+                    continue;
+                }
+                String name = activity.name().substring(activity.name().lastIndexOf('.') + 1);
+                String target = activity.targetActivity().get();
+                target = target.substring(target.lastIndexOf('.') + 1);
+                System.out.println(name + " starts " + target);
+                System.out.println("  permission " + activity.permission().orElse("none")
+                        + ", reachable " + activity.isReachable());
+            }
+            // --8<-- [end:aliases]
         }
     }
 

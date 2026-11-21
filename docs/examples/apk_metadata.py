@@ -51,6 +51,36 @@ for provider in guarded.components_of(dexpp.ComponentKind.PROVIDER):
     print("  reachable:", provider.is_reachable)
 # --8<-- [end:providers]
 
+# --8<-- [start:path_permissions]
+for provider in guarded.components_of(dexpp.ComponentKind.PROVIDER):
+    path_provider_name: str = provider.name.rsplit(".", 1)[1]
+    for rule in provider.path_permissions:
+        print(f"{path_provider_name}: {rule.match.name} {rule.path}")
+        print(f"  read {rule.read_permission}, write {rule.write_permission}")
+    if provider.path_permissions:
+        print("  reachable:", provider.is_reachable)
+# --8<-- [end:path_permissions]
+
+# --8<-- [start:provider_default]
+print("targets API", guarded.target_sdk)
+default_provider: dexpp.Component = next(
+    c for c in guarded.components if c.name == "com.dexpp.reach.DefaultProvider"
+)
+print("intent filters:", len(default_provider.intent_filters))
+print("exported:", default_provider.exported, "default:", default_provider.exported_default)
+print("is_exported:", default_provider.is_exported)
+# --8<-- [end:provider_default]
+
+# --8<-- [start:aliases]
+for activity in guarded.components_of(dexpp.ComponentKind.ACTIVITY):
+    if activity.target_activity is None:
+        continue
+    alias_name: str = activity.name.rsplit(".", 1)[1]
+    target_name: str = activity.target_activity.rsplit(".", 1)[1]
+    print(f"{alias_name} starts {target_name}")
+    print(f"  permission {activity.permission}, reachable {activity.is_reachable}")
+# --8<-- [end:aliases]
+
 # --8<-- [start:resources]
 table: dexpp.ResourceTable | None = apk.resources
 assert table is not None

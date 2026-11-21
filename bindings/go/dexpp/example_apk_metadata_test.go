@@ -174,6 +174,96 @@ func ExampleComponent_providers() {
 	//   reachable: false
 }
 
+// Read the path permissions of the content providers.
+func ExamplePathPermission() {
+	_, guarded := openManifest("../../../tests/data/reachable.apk")
+
+	// --8<-- [start:path_permissions]
+	for _, provider := range guarded.ComponentsOf(dexpp.ComponentProvider) {
+		name := provider.Name[strings.LastIndex(provider.Name, ".")+1:]
+		for _, rule := range provider.PathPermissions {
+			read, write := "none", "none"
+			if rule.ReadPermission != nil {
+				read = *rule.ReadPermission
+			}
+			if rule.WritePermission != nil {
+				write = *rule.WritePermission
+			}
+			fmt.Printf("%s: %s %s\n", name, rule.Match, rule.Path)
+			fmt.Printf("  read %s, write %s\n", read, write)
+		}
+		if len(provider.PathPermissions) > 0 {
+			fmt.Println("  reachable:", provider.IsReachable)
+		}
+	}
+	// --8<-- [end:path_permissions]
+
+	// Output:
+	// PathProvider: prefix /public
+	//   read com.dexpp.reach.P_NORMAL, write none
+	//   reachable: true
+	// SigPathProvider: pattern /items/.*
+	//   read com.dexpp.reach.P_SIGNATURE, write com.dexpp.reach.P_SIGNATURE
+	//   reachable: false
+}
+
+// Find what Android uses for a provider that does not write android:exported.
+func ExampleComponent_exportedDefault() {
+	_, guarded := openManifest("../../../tests/data/reachable.apk")
+
+	// --8<-- [start:provider_default]
+	if guarded.TargetSDK != nil {
+		fmt.Println("targets API", *guarded.TargetSDK)
+	}
+	for _, provider := range guarded.ComponentsOf(dexpp.ComponentProvider) {
+		if provider.Name != "com.dexpp.reach.DefaultProvider" {
+			continue
+		}
+		fmt.Println("intent filters:", len(provider.IntentFilters))
+		fmt.Println("exported set:", provider.Exported != nil)
+		if provider.ExportedDefault != nil {
+			fmt.Println("default:", *provider.ExportedDefault)
+		}
+		fmt.Println("is exported:", provider.IsExported)
+	}
+	// --8<-- [end:provider_default]
+
+	// Output:
+	// targets API 34
+	// intent filters: 1
+	// exported set: false
+	// default: false
+	// is exported: false
+}
+
+// List the activity aliases, and the activity each one starts.
+func ExampleComponent_aliases() {
+	_, guarded := openManifest("../../../tests/data/reachable.apk")
+
+	// --8<-- [start:aliases]
+	for _, activity := range guarded.ComponentsOf(dexpp.ComponentActivity) {
+		if activity.TargetActivity == nil {
+			continue
+		}
+		name := activity.Name[strings.LastIndex(activity.Name, ".")+1:]
+		target := *activity.TargetActivity
+		target = target[strings.LastIndex(target, ".")+1:]
+		permission := "none"
+		if activity.Permission != nil {
+			permission = *activity.Permission
+		}
+		fmt.Printf("%s starts %s\n", name, target)
+		fmt.Printf("  permission %s, reachable %v\n", permission, activity.IsReachable)
+	}
+	// --8<-- [end:aliases]
+
+	// Output:
+	// OpenAlias starts SigActivity
+	//   permission none, reachable true
+	// GuardedAlias starts InheritingActivity
+	//   permission com.dexpp.reach.P_SIGNATURE, reachable false
+}
+
 // Look up a resource by name, and resolve its value.
 func ExampleApk_Resources() {
 	apk, _ := openManifest("../../../tests/data/sample.apk")

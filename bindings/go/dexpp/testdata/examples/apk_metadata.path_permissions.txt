@@ -1,0 +1,6 @@
+PathProvider: prefix /public
+  read com.dexpp.reach.P_NORMAL, write none
+  reachable: true
+SigPathProvider: pattern /items/.*
+  read com.dexpp.reach.P_SIGNATURE, write com.dexpp.reach.P_SIGNATURE
+  reachable: false

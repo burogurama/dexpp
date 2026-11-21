@@ -1,0 +1,4 @@
+OpenAlias starts SigActivity
+  permission none, reachable true
+GuardedAlias starts InheritingActivity
+  permission com.dexpp.reach.P_SIGNATURE, reachable false

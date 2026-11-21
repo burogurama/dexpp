@@ -159,9 +159,9 @@ configuration:
   `allow_backup_varies` on the manifest (Go: `ExportedVaries`,
   `DebuggableVaries`, `AllowBackupVaries`; Java: `exportedVaries()`,
   `debuggableVaries()`, `allowBackupVaries()`). A configuration whose value
-  is null counts as what Android does when the attribute is not written: the
-  intent filters decide for `exported`, and `debuggable` and `allowBackup` take
-  their default.
+  is null counts as what Android does when the attribute is not written:
+  `exported` takes its default (see [Components](#components)), and
+  `debuggable` and `allowBackup` take theirs.
 - `is_exported` and `is_reachable` take the unsafe answer: a component whose
   `exported` varies counts as exported. For `debuggable` and `allowBackup`,
   treat a value that varies as possibly true.
@@ -224,7 +224,8 @@ be written as `@null` directly. Android reads a null value as if the attribute
 were not written at all. This holds in the manifest itself and at the end of a
 chain of references:
 
-- `exported`: not written, so the intent filters decide (see
+- `exported`: not written, so Android uses its default: the intent filters
+  decide, or, for a content provider, the target SDK (see
   [Components](#components)).
 - `debuggable` and `allowBackup`: not written, so Android uses their default:
   false for `debuggable`, true for `allowBackup`.
@@ -264,14 +265,38 @@ There are two ways to ask whether a component is exported:
   a null value, or has a value that dexpp cannot tell. For a reference, it is
   the value of the default configuration.
 - `is_exported` (Go: `IsExported`, Java: `isExported()`) is the effective
-  answer. When the attribute is missing or null, a component with at least one
-  intent filter counts as exported. This is the rule Android applied before
-  Android 12. When the attribute is a reference whose value dexpp cannot tell
+  answer. When the attribute is missing or null, Android uses a default,
+  which is `exported_default` (Go: `ExportedDefault`, Java:
+  `exportedDefault()`); see below. When the attribute is a reference whose
+  value dexpp cannot tell
   (`exported_unknown` is true), `is_exported` is true: the developer set the
   flag, its value is unknown, and for triage "possibly exported" is the safe
   answer. Guessing from the intent filters could hide an exported component.
   When the attribute is a reference whose value varies between
   configurations, `is_exported` is true too.
+
+The default depends on the kind of component:
+
+- An activity, a service or a broadcast receiver is exported when it has at
+  least one intent filter. Apps that target Android 12 or newer must write
+  `android:exported` on a component with an intent filter, but older apps
+  rely on this rule.
+- A content provider ignores its intent filters. It is exported when the app
+  targets Android 4.1 (API level 16) or older, and private otherwise. The
+  target SDK that counts is the one Android knows when it reads
+  `<application>`: that of a `<uses-sdk>` element written **before**
+  `<application>` (the last one, if there are several). When
+  `android:targetSdkVersion` is not written, the target SDK is the
+  `android:minSdkVersion`, or 1. When no `<uses-sdk>` comes before
+  `<application>`, it is 0, so the provider is exported.
+
+<!-- example: apk_metadata.provider_default -->
+
+`reachable.apk` targets API level 34, so its provider without
+`android:exported` is private, although it has an intent filter. When dexpp
+cannot tell the target SDK (a reference it cannot resolve, a codename such as
+`"Baklava"`, or a value that differs between configurations), the default is
+absent and `is_exported` is true: the provider counts as possibly exported.
 
 ## Which components can another app reach
 
@@ -298,7 +323,33 @@ same key, so a third-party app cannot hold it.
 
 In `reachable.apk`, `<application>` requires a signature permission. So the
 components that set no permission of their own are protected too, although
-they are exported. The reachable ones set a weaker permission of their own.
+they are exported. The reachable ones set a weaker permission of their own,
+or are an activity alias without a permission (see below).
+
+### Activity aliases
+
+An `<activity-alias>` element gives an activity a second name, often to put a
+second icon in the launcher. Another app starts the alias by its name, and
+Android then runs the target activity. dexpp lists each alias as an activity,
+in manifest order, with `target_activity` (Go: `TargetActivity`, Java:
+`targetActivity()`) set to the class of the activity it starts. For every
+other component, `target_activity` is absent. So the `name` of an alias is
+not a class; use `target_activity` to find its code.
+
+Android gives an alias only what the alias element itself says about access:
+
+- its own `android:permission`. The alias does not take its target's
+  permission, and it does not take the permission of `<application>` either.
+  An alias without a permission is open to every app, even when its target is
+  guarded by a signature permission.
+- its own `android:exported`, or, when that is not written, its own intent
+  filters.
+
+<!-- example: apk_metadata.aliases -->
+
+`OpenAlias` starts `SigActivity`, which is guarded by a signature permission,
+but the alias itself has no permission, so any app can reach the activity
+through it.
 
 ### Content providers
 
@@ -314,6 +365,32 @@ counts as guarded only when both permissions are signature permissions.
 
 <!-- example: apk_metadata.providers -->
 
+A provider can also have `<path-permission>` elements. Each one names a path,
+or a pattern of paths, and the permissions that let a caller read or write
+the paths that match. A caller that holds such a permission can use those
+paths even without the provider's own permission. So a path permission opens
+more of the provider; it never makes the provider safer. dexpp gives them as
+`path_permissions` (Go: `PathPermissions`, Java: `pathPermissions()`), in
+manifest order. Each has a `path`, a `match` that says which attribute gave
+the path (`path`, `pathPrefix`, `pathPattern`, `pathSuffix` or
+`pathAdvancedPattern`), and a `read_permission` and `write_permission`. They
+come from `android:readPermission` and `android:writePermission`, else from
+the element's own `android:permission`; they never fall back to the
+provider's permissions. Android drops a `<path-permission>` that gives no
+permission or no path, and dexpp leaves those out too.
+
+A provider counts as guarded only when its read and write permissions, and
+every permission of its path permissions, are signature permissions.
+
+<!-- example: apk_metadata.path_permissions -->
+
+`PathProvider` takes the signature permission of `<application>`, but its
+path `/public` can be read with a normal permission, so it is reachable.
+
+When a provider has no permission of its own, a path permission does close
+the matching paths to callers without it. But every other path stays open,
+so the provider is not guarded.
+
 Some cases stay reachable on purpose:
 
 - A component guarded by a `normal` or `dangerous` permission. Any app can
@@ -325,6 +402,7 @@ Some cases stay reachable on purpose:
   [Text given by a reference](#text-given-by-a-reference)), or whose
   permission has a protection level that is below signature in some
   configuration.
+- A provider with a path permission whose permission dexpp cannot tell.
 
 `declared_permission_protection_level(name)` (Go:
 `DeclaredPermissionProtectionLevel`, Java:

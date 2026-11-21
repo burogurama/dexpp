@@ -31,6 +31,20 @@ SigPathProvider: read com.dexpp.reach.P_SIGNATURE, write com.dexpp.reach.P_SIGNA
   reachable: False
 DefaultProvider: read com.dexpp.reach.P_SIGNATURE, write com.dexpp.reach.P_SIGNATURE
   reachable: False
+PathProvider: PREFIX /public
+  read com.dexpp.reach.P_NORMAL, write None
+  reachable: True
+SigPathProvider: PATTERN /items/.*
+  read com.dexpp.reach.P_SIGNATURE, write com.dexpp.reach.P_SIGNATURE
+  reachable: False
+targets API 34
+intent filters: 1
+exported: None default: False
+is_exported: False
+OpenAlias starts SigActivity
+  permission None, reachable True
+GuardedAlias starts InheritingActivity
+  permission com.dexpp.reach.P_SIGNATURE, reachable False
 0x7f010000 com.example.dexpp string app_name
 Dexpp Sample
 Dexpp Sample
