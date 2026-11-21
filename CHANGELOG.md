@@ -251,6 +251,14 @@
 - The demo disassembler (`main_test`) now prints the named form, and each
   method's prototype.
 
+### Shared C++ library
+
+- New CMake option `DEXPP_BUILD_SHARED` (off by default) builds the C++
+  library as a shared library too: `libdexpp.so`, `libdexpp.dylib` or
+  `dexpp.dll` (target `dexpp_shared`, alias `dexpp::shared`). A program that
+  loads plugins links it, together with each of its plugins, so the process
+  holds one copy of dex++ instead of one per plugin.
+
 ## 0.3.1
 
 ### APK from memory

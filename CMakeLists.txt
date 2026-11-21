@@ -14,6 +14,9 @@ option(DEXPP_BUILD_C "Build the C ABI shim (bindings/c, for Go/cgo and other FFI
 option(DEXPP_BUILD_C_SHARED
        "Also build the C ABI shim as a shared library (for Java and other FFI that load a library)"
        OFF)
+option(DEXPP_BUILD_SHARED
+       "Also build the C++ library as a shared library (libdexpp.so), for programs that load plugins"
+       OFF)
 set(DEXPP_SANITIZE "" CACHE STRING
     "Sanitizers to build everything with, e.g. 'address,undefined' (empty = off)")
 option(DEXPP_WERROR "Treat compiler warnings in dex++'s own sources as errors" OFF)
@@ -25,6 +28,7 @@ if(SKBUILD)
     set(DEXPP_BUILD_TESTS OFF)
     set(DEXPP_BUILD_C OFF)
     set(DEXPP_BUILD_C_SHARED OFF)
+    set(DEXPP_BUILD_SHARED OFF)
 endif()
 
 # Sanitizer instrumentation is applied directory-wide (before any target is
@@ -152,6 +156,28 @@ set_target_properties(dexpp_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
 # constructor.  PUBLIC, so every target that links dexpp_core agrees on it.
 if(MSVC)
     target_compile_definitions(dexpp_core PUBLIC _DISABLE_CONSTEXPR_MUTEX_CONSTRUCTOR)
+endif()
+
+# The C++ library as one shared library: libdexpp.so, libdexpp.dylib or
+# dexpp.dll.  A program that loads plugins needs dex++ exactly once in the
+# process: if the program and each plugin linked their own static copy, objects
+# made by one copy would be used by the code of another.  So the program and
+# its plugins all link this library instead of dexpp_core.  It is built from
+# the same sources as dexpp_core and exports the whole C++ API (default
+# visibility; every symbol on Windows).
+if(DEXPP_BUILD_SHARED)
+    add_library(dexpp_shared SHARED ${DEXPP_CORE_SOURCES} ${LIBDEFLATE_SOURCES})
+    add_library(dexpp::shared ALIAS dexpp_shared)
+    target_include_directories(dexpp_shared PUBLIC src)
+    target_include_directories(dexpp_shared PRIVATE ${libdeflate_SOURCE_DIR})
+    set_target_properties(dexpp_shared PROPERTIES
+        OUTPUT_NAME dexpp
+        C_STANDARD 11
+        C_EXTENSIONS OFF
+        WINDOWS_EXPORT_ALL_SYMBOLS ON)
+    if(MSVC)
+        target_compile_definitions(dexpp_shared PUBLIC _DISABLE_CONSTEXPR_MUTEX_CONSTRUCTOR)
+    endif()
 endif()
 
 set(DEXPP_C_SOURCES
